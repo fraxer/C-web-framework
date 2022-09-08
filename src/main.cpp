@@ -1,35 +1,7 @@
 #include <cstdio>
 #include <stdlib.h>
-#include <unistd.h>
 #include <syslog.h>
-#include <sys/stat.h>
 #include "config/config.h"
-
-char* readFile(int fd);
-
-long int filesize(int fd) {
-
-    struct stat stat_buf;
-
-    int r = fstat(fd, &stat_buf);
-
-    return r == 0 ? stat_buf.st_size : -1;
-}
-
-char* readFile(int fd) {
-
-    long int size = filesize(fd);
-
-    char* buf = (char*)malloc(size + 1);
-
-    if (buf == nullptr) return nullptr;
-
-    long int bytesRead = read(fd, buf, size);
-
-    if (bytesRead == -1) return nullptr;
-
-    return buf;
-}
 
 int main(int argc, char* argv[]) {
 
@@ -38,7 +10,11 @@ int main(int argc, char* argv[]) {
     openlog(NULL, LOG_CONS | LOG_NDELAY, LOG_USER);
 
     try {
-        loadConfig(getPathConfigFile(argc, argv));
+        char* configPath = getConfigPath(argc, argv);
+
+        saveConfigPath(configPath);
+
+        loadConfig(configPath);
 
     } catch (const char* message) {
         printf("%s\n", message);
@@ -49,8 +25,6 @@ int main(int argc, char* argv[]) {
 
         exit(EXIT_FAILURE);
     }
-
-    
 
     // initSignalHandlers();
 
