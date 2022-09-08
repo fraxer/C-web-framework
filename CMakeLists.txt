@@ -11,7 +11,11 @@ add_executable(main src/main.cpp)
 
 add_library(config STATIC src/config/config.cpp)
 
-target_link_libraries(main config)
+add_library(helpers STATIC src/helpers/helpers.cpp)
+
+link_libraries(config helpers)
+
+target_link_libraries(main config helpers)
 
 enable_testing()
 
