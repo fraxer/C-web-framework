@@ -1,14 +1,14 @@
 #include <cassert>
 #include "../../src/config/config.h"
 
-bool TEST_getPathConfigFile_correctArguments() {
+bool TEST_getConfigPath_correctArguments() {
 
     int argc = 3;
 
     char* argv[argc] = {(char*)"program", (char*)"-c", (char*)"../../config.json"};
 
     try {
-        getPathConfigFile(argc, argv);
+        getConfigPath(argc, argv);
     } catch (const char* message) {
         return false;
     }
@@ -16,14 +16,14 @@ bool TEST_getPathConfigFile_correctArguments() {
     return true;
 }
 
-bool TEST_getPathConfigFile_notFoundFile() {
+bool TEST_getConfigPath_notFoundFile() {
 
     int argc = 3;
 
     char* argv[argc] = {(char*)"program", (char*)"-c", (char*)"../../conf.json"};
 
     try {
-        getPathConfigFile(argc, argv);
+        getConfigPath(argc, argv);
     } catch (const char* message) {
         return false;
     }
@@ -31,14 +31,14 @@ bool TEST_getPathConfigFile_notFoundFile() {
     return true;
 }
 
-bool TEST_getPathConfigFile_notFoundOptionName() {
+bool TEST_getConfigPath_notFoundOptionName() {
 
     int argc = 2;
 
     char* argv[argc] = {(char*)"program", (char*)"../../conf.json", (char*)"n"};
 
     try {
-        getPathConfigFile(argc, argv);
+        getConfigPath(argc, argv);
     } catch (const char* message) {
         return false;
     }
@@ -46,14 +46,14 @@ bool TEST_getPathConfigFile_notFoundOptionName() {
     return true;
 }
 
-bool TEST_getPathConfigFile_notFoundProgramName() {
+bool TEST_getConfigPath_notFoundProgramName() {
 
     int argc = 2;
 
     char* argv[argc] = {(char*)"-c", (char*)"../../conf.json"};
 
     try {
-        getPathConfigFile(argc, argv);
+        getConfigPath(argc, argv);
     } catch (const char* message) {
         return false;
     }
@@ -61,14 +61,14 @@ bool TEST_getPathConfigFile_notFoundProgramName() {
     return true;
 }
 
-bool TEST_getPathConfigFile_withProgramName() {
+bool TEST_getConfigPath_withProgramName() {
 
     int argc = 1;
 
     char* argv[argc] = {(char*)"program"};
 
     try {
-        getPathConfigFile(argc, argv);
+        getConfigPath(argc, argv);
     } catch (const char* message) {
         return false;
     }
@@ -76,14 +76,14 @@ bool TEST_getPathConfigFile_withProgramName() {
     return true;
 }
 
-bool TEST_getPathConfigFile_withoutOptions() {
+bool TEST_getConfigPath_withoutOptions() {
 
     int argc = 0;
 
     char* argv[argc] = {};
 
     try {
-        getPathConfigFile(argc, argv);
+        getConfigPath(argc, argv);
     } catch (const char* message) {
         return false;
     }
@@ -91,14 +91,14 @@ bool TEST_getPathConfigFile_withoutOptions() {
     return true;
 }
 
-bool TEST_getPathConfigFile_undefinedOption() {
+bool TEST_getConfigPath_undefinedOption() {
 
     int argc = 3;
 
     char* argv[argc] = {(char*)"program", (char*)"-t", (char*)"../../config.json"};
 
     try {
-        getPathConfigFile(argc, argv);
+        getConfigPath(argc, argv);
     } catch (const char* message) {
         return false;
     }
@@ -108,13 +108,13 @@ bool TEST_getPathConfigFile_undefinedOption() {
 
 int main() {
 
-    assert( TEST_getPathConfigFile_correctArguments());
-    assert( TEST_getPathConfigFile_notFoundFile());
-    assert(!TEST_getPathConfigFile_notFoundOptionName());
-    assert(!TEST_getPathConfigFile_notFoundProgramName());
-    assert(!TEST_getPathConfigFile_withProgramName());
-    assert(!TEST_getPathConfigFile_withoutOptions());
-    assert(!TEST_getPathConfigFile_undefinedOption());
+    assert( TEST_getConfigPath_correctArguments());
+    assert( TEST_getConfigPath_notFoundFile());
+    assert(!TEST_getConfigPath_notFoundOptionName());
+    assert(!TEST_getConfigPath_notFoundProgramName());
+    assert(!TEST_getConfigPath_withProgramName());
+    assert(!TEST_getConfigPath_withoutOptions());
+    assert(!TEST_getConfigPath_undefinedOption());
 
     return 0;
 }
