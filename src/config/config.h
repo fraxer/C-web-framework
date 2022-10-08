@@ -1,17 +1,26 @@
 #ifndef __CONFIG__
 #define __CONFIG__
 
-#include <fcntl.h>
-#include <unistd.h>
-#include <cstring>
-#include "../helpers/helpers.h"
+#include "rapidjson/document.h"
 
-char* getConfigPath(int argc, char* argv[]);
+namespace config {
 
-void saveConfigPath(const char* path);
+char* getPath(int argc, char* argv[]);
 
-void loadConfig(const char* path);
+int savePath(const char* path);
 
-void reloadConfig();
+int load(const char* path);
+
+int reload();
+
+int init(int argc, char* argv[]);
+
+int free();
+
+int parseData(const char* data);
+
+const rapidjson::Value* getSection(const char*);
+
+} // namespace
 
 #endif

@@ -1,33 +1,36 @@
 cmake_minimum_required(VERSION 2.8)
 
-add_executable(TEST_getConfigPath getConfigPath.cpp)
 
-target_link_libraries(TEST_getConfigPath config)
+add_executable(TEST_getPath getPath.cpp)
 
-add_test(NAME TEST_getConfigPath COMMAND TEST_getConfigPath)
+target_link_libraries(TEST_getPath config common)
 
-
-
-add_executable(TEST_loadConfig loadConfig/loadConfig.cpp)
-
-target_compile_definitions(TEST_loadConfig PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-
-target_link_libraries(TEST_loadConfig config)
-
-add_test(NAME TEST_loadConfig COMMAND TEST_loadConfig)
+add_test(NAME TEST_getPath COMMAND TEST_getPath)
 
 
 
-add_executable(TEST_saveConfigPath saveConfigPath.cpp)
+add_executable(TEST_load load.cpp)
 
-target_link_libraries(TEST_saveConfigPath config)
+#target_compile_definitions(TEST_load PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
-add_test(NAME TEST_saveConfigPath COMMAND TEST_saveConfigPath)
+target_link_libraries(TEST_load config common)
+
+add_test(NAME TEST_load COMMAND TEST_load)
 
 
 
-add_executable(TEST_reloadConfig reloadConfig.cpp)
+add_executable(TEST_savePath savePath.cpp)
 
-target_link_libraries(TEST_reloadConfig config)
+target_link_libraries(TEST_savePath config common)
 
-add_test(NAME TEST_reloadConfig COMMAND TEST_reloadConfig)
+add_test(NAME TEST_savePath COMMAND TEST_savePath)
+
+
+
+add_executable(TEST_reload reload.cpp)
+
+#target_compile_definitions(TEST_reload PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+target_link_libraries(TEST_reload config common)
+
+add_test(NAME TEST_reload COMMAND TEST_reload)

@@ -1,46 +1,26 @@
-#include <cstdio>
 #include <stdlib.h>
-#include <syslog.h>
-#include "config/config.h"
+#include <unistd.h>
+#include "moduleLoader/moduleLoader.h"
+#include "log/log.h"
+#include "signal/signal.h"
 
 int main(int argc, char* argv[]) {
 
-    // if (daemon(1, 1) < 0) return EXIT_FAILURE;
+    int result = EXIT_FAILURE;
 
-    openlog(NULL, LOG_CONS | LOG_NDELAY, LOG_USER);
+    if (daemon(1, 1) < 0) goto failed;
 
-    try {
-        char* configPath = getConfigPath(argc, argv);
+    if (log::init() == -1) goto failed;
 
-        saveConfigPath(configPath);
+    if (signl::init() == -1) goto failed;
 
-        loadConfig(configPath);
+    if (moduleLoader::init(argc, argv) == -1) goto failed;
 
-    } catch (const char* message) {
-        printf("%s\n", message);
+    result = EXIT_SUCCESS;
 
-        syslog(LOG_ERR, "%s\n", message);
+    failed:
 
-        closelog();
+    signl::beforeTerminate(0);
 
-        exit(EXIT_FAILURE);
-    }
-
-    // initSignalHandlers();
-
-    // initRouteHandlers();
-
-    // initDBConnection();
-
-    // initOpenSSL();
-
-    // initServerContext();
-
-    // initMimeTypes();
-
-    // initThreads();
-
-    closelog();
-
-    return EXIT_SUCCESS;
+    return result;
 }

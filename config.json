@@ -1,1 +1,200 @@
-{}
+{
+    "main": {
+        "workers": 2,
+        "threads": 4,
+        "head_buffer": 2048,
+        "cache_file_size": 0,
+        "client_max_body_size": 110485760,
+        "environment": "dev",
+        "keepalive_timeout": 65,
+        "tmp": "/var/www/tmp/"
+    },
+    "log": {
+        "file": "/var/log/server/server.log",
+        "verbose": true,
+        "enable": true
+    },
+    "database": {
+        "host": "127.0.0.1",
+        "port": 5432,
+        "dbname": "database",
+        "user": "root",
+        "password": "",
+        "driver": "postgresql",
+        "connections_timeout": 3,
+        "connections_count": 3
+    },
+    "servers": [
+        {
+            "domains": [
+                "example.com",
+                "www.example.com"
+            ],
+            "port": 80,
+            "root": "/var/www/webroot/",
+            "redirect": {
+                "match": ".*",
+                "to": "https://domain.com"
+            },
+            "index": "index.html"
+        },
+        {
+            "domains": [
+                "domain.com",
+                "*.domain.com"
+            ],
+            "port": 443,
+            "root": "/var/www/webroot/",
+            "ssl": {
+                "fullchain": "/var/www/fullchain.pem",
+                "private": "/var/www/privkey.pem"
+            },
+            "index": "index.html"
+        }
+    ],
+    "openssl": {
+        "dh_1024": "/var/www/dh1024.pem",
+        "dh_2048": "/var/www/dh2048.pem",
+        "ciphers": "TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256 TLS_AES_128_GCM_SHA256 TLS_AES_128_CCM_8_SHA256 TLS_AES_128_CCM_SHA256 ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256"
+    },
+    "routes": {
+        "/": {
+            "GET": ["IndexController", "index"]
+        },
+        "/users": {
+            "GET": ["UserController", "index"],
+            "POST": ["UserController", "create"]
+        },
+        "/users/{id|\\d+}?q=search": {
+            "GET": ["UserController", "view"],
+            "PUT": ["UserController", "update"],
+            "DELETE": ["UserController", "delete"]
+        },
+        "/users?r=wer": {
+            "GET": ["UserController", "view"],
+            "PUT": ["UserController", "update"],
+            "DELETE": ["UserController", "delete"]
+        },
+        "/dashboard": {
+            "GET": ["UserController", "view"],
+            "PUT": ["UserController", "update"],
+            "DELETE": ["UserController", "delete"]
+        },
+        "/": {
+            "GET": ["UserController", "view"],
+            "PUT": ["UserController", "update"],
+            "DELETE": ["UserController", "delete"]
+        }
+    },
+    "encryption": {
+        "config": "/var/www/file",
+        "enable": true
+    },
+    "mail": {
+        "host": "example.com",
+        "port": 25,
+        "dkim": {
+            "selector": "",
+            "private": ""
+        }
+    },
+    "s3": {
+        "host": "",
+        "access_key_id": "",
+        "access_key_secret": ""
+    },
+    "yookassa": {
+        "shopid": "",
+        "secret_key": ""
+    },
+    "mimetypes": {
+        "text/html": ["html", "htm", "shtml"],
+        "text/css": ["css"],
+        "text/xml": ["xml"],
+        "image/gif": ["gif"],
+        "image/jpeg": ["jpeg", "jpg"],
+        "application/javascript": ["js"],
+        "application/atom+xml": ["atom"],
+        "application/rss+xml": ["rss"],
+
+        "text/mathml": ["mml"],
+        "text/plain": ["txt"],
+        "text/vnd.sun.j2me.app-descriptor": ["jad"],
+        "text/vnd.wap.wml": ["wml"],
+        "text/x-component": ["htc"],
+
+        "image/png": ["png"],
+        "image/svg+xml": ["svg", "svgz"],
+        "image/tiff": ["tif", "tiff"],
+        "image/vnd.wap.wbmp": ["wbmp"],
+        "image/webp": ["webp"],
+        "image/x-icon": ["ico"],
+        "image/x-jng": ["jng"],
+        "image/x-ms-bmp": ["bmp"],
+
+        "application/font-woff": ["woff"],
+        "application/java-archive": ["jar", "war", "ear"],
+        "application/json": ["json"],
+        "application/mac-binhex40": ["hqx"],
+        "application/msword": ["doc"],
+        "application/pdf": ["pdf"],
+        "application/postscript": ["ps", "eps", "ai"],
+        "application/rtf": ["rtf"],
+        "application/vnd.apple.mpegurl": ["m3u8"],
+        "application/vnd.google-earth.kml+xml": ["kml"],
+        "application/vnd.google-earth.kmz": ["kmz"],
+        "application/vnd.ms-excel": ["xls"],
+        "application/vnd.ms-fontobject": ["eot"],
+        "application/vnd.ms-powerpoint": ["ppt"],
+        "application/vnd.oasis.opendocument.graphics": ["odg"],
+        "application/vnd.oasis.opendocument.presentation": ["odp"],
+        "application/vnd.oasis.opendocument.spreadsheet": ["ods"],
+        "application/vnd.oasis.opendocument.text": ["odt"],
+        "application/vnd.openxmlformats-officedocument.presentationml.presentatio": ["pptx"],
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.shee": ["xlsx"],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.documen": ["docx"],
+        "application/vnd.wap.wmlc": ["wmlc"],
+        "application/x-7z-compressed": ["7z"],
+        "application/x-cocoa": ["cco"],
+        "application/x-java-archive-diff": ["jardiff"],
+        "application/x-java-jnlp-file": ["jnlp"],
+        "application/x-makeself": ["run"],
+        "application/x-perl": ["pl", "pm"],
+        "application/x-pilot": ["prc", "pdb"],
+        "application/x-rar-compressed": ["rar"],
+        "application/x-redhat-package-manager": ["rpm"],
+        "application/x-sea": ["sea"],
+        "application/x-shockwave-flash": ["swf"],
+        "application/x-stuffit": ["sit"],
+        "application/x-tcl": ["tcl", "tk"],
+        "application/x-x509-ca-cert": ["der", "pem", "crt"],
+        "application/x-xpinstall": ["xpi"],
+        "application/xhtml+xml": ["xhtml"],
+        "application/xspf+xml": ["xspf"],
+        "application/zip": ["zip"],
+        "application/x-tar": ["tar"],
+        "application/gzip": ["tar.gz", "tgz", "gz"],
+        "application/x-bzip": ["tar.bz2", "bz2"],
+
+        "application/octet-stream": ["bin", "exe", "dll", "deb", "dmg", "iso", "img", "msi", "msp", "msm"],
+
+        "audio/midi": ["mid", "midi", "kar"],
+        "audio/mpeg": ["mp3"],
+        "audio/ogg": ["ogg"],
+        "audio/x-m4a": ["m4a"],
+        "audio/x-realaudio": ["ra"],
+
+        "video/3gpp": ["3gpp", "3gp"],
+        "video/mp2t": ["ts"],
+        "video/mp4": ["mp4"],
+        "video/mpeg": ["mpeg", "mpg"],
+        "video/quicktime": ["mov"],
+        "video/webm": ["webm"],
+        "video/x-flv": ["flv"],
+        "video/x-m4v": ["m4v"],
+        "video/x-mng": ["mng"],
+        "video/x-ms-asf": ["asx", "asf"],
+        "video/x-ms-wmv": ["wmv"],
+        "video/x-msvideo": ["avi"]
+    }
+}
