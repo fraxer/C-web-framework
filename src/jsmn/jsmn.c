@@ -134,6 +134,9 @@ int jsmn_parse_primitive(jsmn_parser_t *parser) {
 
   jsmn_set_child_or_sibling(parser, token);
 
+  /* Skip symbol, because jsmn_fill_token write \0 to end string */
+  parser->pos++;
+
   return 0;
 }
 
