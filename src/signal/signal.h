@@ -1,12 +1,8 @@
 #ifndef __SIGNAL__
 #define __SIGNAL__
 
-namespace signl {
+int signal_init();
 
-int init();
-
-void beforeTerminate(int);
-
-} // namespace
+void signal_before_terminate(int);
 
 #endif

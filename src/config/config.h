@@ -1,26 +1,22 @@
 #ifndef __CONFIG__
 #define __CONFIG__
 
-#include "rapidjson/document.h"
+#include "../jsmn/jsmn.h"
 
-namespace config {
+char* config_get_path(int argc, char* argv[]);
 
-char* getPath(int argc, char* argv[]);
+int config_save_path(const char* path);
 
-int savePath(const char* path);
+int config_load(const char* path);
 
-int load(const char* path);
+int config_reload();
 
-int reload();
+int config_init(int argc, char* argv[]);
 
-int init(int argc, char* argv[]);
+int config_free();
 
-int free();
+int config_parse_data(const char* data);
 
-int parseData(const char* data);
-
-const rapidjson::Value* getSection(const char*);
-
-} // namespace
+const jsmntok_t* config_get_section(const char*);
 
 #endif

@@ -2,8 +2,8 @@
 
 namespace mimetype {
 
-int init() {
-    return 0;
+void* init() {
+    return nullptr;
 }
 
 } // namespace

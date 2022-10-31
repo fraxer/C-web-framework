@@ -3,7 +3,7 @@
 
 namespace thread {
 
-int init();
+void* init();
 
 } // namespace
 

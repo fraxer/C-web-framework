@@ -1,12 +1,10 @@
 #ifndef __HELPERS__
 #define __HELPERS__
 
-#include <sys/stat.h>
-#include <stdlib.h>
-#include <unistd.h>
+char* helpers_read_file(int fd);
 
-char* readFile(int fd);
+long int helpers_file_size(int fd);
 
-long int fileSize(int fd);
+void helpers_free_null(void*);
 
 #endif

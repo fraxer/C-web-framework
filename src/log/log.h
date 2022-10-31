@@ -3,22 +3,14 @@
 
 #include <stdarg.h>
 
-namespace log {
+void* log_init();
 
-int init();
+int log_close();
 
-int setParam(char*, void*);
+void log_invoke(int, const char*, ...);
 
-int close();
+void log_print(const char*, ...);
 
-void print(const char*, ...);
-
-void log(int, const char*, va_list*);
-
-void log(int, const char*, ...);
-
-void logError(const char*, ...);
-
-} // namespace
+void log_error(const char*, ...);
 
 #endif

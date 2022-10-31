@@ -3,7 +3,7 @@
 
 namespace openssl {
 
-int init();
+void* init();
 
 } // namespace
 

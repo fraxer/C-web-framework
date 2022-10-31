@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include <unistd.h>
-#include "moduleLoader/moduleLoader.h"
+#include "moduleloader/moduleloader.h"
 #include "log/log.h"
 #include "signal/signal.h"
 
@@ -10,17 +10,17 @@ int main(int argc, char* argv[]) {
 
     if (daemon(1, 1) < 0) goto failed;
 
-    if (log::init() == -1) goto failed;
+    log_init();
 
-    if (signl::init() == -1) goto failed;
+    if (signal_init() == -1) goto failed;
 
-    if (moduleLoader::init(argc, argv) == -1) goto failed;
+    if (module_loader_init(argc, argv) == -1) goto failed;
 
     result = EXIT_SUCCESS;
 
     failed:
 
-    signl::beforeTerminate(0);
+    signal_before_terminate(0);
 
     return result;
 }

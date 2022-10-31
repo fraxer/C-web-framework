@@ -7,7 +7,9 @@
         "client_max_body_size": 110485760,
         "environment": "dev",
         "keepalive_timeout": 65,
-        "tmp": "/var/www/tmp/"
+        "tmp": "/var/www/tmp/",
+        "server_hash_bucket_size": 4096,
+        "mimetype_hash_bucket_size": 4096
     },
     "log": {
         "file": "/var/log/server/server.log",
@@ -53,37 +55,16 @@
         }
     ],
     "openssl": {
+        "enable": true,
         "dh_1024": "/var/www/dh1024.pem",
         "dh_2048": "/var/www/dh2048.pem",
         "ciphers": "TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256 TLS_AES_128_GCM_SHA256 TLS_AES_128_CCM_8_SHA256 TLS_AES_128_CCM_SHA256 ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256"
     },
     "routes": {
-        "/": {
-            "GET": ["IndexController", "index"]
-        },
-        "/users": {
-            "GET": ["UserController", "index"],
-            "POST": ["UserController", "create"]
-        },
-        "/users/{id|\\d+}?q=search": {
-            "GET": ["UserController", "view"],
-            "PUT": ["UserController", "update"],
-            "DELETE": ["UserController", "delete"]
-        },
-        "/users?r=wer": {
-            "GET": ["UserController", "view"],
-            "PUT": ["UserController", "update"],
-            "DELETE": ["UserController", "delete"]
-        },
-        "/dashboard": {
-            "GET": ["UserController", "view"],
-            "PUT": ["UserController", "update"],
-            "DELETE": ["UserController", "delete"]
-        },
-        "/": {
-            "GET": ["UserController", "view"],
-            "PUT": ["UserController", "update"],
-            "DELETE": ["UserController", "delete"]
+        "/users/{ id | (\\d+{,2}) }/{2|1}par\"am1/{ hash | ([a-zA-Z]]) }/?q=search": {
+            "GET": ["./libindexpage.so", "view"],
+            "PUT": ["./libindexpage.so", "view"],
+            "DELETE": ["./libindexpage.so", "view"]
         }
     },
     "encryption": {

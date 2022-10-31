@@ -3,7 +3,7 @@
 
 namespace mimetype {
 
-int init();
+void* init();
 
 } // namespace
 

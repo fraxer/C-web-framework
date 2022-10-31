@@ -2,11 +2,11 @@
 
 namespace openssl {
 
-int init() {
+void* init() {
 
     // if (initServerContext() == -1) goto failed;
 
-    return 0;
+    return nullptr;
 }
 
 } // namespace
