@@ -24,18 +24,6 @@ void log_full(int level, const char* format, va_list* args) {
     return;
 }
 
-void log_invoke(int level, const char* format, ...) {
-    va_list args;
-
-    va_start(args, format);
-
-    log_full(level, format, &args);
-
-    va_end(args);
-
-    return;
-}
-
 void log_print(const char* format, ...) {
     va_list args;
 
@@ -54,6 +42,18 @@ void log_error(const char* format, ...) {
     va_start(args, format);
 
     log_full(LOG_ERR, format, &args);
+
+    va_end(args);
+
+    return;
+}
+
+void log_info(const char* format, ...) {
+    va_list args;
+
+    va_start(args, format);
+
+    log_full(LOG_INFO, format, &args);
 
     va_end(args);
 
