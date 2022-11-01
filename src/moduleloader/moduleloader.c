@@ -1,6 +1,9 @@
+#define _GNU_SOURCE
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+#include <pthread.h>
+#include <stdlib.h>
 #include "../config/config.h"
 #include "../log/log.h"
 #include "../route/route.h"
@@ -8,7 +11,7 @@
 // #include "../database/database.h"
 // #include "../openssl/openssl.h"
 // #include "../mimetype/mimetype.h"
-// #include "../thread/thread.h"
+#include "../thread/thread.h"
 #include "../jsmn/jsmn.h"
 #include "moduleloader.h"
     #include <stdio.h>
@@ -39,15 +42,13 @@ int module_loader_init_modules() {
 
     if (module_loader_init_module(&log_init, NULL) == -1) return -1;
 
-    if (module_loader_init_module(&route_init, &module_loader_parse_routes) == -1) return -1;
+    if (module_loader_init_module(&route_init, &module_loader_load_routes) == -1) return -1;
 
     // if (module_loader_init_module(&database::init, &module_loader_parse_database) == -1) return -1;
 
     // if (module_loader_init_module(&openssl::init, &module_loader_parse_openssl) == -1) return -1;
 
     // if (module_loader_init_module(&mimetype::init, &module_loader_parse_mimetype) == -1) return -1;
-
-    // if (module_loader_init_module(&thread::init, &module_loader_parse_thread) == -1) return -1;
 
     // if (module_loader_init_module(&thread::init, NULL) == -1) return -1;
 
@@ -58,6 +59,8 @@ int module_loader_init_modules() {
     // if (module_loader_init_module(&mail::init, &module_loader_parse_mail) == -1) return -1;
 
     // if (module_loader_init_module(&encryption::init, &module_loader_parse_encryption) == -1) return -1;
+
+    if (module_loader_init_module(&thread_init, &module_loader_load_threads) == -1) return -1;
 
     return 0;
 }
@@ -75,7 +78,7 @@ int module_loader_init_module(void* (*init)(), int (*parse)(void*)) {
     return 0;
 }
 
-int module_loader_parse_routes(void* moduleStruct) {
+int module_loader_load_routes(void* moduleStruct) {
 
     const jsmntok_t* token_root = config_get_section("routes");
 
@@ -125,28 +128,6 @@ int module_loader_parse_routes(void* moduleStruct) {
         }
     }
 
-    route_t* route = route_get_first_route();
-
-    while (route) {
-        printf("%s\n", route->path);
-
-        route_param_t* param = route->param;
-
-        while (param) {
-            printf(" * %s\n", param->string);
-
-            param = param->next;
-        }
-
-        printf("\n");
-
-        // загрузить небходимые либы и найти обработчики
-
-        route = route->next;
-    }
-
-    // route->method[ROUTE_GET]->run(void*);
-
     int result = -1;
 
     result = 0;
@@ -186,7 +167,71 @@ int module_loader_parse_mimetype(void* moduleStruct) {
     return 0;
 }
 
-int module_loader_parse_thread(void* moduleStruct) {
+int module_loader_load_threads(void* moduleStruct) {
+    const jsmntok_t* token_root = config_get_section("main");
+
+    unsigned int workers = 0;
+    unsigned int handlers = 0;
+
+    for (jsmntok_t* token = token_root->child; token; token = token->sibling) {
+        const char* key = jsmn_get_value(token);
+        const char* value = jsmn_get_value(token->child);
+
+        if (strcmp(key, "workers") == 0) {
+            workers = atoi(value);
+        }
+        else if (strcmp(key, "threads") == 0) {
+            handlers = atoi(value);
+        }
+    }
+
+    if (!workers || !handlers) {
+        log_error("Thread error: Set the number of threads\n");
+        return -1;
+    }
+
+    pthread_t thread_workers[workers];
+
+    for(int i = 0; i < workers; i++) {
+
+        int err_thread = pthread_create(&thread_workers[i], NULL, thread_worker, NULL);
+
+        pthread_setname_np(thread_workers[i], "Server worker");
+
+        if (err_thread != 0) {
+            log_error("Thread error: Unable to create worker thread");
+            return -1;
+        }
+        else {
+            log_info("Worker thread created %d\n", i);
+        }
+    }
+
+    pthread_t thread_handlers[handlers];
+
+    for(int i = 0; i < handlers; i++) {
+
+        int err_thread = pthread_create(&thread_handlers[i], NULL, thread_handler, NULL);
+
+        pthread_setname_np(thread_handlers[i], "Server handler");
+
+        if (err_thread != 0) {
+            log_error("Thread error: Unable to create handler thread");
+            return -1;
+        }
+        else {
+            log_info("Handler thread created %d\n", i);
+        }
+    }
+
+    for (int i = 0; i < workers; i++) {
+        pthread_join(thread_workers[i], NULL);
+    }
+
+    for (int i = 0; i < handlers; i++) {
+        pthread_join(thread_handlers[i], NULL);
+    }
+
     return 0;
 }
 

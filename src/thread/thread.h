@@ -1,10 +1,10 @@
 #ifndef __THREAD__
 #define __THREAD__
 
-namespace thread {
+void* thread_init();
 
-void* init();
+void* thread_worker(void* arg);
 
-} // namespace
+void* thread_handler(void* arg);
 
 #endif

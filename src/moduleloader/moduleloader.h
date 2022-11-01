@@ -11,7 +11,7 @@ int module_loader_init_module(void* (*)(), int (*)(void*));
 
 int module_loader_parse_log(void*);
 
-int module_loader_parse_routes(void*);
+int module_loader_load_routes(void*);
 
 int module_loader_parse_database(void*);
 
@@ -19,7 +19,7 @@ int module_loader_parse_openssl(void*);
 
 int module_loader_parse_mimetype(void*);
 
-int module_loader_parse_thread(void*);
+int module_loader_load_threads(void*);
 
 int module_loader_parse_yookassa(void*);
 

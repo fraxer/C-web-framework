@@ -35,7 +35,7 @@ add_library(routeloader STATIC src/route/routeloader.c)
 
 #add_library(mimetype STATIC src/mimetype/mimetype.cpp)
 
-#add_library(thread STATIC src/thread/thread.cpp)
+add_library(thread STATIC src/thread/thread.c)
 
 # Pages
 add_library(indexpage SHARED src/handlers/index.c)
@@ -60,7 +60,8 @@ target_link_libraries(
 #	database
 #	openssl
 #	mimetype
-#	thread
+	thread
+	pthread
 	pcre
 )
 
