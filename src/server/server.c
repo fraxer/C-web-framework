@@ -4,8 +4,8 @@
 #include "../route/route.h"
 #include "server.h"
 
-static server_t* first_server;
-static server_t* last_server;
+static server_t* first_server = NULL;
+static server_t* last_server = NULL;
 
 void* server_iinit() {
     return NULL;
@@ -15,6 +15,16 @@ server_t* server_create() {
     server_t* server = server_alloc();
 
     if (server == NULL) return NULL;
+
+    if (first_server == NULL) {
+        first_server = server;
+    }
+
+    if (last_server) {
+        last_server->next = server;
+    }
+
+    last_server = server;
 
     return server;
 }
@@ -82,4 +92,8 @@ index_t* server_create_index(const char* value) {
     }
 
     return result;
+}
+
+server_t* server_get_first() {
+    return first_server;
 }

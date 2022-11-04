@@ -38,4 +38,6 @@ index_t* server_create_index(const char*);
 
 void server_free(server_t*);
 
+server_t* server_get_first();
+
 #endif

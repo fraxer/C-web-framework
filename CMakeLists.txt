@@ -35,6 +35,8 @@ add_library(epoll STATIC src/epoll/epoll.c)
 
 add_library(domain STATIC src/domain/domain.c)
 
+add_library(socket STATIC src/socket/socket.c)
+
 #add_library(database STATIC src/database/database.cpp)
 
 #add_library(openssl STATIC src/openssl/openssl.cpp)
@@ -45,6 +47,8 @@ add_library(thread STATIC src/thread/thread.c)
 
 # Pages
 add_library(indexpage SHARED src/handlers/index.c)
+
+
 
 target_link_libraries(
 	config
@@ -67,9 +71,10 @@ target_link_libraries(
 #	openssl
 #	mimetype
 	thread
-	epoll
 	domain
 	server
+	epoll
+	socket
 
 	pthread
 	pcre

@@ -1,127 +1,106 @@
 #include <stddef.h>
-#include <sys/epoll.h>
 #include <pthread.h>
+#include <unistd.h>
 #include "epoll.h"
 #include "../log/log.h"
+#include "../socket/socket.h"
+#include "../server/server.h"
+    #include <stdio.h>
+
+static int epollfd = 0;
 
 void epoll_run() {
-    int epollfd = epoll_create1(0);
-
-    if (epollfd == -1) {
-        log_error("Thread error: Epoll create1 failed\n");
-        return;
-    }
-
     epoll_event_t events[EPOLL_MAX_EVENTS];
 
-    // vector<socket_t*>    sockets;
+    while(1) {
+        int n = epoll_wait(epollfd, events, EPOLL_MAX_EVENTS, -1);
 
-    // addListener(epollfd, sockets, HOST_IP, 443);
-    // addListener(epollfd, sockets, HOST_IP, 80);
+        printf("events, %d\n", n);
 
-    // obj*   p_obj;
+        while(--n >= 0) {
 
-    // char*  buf = (char*)malloc(BUFSIZ32);
+            epoll_event_t* ev = &events[n];
 
-    // conn_st* db_conn = new conn_st();
+            int fd = ev->data.fd;
 
-    // db_conn->conn = NULL;
-    // db_conn->ttl  = chrono::system_clock::now() - chrono::hours(DB_CONNECTION_TTL + 1);
+            printf("%d\n", fd);
 
-    // pthread_mutex_lock(&lock_objs);
-    // db_connection.emplace(gettid(), db_conn);
-    // pthread_mutex_unlock(&lock_objs);
+            if(ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP) ) {
 
-    int n;
+                printf("err\n");
 
-    epoll_event_t* ev;
+                if (epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, NULL) == -1) {
+                    log_error("[ERROR][server.cpp][thread_func] Epoll_ctl failed del\n");
+                }
 
-    // while(1) {
+                // p_obj->keep_alive = false;
 
-    //     n = epoll_wait(epollfd, events, EPOLL_MAX_EVENTS, -1);
+                // clearConnectionObject(p_obj, ev->data.fd);
 
-    //     while(--n >= 0) {
+                shutdown(fd, 2);
 
-    //         ev = &events[n];
-    //         int fd = ev->data.fd;
+                close(fd);
+            }
+            else if(socket_is_current(ev, epollfd) == 0) {
+                printf("fd %d new conn\n", fd);
+            }
+            else if(ev->events & EPOLLIN) {
 
-    //         pthread_mutex_lock(&lock_objs);
-    //         it = objs->find(fd);
-    //         if (it != objs->end()) {
-    //             pthread_mutex_unlock(&lock_objs);
-    //             p_obj = (it->second);
-    //         } else {
-    //             p_obj = objs->emplace(fd, new obj()).first->second;
-    //             pthread_mutex_unlock(&lock_objs);
-    //         }
+                printf("fd %d EPOLLIN\n", fd);
 
-    //         if(p_obj->active.load(memory_order_acquire)) {
-    //             // log_error("[INFO][server.cpp][thread_func] Cell already used\n");
-    //             continue;
-    //         }
+                // handleOnRead(ev->data->ptr);
 
-    //         // p_obj->active.store(true, memory_order_release);
+                // if(p_obj->port == 80 || p_obj->sslConnected) {
+                //     handleDataRead(p_obj, ev, epollfd, buf);
+                //     // log_error("[INFO][server.cpp][thread_func] Read\n");
+                // }
+                // else {
+                //     handleHandshake(p_obj, ev, epollfd);
+                //     // log_error("[INFO][server.cpp][thread_func] Handshake read\n");
+                // }
+            }
+            else if(ev->events & EPOLLOUT) {
 
-    //         bool b = false;
+                printf("out\n");
 
-    //         while(!p_obj->active.compare_exchange_strong(b, true, memory_order_acquire));
+                // handleOnWrite(ev->data->ptr);
 
-    //         if(ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP) ) {
+                // printf("fd %d EPOLLOUT, in thread %d\n", fd, p_obj->in_thread);
 
-    //             // printf("[ERROR][server.cpp][thread_func] EPOLLERR %d, errno %d, uri %s, active %d, in thread %d, is polling %d, bofy len %ld\n",
-    //             //     fd, errno, p_obj->uri, p_obj->active.load(), p_obj->in_thread, p_obj->is_longpoll, p_obj->response_body ? strlen(p_obj->response_body) : 0);
+                // if(p_obj->port == 80 || p_obj->sslConnected) {
+                //     handleDataWrite(p_obj, ev, epollfd);
+                //     // log_error("[INFO][server.cpp][thread_func] Write\n");
+                // }
+                // else {
+                //     handleHandshake(p_obj, ev, epollfd);
+                //     // log_error("[INFO][server.cpp][thread_func] Handshake write\n");
+                // }
+            }
+        }
+    }
 
-    //             if(epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, NULL) == -1) {
-    //                 syslog(LOG_ERR, "[ERROR][server.cpp][thread_func] Epoll_ctl failed del, %d\n", errno);
-    //             }
+    socket_free();
 
-    //             p_obj->keep_alive = false;
-
-    //             clearConnectionObject(p_obj, ev->data.fd);
-
-    //             shutdown(fd, 2);
-
-    //             close(fd);
-    //         }
-    //         else if(is_current_socket(sockets, ev, objs, epollfd)) {
-    //             // printf("fd %d CONN\n", fd);
-    //         }
-    //         else if(ev->events & EPOLLIN) {
-
-    //             // printf("fd %d EPOLLIN, in thread %d\n", fd, p_obj->in_thread);
-
-    //             if(p_obj->port == 80 || p_obj->sslConnected) {
-    //                 handleDataRead(p_obj, ev, epollfd, buf);
-    //                 // log_error("[INFO][server.cpp][thread_func] Read\n");
-    //             }
-    //             else {
-    //                 handleHandshake(p_obj, ev, epollfd);
-    //                 // log_error("[INFO][server.cpp][thread_func] Handshake read\n");
-    //             }
-    //         }
-    //         else if(ev->events & EPOLLOUT) {
-
-    //             // printf("fd %d EPOLLOUT, in thread %d\n", fd, p_obj->in_thread);
-
-    //             if(p_obj->port == 80 || p_obj->sslConnected) {
-    //                 handleDataWrite(p_obj, ev, epollfd);
-    //                 // log_error("[INFO][server.cpp][thread_func] Write\n");
-    //             }
-    //             else {
-    //                 handleHandshake(p_obj, ev, epollfd);
-    //                 // log_error("[INFO][server.cpp][thread_func] Handshake write\n");
-    //             }
-    //         }
-    //         p_obj->active.store(false, memory_order_release);
-    //     }
-    // }
-
-    // free(buf);
-
-    // for (size_t i = 0; i < sockets.size(); i++) {
-    //     close(sockets[i]->socket);
-    //     delete sockets[i];
-    // }
-
-    close(epollfd);
+    epoll_close();
 }
+
+int epoll_init() {
+    epollfd = epoll_create1(0);
+
+    if (epollfd == -1) {
+        log_error("Epoll error: Epoll create1 failed\n");
+        return -1;
+    }
+
+    for (server_t* server = server_get_first(); server; server = server->next) {
+        printf("%p, %d\n", server, server->port);
+        if (socket_create(epollfd, server->ip, server->port) == -1) return -1;
+    }
+
+    return 0;
+}
+
+int epoll_close() {
+    return close(epollfd);
+}
+

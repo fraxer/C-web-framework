@@ -27,5 +27,5 @@ void* thread_worker(void* arg) {
 }
 
 void* thread_handler(void* arg) {
-    return NULL;
+    pthread_exit(NULL);
 }
