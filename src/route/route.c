@@ -52,7 +52,7 @@ route_t* route_create(const char* dirty_location, const char* redirect_location)
     route->location = pcre_compile(parser.location, 0, &route->location_error, &route->location_erroffset, NULL);
     route->dest = redirect_location;
 
-    if (route->location_error != 0) goto failed;
+    if (route->location_error != NULL) goto failed;
 
     if (first_route == NULL) {
         first_route = route;
@@ -93,7 +93,6 @@ route_t* route_init_route() {
     route->path = NULL;
     route->dest = NULL;
     route->location_error = NULL;
-    route->rule_error = NULL;
 
     route->method[ROUTE_GET] = NULL;
     route->method[ROUTE_POST] = NULL;
@@ -103,7 +102,6 @@ route_t* route_init_route() {
     route->method[ROUTE_PATCH] = NULL;
 
     route->location_erroffset = 0;
-    route->rule_erroffset = 0;
     route->location = NULL;
     route->param = NULL;
     route->next = NULL;
@@ -334,9 +332,7 @@ int route_set_method_handler(route_t* route, const char* method, void* function)
     return 0;
 }
 
-void route_free() {
-    route_t* route = first_route;
-
+void route_free(route_t* route) {
     while (route) {
         route_t* route_next = route->next;
 
@@ -356,4 +352,9 @@ void route_free() {
 
         route = route_next;
     }
+}
+
+void route_reset_internal() {
+    first_route = NULL;
+    last_route = NULL;
 }

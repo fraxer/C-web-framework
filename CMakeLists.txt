@@ -29,6 +29,12 @@ add_library(route STATIC src/route/route.c)
 
 add_library(routeloader STATIC src/route/routeloader.c)
 
+add_library(server STATIC src/server/server.c)
+
+add_library(epoll STATIC src/epoll/epoll.c)
+
+add_library(domain STATIC src/domain/domain.c)
+
 #add_library(database STATIC src/database/database.cpp)
 
 #add_library(openssl STATIC src/openssl/openssl.cpp)
@@ -61,6 +67,10 @@ target_link_libraries(
 #	openssl
 #	mimetype
 	thread
+	epoll
+	domain
+	server
+
 	pthread
 	pcre
 )

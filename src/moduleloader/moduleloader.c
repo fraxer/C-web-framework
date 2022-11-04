@@ -8,6 +8,8 @@
 #include "../log/log.h"
 #include "../route/route.h"
 #include "../route/routeloader.h"
+#include "../domain/domain.h"
+#include "../server/server.h"
 // #include "../database/database.h"
 // #include "../openssl/openssl.h"
 // #include "../mimetype/mimetype.h"
@@ -42,15 +44,15 @@ int module_loader_init_modules() {
 
     if (module_loader_init_module(&log_init, NULL) == -1) return -1;
 
-    if (module_loader_init_module(&route_init, &module_loader_load_routes) == -1) return -1;
+    // if (module_loader_init_module(&route_init, &module_loader_load_routes) == -1) return -1;
+
+    if (module_loader_init_module(&server_iinit, &module_loader_load_servers) == -1) return -1;
 
     // if (module_loader_init_module(&database::init, &module_loader_parse_database) == -1) return -1;
 
     // if (module_loader_init_module(&openssl::init, &module_loader_parse_openssl) == -1) return -1;
 
     // if (module_loader_init_module(&mimetype::init, &module_loader_parse_mimetype) == -1) return -1;
-
-    // if (module_loader_init_module(&thread::init, NULL) == -1) return -1;
 
     // if (module_loader_init_module(&yookassa::init, &module_loader_parse_yookassa) == -1) return -1;
 
@@ -60,7 +62,7 @@ int module_loader_init_modules() {
 
     // if (module_loader_init_module(&encryption::init, &module_loader_parse_encryption) == -1) return -1;
 
-    if (module_loader_init_module(&thread_init, &module_loader_load_threads) == -1) return -1;
+    // if (module_loader_init_module(&thread_init, &module_loader_load_threads) == -1) return -1;
 
     return 0;
 }
@@ -78,11 +80,10 @@ int module_loader_init_module(void* (*init)(), int (*parse)(void*)) {
     return 0;
 }
 
-int module_loader_load_routes(void* moduleStruct) {
+route_t* module_loader_load_routes(const jsmntok_t* token_object) {
+    route_t* result = NULL;
 
-    const jsmntok_t* token_root = config_get_section("routes");
-
-    for (jsmntok_t* token_path = token_root->child; token_path; token_path = token_path->sibling) {
+    for (jsmntok_t* token_path = token_object->child; token_path; token_path = token_path->sibling) {
 
         // printf("%.*s\n", token_path->string_len, token_path->string);
 
@@ -124,15 +125,168 @@ int module_loader_load_routes(void* moduleStruct) {
 
             // --------------
 
-            route->method[ROUTE_GET]("HELLO");
+            // route->method[ROUTE_GET]("HELLO");
         }
     }
 
+    result = route_get_first_route();
+
+    route_reset_internal();
+
+    failed:
+
+    return result;
+}
+
+domain_t* module_loader_load_domains(const jsmntok_t* token_array) {
+    domain_t* result = NULL;
+
+    for (jsmntok_t* token_domain = token_array->child; token_domain; token_domain = token_domain->sibling) {
+        if (token_domain->type != JSMN_STRING) goto failed;
+
+        const char* value = jsmn_get_value(token_domain);
+
+        domain_t* domain = domain_create(value);
+
+        if (domain == NULL) goto failed;
+    }
+
+    result = domain_get_first();
+
+    domain_reset_internal();
+
+    failed:
+
+    return result;
+}
+
+int module_loader_load_servers(void* moduleStruct) {
+    const jsmntok_t* token_array = config_get_section("servers");
+
+    if (token_array->type != JSMN_ARRAY) return -1;
+
     int result = -1;
+
+    server_t* server = server_create();
+
+    for (jsmntok_t* token_item = token_array->child; token_item; token_item = token_item->sibling) {
+        enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
+        enum fields { DOMAINS = 0, IP, PORT, ROOT, REDIRECTS, INDEX, ROUTES, DATABASE, FIELDS_COUNT };
+
+        int finded_fields[FIELDS_COUNT] = {0};
+
+        const jsmntok_t* token_server = token_item;
+
+        if (token_server->type != JSMN_OBJECT) return -1;
+
+        // server properties
+        for (jsmntok_t* token_key = token_server->child; token_key; token_key = token_key->sibling) {
+            const char* key = jsmn_get_value(token_key);
+
+            if (strcmp(key, "domains") == 0) {
+                finded_fields[DOMAINS] = 1;
+
+                if (token_key->child->type != JSMN_ARRAY) goto failed;
+
+                server->domain = module_loader_load_domains(token_key->child);
+
+                if (server->domain == NULL) {
+                    log_error("Error: Can't load domains\n");
+                    goto failed;
+                }
+            }
+            else if (strcmp(key, "ip") == 0) {
+                finded_fields[IP] = 1;
+
+                if (token_key->child->type != JSMN_STRING) goto failed;
+
+                const char* value = jsmn_get_value(token_key->child);
+
+                server->ip = inet_addr(value);
+            }
+            else if (strcmp(key, "port") == 0) {
+                finded_fields[PORT] = 1;
+
+                if (token_key->child->type != JSMN_PRIMITIVE) goto failed;
+
+                const char* value = jsmn_get_value(token_key->child);
+
+                server->port = atoi(value);
+            }
+            else if (strcmp(key, "root") == 0) {
+                finded_fields[ROOT] = 1;
+
+                if (token_key->child->type != JSMN_STRING) goto failed;
+
+                const char* value = jsmn_get_value(token_key->child);
+
+                server->root = (char*)malloc(strlen(value) + 1);
+
+                if (server->root == NULL) {
+                    log_error("Error: Can't alloc memory for root path\n");
+                    goto failed;
+                }
+
+                strcpy(server->root, value);
+            }
+            else if (strcmp(key, "redirects") == 0) {
+                finded_fields[REDIRECTS] = 1;
+            }
+            else if (strcmp(key, "index") == 0) {
+                finded_fields[INDEX] = 1;
+
+                if (token_key->child->type != JSMN_STRING) goto failed;
+
+                const char* value = jsmn_get_value(token_key->child);
+
+                server->index = server_create_index(value);
+
+                if (server->index == NULL) {
+                    log_error("Error: Can't alloc memory for index file\n");
+                    goto failed;
+                }
+            }
+            else if (strcmp(key, "routes") == 0) {
+                finded_fields[ROUTES] = 1;
+
+                if (token_key->child->type != JSMN_OBJECT) goto failed;
+
+                server->route = module_loader_load_routes(token_key->child);
+
+                if (server->route == NULL) {
+                    log_error("Error: Can't load routes\n");
+                    goto failed;
+                }
+            }
+            else if (strcmp(key, "database") == 0) {
+                finded_fields[DATABASE] = 1;
+            }
+        }
+
+        for (int i = 0; i < R_FIELDS_COUNT; i++) {
+            if (finded_fields[i] == 0) {
+                log_error("Error: Fill config\n");
+                goto failed;
+            }
+        }
+
+        if (finded_fields[INDEX] == 0) {
+            server->index = server_create_index("index.html");
+
+            if (server->index == NULL) {
+                log_error("Error: Can't alloc memory for index file\n");
+                goto failed;
+            }
+        }
+    }
 
     result = 0;
 
     failed:
+
+    if (result == -1) {
+        server_free(server);
+    }
 
     return result;
 }
@@ -199,7 +353,7 @@ int module_loader_load_threads(void* moduleStruct) {
         pthread_setname_np(thread_workers[i], "Server worker");
 
         if (err_thread != 0) {
-            log_error("Thread error: Unable to create worker thread");
+            log_error("Thread error: Unable to create worker thread\n");
             return -1;
         }
         else {
@@ -216,7 +370,7 @@ int module_loader_load_threads(void* moduleStruct) {
         pthread_setname_np(thread_handlers[i], "Server handler");
 
         if (err_thread != 0) {
-            log_error("Thread error: Unable to create handler thread");
+            log_error("Thread error: Unable to create handler thread\n");
             return -1;
         }
         else {

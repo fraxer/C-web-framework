@@ -34,12 +34,10 @@ typedef struct route {
     char* path;
     const char* dest;
     const char* location_error;
-    const char* rule_error;
 
     void*(*method[6])(void*);
 
     int location_erroffset;
-    int rule_erroffset;
 
     pcre* location;
 
@@ -56,6 +54,8 @@ route_t* route_get_first_route();
 
 int route_set_method_handler(route_t* route, const char* method, void* function);
 
-void route_free();
+void route_free(route_t*);
+
+void route_reset_internal();
 
 #endif
