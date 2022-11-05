@@ -37,6 +37,8 @@ add_library(domain STATIC src/domain/domain.c)
 
 add_library(socket STATIC src/socket/socket.c)
 
+add_library(connection STATIC src/connection/connection.c)
+
 #add_library(database STATIC src/database/database.cpp)
 
 #add_library(openssl STATIC src/openssl/openssl.cpp)
@@ -74,6 +76,7 @@ target_link_libraries(
 	domain
 	server
 	epoll
+	connection
 	socket
 
 	pthread

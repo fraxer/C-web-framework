@@ -2,21 +2,27 @@
 #define __SOCKET__
 
 #include <arpa/inet.h>
-#include "../epoll/epoll.h"
 
 typedef struct socket {
-    unsigned short int port;
     int fd;
-    epoll_event_t event;
     struct socket* next;
 } socket_t;
 
-int socket_create(int fd, in_addr_t ip, unsigned short int port);
+// typedef enum socket_api_type {
+//     SOCKET_EPOLL,
+//     // SOCKET_KQUEUE,
+// } socket_api_type_e;
+
+socket_t* socket_listen_create(int, in_addr_t, unsigned short int, void*(*)());
 
 void socket_free();
 
 void socket_reset_internal();
 
-int socket_is_current(epoll_event_t*, int);
+socket_t* socket_find(int, int);
+
+int socket_set_nonblocking(int socket);
+
+int socket_set_keepalive(int socket);
 
 #endif
