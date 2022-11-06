@@ -6,7 +6,6 @@
 #include <errno.h>
 #include "../log/log.h"
 #include "socket.h"
-    #include <stdio.h>
 
 static socket_t* first_socket = NULL;
 static socket_t* last_socket = NULL;
@@ -32,8 +31,6 @@ socket_t* socket_listen_create(int basefd, in_addr_t ip, unsigned short int port
     }
 
     last_socket = socket;
-
-    printf("socket: %d\n", socket->fd);
 
     if (socket->fd == -1) {
         log_error("Socket error: Can't create socket on port %d\n", port);
@@ -159,7 +156,7 @@ int socket_set_keepalive(int socket) {
 
     // Время (в секундах) соединение должно оставаться бездействующим
     // до того, как TCP начнет отправлять контрольные зонды
-    int keepidle = 40;
+    int keepidle = 5;
     if (setsockopt(socket, SOL_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle)) == -1) return -1;
 
     // Время (в секундах) между отдельными зондами

@@ -37,6 +37,8 @@ add_library(domain STATIC src/domain/domain.c)
 
 add_library(socket STATIC src/socket/socket.c)
 
+add_library(http1 STATIC src/protocols/http1.c)
+
 add_library(connection STATIC src/connection/connection.c)
 
 #add_library(database STATIC src/database/database.cpp)
@@ -78,6 +80,7 @@ target_link_libraries(
 	epoll
 	connection
 	socket
+	http1
 
 	pthread
 	pcre

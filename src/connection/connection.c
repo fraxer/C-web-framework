@@ -5,7 +5,6 @@
 #include "../log/log.h"
 #include "../socket/socket.h"
 #include "connection.h"
-    #include <stdio.h>
 
 connection_t* connection_create(int listen_socket, int basefd, int(*after_create_connection)(connection_t*)) {
     connection_t* result = NULL;
@@ -16,15 +15,11 @@ connection_t* connection_create(int listen_socket, int basefd, int(*after_create
 
     int connfd = accept(listen_socket, &in_addr, &in_len);
 
-    printf("connection create %d, new fd %d\n", listen_socket, connfd);
-
     if (connfd == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) { // Done processing incoming connections 
-            log_error("Connection error: Error accept EAGAIN\n");
             return NULL;
         }
         else {
-            log_error("Connection error: Error accept failed\n");
             return NULL;
         }
     }
@@ -63,10 +58,32 @@ connection_t* connection_alloc(int fd, int basefd) {
 
     connection->fd = fd;
     connection->basefd = basefd;
+    connection->ssl_enabled = 0;
+    connection->keepalive_enabled = 0;
+    connection->ssl = NULL;
     connection->apidata = NULL;
     connection->close = NULL;
     connection->read = NULL;
     connection->write = NULL;
+    connection->after_read_request = NULL;
+    connection->after_write_request = NULL;
+
+    pthread_mutex_init(&connection->mutex, NULL);
 
     return connection;
+}
+
+void connection_free(connection_t* connection) {
+    pthread_mutex_destroy(&connection->mutex);
+
+    free(connection->apidata);
+    free(connection);
+}
+
+int connection_trylock(connection_t* connection) {
+    return pthread_mutex_trylock(&connection->mutex);
+}
+
+int connection_unlock(connection_t* connection) {
+    return pthread_mutex_unlock(&connection->mutex);
 }

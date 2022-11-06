@@ -8,11 +8,6 @@ typedef struct socket {
     struct socket* next;
 } socket_t;
 
-// typedef enum socket_api_type {
-//     SOCKET_EPOLL,
-//     // SOCKET_KQUEUE,
-// } socket_api_type_e;
-
 socket_t* socket_listen_create(int, in_addr_t, unsigned short int, void*(*)());
 
 void socket_free();
