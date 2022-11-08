@@ -37,7 +37,11 @@ add_library(domain STATIC src/domain/domain.c)
 
 add_library(socket STATIC src/socket/socket.c)
 
+add_library(protocolmanager STATIC src/protocols/protocolmanager.c)
+
 add_library(http1 STATIC src/protocols/http1.c)
+
+add_library(websockets STATIC src/protocols/websockets.c)
 
 add_library(connection STATIC src/connection/connection.c)
 
@@ -80,7 +84,9 @@ target_link_libraries(
 	epoll
 	connection
 	socket
+	protocolmanager
 	http1
+	websockets
 
 	pthread
 	pcre

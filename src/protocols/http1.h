@@ -1,6 +1,7 @@
 #ifndef __HTTP1__
 #define __HTTP1__
 
+#include <unistd.h>
 #include "../connection/connection.h"
 
 void http1_read(connection_t*, char*, size_t);

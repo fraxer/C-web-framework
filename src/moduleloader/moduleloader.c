@@ -357,7 +357,7 @@ int module_loader_load_threads(void* moduleStruct) {
             return -1;
         }
         else {
-            log_info("Worker thread created %d\n", i);
+            // log_info("Worker thread created %d\n", i);
         }
     }
 
@@ -374,7 +374,7 @@ int module_loader_load_threads(void* moduleStruct) {
             return -1;
         }
         else {
-            log_info("Handler thread created %d\n", i);
+            // log_info("Handler thread created %d\n", i);
         }
     }
 

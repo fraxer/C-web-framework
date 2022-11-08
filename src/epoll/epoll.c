@@ -7,7 +7,9 @@
 #include "../server/server.h"
 #include "../socket/socket.h"
 #include "../connection/connection.h"
+#include "../protocols/protocolmanager.h"
 #include "../protocols/http1.h"
+#include "../protocols/websockets.h"
 #include "epoll.h"
     #include <stdio.h>
 
@@ -37,19 +39,14 @@ void epoll_run() {
                 continue;
             }
 
-            int* p_int = (int*)ev->data.ptr;
-
             connection_t* connection = (connection_t*)ev->data.ptr;
 
-            int r = connection_trylock(connection);
-
-            if (r != 0) {
-                printf("try %d, %d\n", r, gettid());
+            if (connection_trylock(connection) != 0) {
                 continue;
             }
 
             if (ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) {
-                printf("HUP, %d, %d, %p, %p\n", connection->fd, ev->data.fd, connection, connection->apidata);
+                printf("HUP, %d\n", connection->fd);
 
                 connection->close(connection);
             }
@@ -103,10 +100,10 @@ int epoll_after_create_connection(connection_t* connection) {
 
     event->data.ptr = connection;
 
+    protmgr_set_http1(connection);
+
     connection->apidata = event;
     connection->close = epoll_connection_close;
-    connection->read = http1_read;
-    connection->write = http1_write;
     connection->after_read_request = epoll_after_read_request;
     connection->after_write_request = epoll_after_write_request;
 
@@ -169,9 +166,7 @@ int epoll_control(connection_t* connection, int action, uint32_t flags) {
 
     ((epoll_event_t*)connection->apidata)->events = flags;
 
-    if (action == EPOLL_CTL_DEL) {
-        event = NULL;
-    }
+    if (action == EPOLL_CTL_DEL) event = NULL;
 
     if (epoll_ctl(connection->basefd, action, connection->fd, event) == -1) {
         log_error("Epoll error: Epoll_ctl failed, %d, %d\n", gettid(), errno);

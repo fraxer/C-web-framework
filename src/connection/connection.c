@@ -67,6 +67,8 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->write = NULL;
     connection->after_read_request = NULL;
     connection->after_write_request = NULL;
+    connection->switch_to_http1 = NULL;
+    connection->switch_to_websocket = NULL;
 
     pthread_mutex_init(&connection->mutex, NULL);
 
