@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/epoll.h>
 #include "../log/log.h"
 #include "../server/server.h"
 #include "../socket/socket.h"
@@ -13,7 +14,40 @@
 #include "epoll.h"
     #include <stdio.h>
 
+#define EPOLL_MAX_EVENTS 16
+
+#define EPOLL_BUFFER 16384
+
+typedef struct epoll_event epoll_event_t;
+
+typedef struct socket_epoll {
+    socket_t base;
+    epoll_event_t* event;
+} socket_epoll_t;
+
+int epoll_init();
+
+int epoll_after_create_connection(connection_t*);
+
+int epoll_after_read_request(connection_t*);
+
+int epoll_after_write_request(connection_t*);
+
+int epoll_connection_close(connection_t*);
+
+socket_epoll_t* epoll_socket_alloc();
+
+int epoll_control_add(connection_t*, uint32_t);
+
+int epoll_control_mod(connection_t*, uint32_t);
+
+int epoll_control_del(connection_t*);
+
 char* epoll_buffer_alloc();
+
+int epoll_connection_set_event(connection_t*);
+
+void epoll_connection_set_hooks(connection_t*);
 
 void epoll_run() {
     int basefd = epoll_init();
@@ -96,16 +130,14 @@ char* epoll_buffer_alloc() {
 }
 
 int epoll_after_create_connection(connection_t* connection) {
-    epoll_event_t* event = (epoll_event_t*)malloc(sizeof(epoll_event_t));
-
-    event->data.ptr = connection;
+    if (epoll_connection_set_event(connection) == -1) {
+        log_error("Epoll error: Error event allocation\n");
+        return -1;
+    }
 
     protmgr_set_http1(connection);
 
-    connection->apidata = event;
-    connection->close = epoll_connection_close;
-    connection->after_read_request = epoll_after_read_request;
-    connection->after_write_request = epoll_after_write_request;
+    epoll_connection_set_hooks(connection);
 
     if (epoll_control_add(connection, EPOLLIN) == -1) {
         log_error("Epoll error: Error epoll_ctl failed accept\n");
@@ -186,4 +218,22 @@ int epoll_control_mod(connection_t* connection, uint32_t flags) {
 
 int epoll_control_del(connection_t* connection) {
     return epoll_control(connection, EPOLL_CTL_DEL, 0);
+}
+
+int epoll_connection_set_event(connection_t* connection) {
+    epoll_event_t* event = (epoll_event_t*)malloc(sizeof(epoll_event_t));
+
+    if (event == NULL) return -1;
+
+    event->data.ptr = connection;
+
+    connection->apidata = event;
+
+    return 0;
+}
+
+void epoll_connection_set_hooks(connection_t* connection) {
+    connection->close = epoll_connection_close;
+    connection->after_read_request = epoll_after_read_request;
+    connection->after_write_request = epoll_after_write_request;
 }
