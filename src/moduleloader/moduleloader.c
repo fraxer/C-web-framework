@@ -135,20 +135,24 @@ route_t* module_loader_load_routes(const jsmntok_t* token_object) {
 
 domain_t* module_loader_load_domains(const jsmntok_t* token_array) {
     domain_t* result = NULL;
+    domain_t* first_domain = NULL;
+    domain_t* last_domain = NULL;
 
     for (jsmntok_t* token_domain = token_array->child; token_domain; token_domain = token_domain->sibling) {
         if (token_domain->type != JSMN_STRING) goto failed;
 
         const char* value = jsmn_get_value(token_domain);
 
-        domain_t* domain = domain_create(value);
+        domain_t* domain = domain_create(value, last_domain);
 
         if (domain == NULL) goto failed;
+
+        if (first_domain == NULL) first_domain = domain;
+
+        last_domain = domain;
     }
 
-    result = domain_get_first();
-
-    domain_reset_internal();
+    result = first_domain;
 
     failed:
 

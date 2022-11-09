@@ -5,9 +5,6 @@
 #include "domain.h"
     #include <stdio.h>
 
-static domain_t* first_domain;
-static domain_t* last_domain;
-
 typedef struct domain_parser {
     char* template;
     char* prepared_template;
@@ -24,7 +21,7 @@ void domain_parser_insert_symbol(domain_parser_t* parser);
 
 void domain_parser_insert_custom_symbol(domain_parser_t* parser, char ch);
 
-domain_t* domain_create(const char* value) {
+domain_t* domain_create(const char* value, domain_t* last_domain) {
     domain_t* result = NULL;
     domain_t* domain = domain_alloc(value);
 
@@ -36,15 +33,9 @@ domain_t* domain_create(const char* value) {
 
     if (domain->pcre_error != NULL) goto failed;
 
-    if (first_domain == NULL) {
-        first_domain = domain;
-    }
-
     if (last_domain) {
         last_domain->next = domain;
     }
-
-    last_domain = domain;
 
     result = domain;
 
@@ -69,15 +60,6 @@ void domain_free(domain_t* domain) {
 
         current = next;
     }
-}
-
-domain_t* domain_get_first() {
-    return first_domain;
-}
-
-void domain_reset_internal() {
-    first_domain = NULL;
-    last_domain = NULL;
 }
 
 domain_t* domain_alloc(const char* value) {
