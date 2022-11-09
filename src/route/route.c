@@ -4,17 +4,24 @@
 #include "route.h"
 #include "../log/log.h"
 
+#define ROUTE_EMPTY_PATH "Route error: Empty path\n"
+#define ROUTE_OUT_OF_MEMORY "Route error: Out of memory\n"
+#define ROUTE_EMPTY_TOKEN "Route error: Empty token in \"%s\"\n"
+#define ROUTE_UNOPENED_TOKEN "Route error: Unopened token in \"%s\"\n"
+#define ROUTE_UNCLOSED_TOKEN "Route error: Unclosed token in \"%s\"\n"
+#define ROUTE_EMPTY_PARAM_NAME "Route error: Empty param name in \"%s\"\n"
+#define ROUTE_EMPTY_PARAM_EXPRESSION "Route error: Empty param expression in \"%s\"\n"
+#define ROUTE_PARAM_ONE_WORD "Route error: For param need one word in \"%s\"\n"
+
 typedef struct route_parser {
-    const char* dirty_location;
+    int is_primitive;
     unsigned short int dirty_pos;
-    char* location;
     unsigned short int pos;
+    const char* dirty_location;
+    char* location;
     route_param_t* first_param;
     route_param_t* last_param;
 } route_parser_t;
-
-static route_t* first_route = NULL;
-static route_t* last_route = NULL;
 
 route_t* route_init_route();
 
@@ -36,7 +43,7 @@ void* route_init() {
     return 0;
 }
 
-route_t* route_create(const char* dirty_location, const char* redirect_location) {
+route_t* route_create(const char* dirty_location, route_t* last_route) {
     int result = -1;
 
     route_t* route = route_init_route();
@@ -50,20 +57,14 @@ route_t* route_create(const char* dirty_location, const char* redirect_location)
     if (route_parse_location(&parser, dirty_location) == -1) goto failed;
 
     route->location = pcre_compile(parser.location, 0, &route->location_error, &route->location_erroffset, NULL);
-    route->dest = redirect_location;
 
     if (route->location_error != NULL) goto failed;
-
-    if (first_route == NULL) {
-        first_route = route;
-    }
 
     if (last_route) {
         last_route->next = route;
     }
 
-    last_route = route;
-
+    route->is_primitive = parser.is_primitive;
     route->path = parser.location;
     route->param = parser.first_param;
 
@@ -78,10 +79,6 @@ route_t* route_create(const char* dirty_location, const char* redirect_location)
     return route;
 }
 
-route_t* route_get_first_route() {
-    return first_route;
-}
-
 route_t* route_init_route() {
     route_t* route = (route_t*)malloc(sizeof(route_t));
 
@@ -91,7 +88,6 @@ route_t* route_init_route() {
     }
 
     route->path = NULL;
-    route->dest = NULL;
     route->location_error = NULL;
 
     route->method[ROUTE_GET] = NULL;
@@ -103,6 +99,7 @@ route_t* route_init_route() {
 
     route->location_erroffset = 0;
     route->location = NULL;
+    route->is_primitive = 0;
     route->param = NULL;
     route->next = NULL;
 
@@ -126,10 +123,13 @@ int route_init_parser(route_parser_t* parser, const char* dirty_location) {
 }
 
 int route_parse_location(route_parser_t* parser, const char* dirty_location) {
+    parser->is_primitive = 1;
+
     for (; parser->dirty_location[parser->dirty_pos] != 0; parser->dirty_pos++) {
         switch (parser->dirty_location[parser->dirty_pos]) {
         case '{':
             if (route_parse_token(parser) == -1) return -1;
+            parser->is_primitive = 0;
             break;
         case '\\':
             switch (parser->dirty_location[parser->dirty_pos + 1]) {
@@ -143,6 +143,18 @@ int route_parse_location(route_parser_t* parser, const char* dirty_location) {
         case '}':
             log_error(ROUTE_UNOPENED_TOKEN, parser->dirty_location);
             return -1;
+            break;
+        case '*':
+        case '[':
+        case ']':
+        case '(':
+        case ')':
+        case '+':
+        case '^':
+        case '|':
+        case '$':
+            route_insert_symbol(parser);
+            parser->is_primitive = 0;
             break;
         default:
             route_insert_symbol(parser);
@@ -347,14 +359,11 @@ void route_free(route_t* route) {
             param = param_next;
         }
 
+        pcre_free(route->location);
+
         free(route->path);
         free(route);
 
         route = route_next;
     }
-}
-
-void route_reset_internal() {
-    first_route = NULL;
-    last_route = NULL;
 }

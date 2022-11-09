@@ -82,30 +82,27 @@ int module_loader_init_module(void* (*init)(), int (*parse)(void*)) {
 
 route_t* module_loader_load_routes(const jsmntok_t* token_object) {
     route_t* result = NULL;
+    route_t* first_route = NULL;
+    route_t* last_route = NULL;
 
     for (jsmntok_t* token_path = token_object->child; token_path; token_path = token_path->sibling) {
-
-        // printf("%.*s\n", token_path->string_len, token_path->string);
-
         const char* route_path = jsmn_get_value(token_path);
 
-        // printf("%s\n", route_path);
-
-        route_t* route = route_create(route_path, NULL);
+        route_t* route = route_create(route_path, last_route);
 
         if (route == NULL) goto failed;
 
+        if (first_route == NULL) first_route = route;
+
+        last_route = route;
+
         for (jsmntok_t* token_method = token_path->child->child; token_method; token_method = token_method->sibling) {
             const char* method = jsmn_get_value(token_method);
-
-            // printf("%s\n", method);
 
             jsmntok_t* token_array = token_method->child;
 
             const char* lib_file = jsmn_get_array_value(token_array, 0);
             const char* lib_handler = jsmn_get_array_value(token_array, 1);
-
-            // printf("%s %s: [%s, %s]\n", route_path, method, lib_file, lib_handler);
 
             if (routeloader_load_lib(lib_file) == -1) goto failed;
 
@@ -129,9 +126,7 @@ route_t* module_loader_load_routes(const jsmntok_t* token_object) {
         }
     }
 
-    result = route_get_first_route();
-
-    route_reset_internal();
+    result = first_route;
 
     failed:
 
