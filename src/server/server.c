@@ -48,23 +48,29 @@ server_t* server_alloc() {
 }
 
 void server_free(server_t* server) {
-    server->port = 0;
-    server->domain = NULL;
-    server->ip = 0;
+    while (server) {
+        server_t* next = server->next;
 
-    free(server->root);
-    server->root = NULL;
+        server->port = 0;
+        server->domain = NULL;
+        server->ip = 0;
 
-    server->index = NULL;
-    server->redirect = NULL;
+        free(server->root);
+        server->root = NULL;
 
-    route_free(server->route);
-    server->route = NULL;
+        server->index = NULL;
+        server->redirect = NULL;
 
-    // server->database = NULL;
-    server->next = NULL;
+        route_free(server->route);
+        server->route = NULL;
 
-    free(server);
+        // server->database = NULL;
+        server->next = NULL;
+
+        free(server);
+
+        server = next;
+    }
 }
 
 index_t* server_create_index(const char* value) {

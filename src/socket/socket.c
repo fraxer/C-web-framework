@@ -7,9 +7,6 @@
 #include "../log/log.h"
 #include "socket.h"
 
-static socket_t* first_socket = NULL;
-static socket_t* last_socket = NULL;
-
 int socket_init(in_addr_t, unsigned short int);
 
 int socket_set_options(int);
@@ -21,16 +18,6 @@ socket_t* socket_listen_create(int basefd, in_addr_t ip, unsigned short int port
     if (socket == NULL) return NULL;
 
     socket->fd = socket_init(ip, port);
-
-    if (first_socket == NULL) {
-        first_socket = socket;
-    }
-
-    if (last_socket) {
-        last_socket->next = socket;
-    }
-
-    last_socket = socket;
 
     if (socket->fd == -1) {
         log_error("Socket error: Can't create socket on port %d\n", port);
@@ -59,9 +46,7 @@ socket_t* socket_listen_create(int basefd, in_addr_t ip, unsigned short int port
     return result;
 }
 
-void socket_free() {
-    socket_t* socket = first_socket;
-
+void socket_free(socket_t* socket) {
     while (socket) {
         socket_t* next = socket->next;
 
@@ -71,10 +56,6 @@ void socket_free() {
 
         socket = next;
     }
-}
-
-void socket_reset_internal() {
-
 }
 
 int socket_init(in_addr_t ip, unsigned short int port) {
@@ -124,11 +105,8 @@ int socket_set_nonblocking(int socket) {
     }
 
     flags |= O_NONBLOCK;
-    // flags |= O_ASYNC;
 
     int s = fcntl(socket, F_SETFL, flags);
-
-    // fcntl(socket, F_SETOWN, gettid());
 
     if (s == -1) {
         log_error("Socket error: fcntl failed (F_SETFL)\n");
@@ -138,7 +116,7 @@ int socket_set_nonblocking(int socket) {
     return 0;
 }
 
-socket_t* socket_find(int fd, int basefd) {
+socket_t* socket_find(int fd, int basefd, socket_t* first_socket) {
     for (socket_t* socket = first_socket; socket; socket = socket->next) {
         if (socket->fd == fd) return socket;
     }

@@ -25,7 +25,7 @@ typedef struct socket_epoll {
     epoll_event_t* event;
 } socket_epoll_t;
 
-int epoll_init();
+int epoll_init(socket_epoll_t** first_socket);
 
 int epoll_after_create_connection(connection_t*);
 
@@ -50,7 +50,9 @@ int epoll_connection_set_event(connection_t*);
 void epoll_connection_set_hooks(connection_t*);
 
 void epoll_run() {
-    int basefd = epoll_init();
+    socket_epoll_t* first_socket = NULL;
+
+    int basefd = epoll_init(&first_socket);
 
     if (basefd == -1) return;
 
@@ -66,7 +68,7 @@ void epoll_run() {
         while (--n >= 0) {
             epoll_event_t* ev = &events[n];
 
-            socket_t* listen_socket = socket_find(ev->data.fd, basefd);
+            socket_t* listen_socket = socket_find(ev->data.fd, basefd, (socket_t*)first_socket);
 
             if (listen_socket != NULL) {
                 while (connection_create(listen_socket->fd, basefd, epoll_after_create_connection) != NULL);
@@ -80,8 +82,6 @@ void epoll_run() {
             }
 
             if (ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) {
-                printf("HUP, %d\n", connection->fd);
-
                 connection->close(connection);
             }
             else if (ev->events & EPOLLIN) {
@@ -95,12 +95,12 @@ void epoll_run() {
         }
     }
 
-    socket_free();
+    socket_free((socket_t*)first_socket);
 
     close(basefd);
 }
 
-int epoll_init() {
+int epoll_init(socket_epoll_t** first_socket) {
     int basefd = epoll_create1(0);
 
     if (basefd == -1) {
@@ -108,10 +108,22 @@ int epoll_init() {
         return -1;
     }
 
+    socket_epoll_t* last_socket = NULL;
+
     for (server_t* server = server_get_first(); server; server = server->next) {
         socket_epoll_t* socket = (socket_epoll_t*)socket_listen_create(basefd, server->ip, server->port, (void*(*)())epoll_socket_alloc);
 
         if (socket == NULL) return -1;
+
+        if (last_socket) {
+            last_socket->base.next = (socket_t*)socket;
+        }
+
+        if (*first_socket == NULL) {
+            *first_socket = socket;
+        }
+
+        last_socket = socket;
 
         socket->event->data.fd = socket->base.fd;
         socket->event->events = EPOLLIN;

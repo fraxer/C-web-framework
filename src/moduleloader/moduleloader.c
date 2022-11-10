@@ -166,8 +166,6 @@ int module_loader_load_servers(void* moduleStruct) {
 
     int result = -1;
 
-    server_t* server = server_create();
-
     for (jsmntok_t* token_item = token_array->child; token_item; token_item = token_item->sibling) {
         enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
         enum fields { DOMAINS = 0, IP, PORT, ROOT, REDIRECTS, INDEX, ROUTES, DATABASE, FIELDS_COUNT };
@@ -175,6 +173,8 @@ int module_loader_load_servers(void* moduleStruct) {
         int finded_fields[FIELDS_COUNT] = {0};
 
         const jsmntok_t* token_server = token_item;
+
+        server_t* server = server_create();
 
         if (token_server->type != JSMN_OBJECT) return -1;
 
@@ -284,7 +284,7 @@ int module_loader_load_servers(void* moduleStruct) {
     failed:
 
     if (result == -1) {
-        server_free(server);
+        server_free(server_get_first());
     }
 
     return result;
