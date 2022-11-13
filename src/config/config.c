@@ -132,19 +132,15 @@ int config_init(int argc, char* argv[]) {
 }
 
 int config_free() {
-
     jsmn_free(&parser);
 
     return 0;
 }
 
 int config_parse_data(const char* data) {
-
-    // const char* str = "{ \"a1\": 5689, \"b\": { \"d\": 23, \"n\": 23, \"can\": 23, \"cn\": null }, \"ad\": 2, \"array\": [ 1, 2, 3, 4, \"s\", { \"d\": 23, \"n\": 23, \"cn\": 23, \"can\": [ 1, 2, 3, 4, { \"d\": 23 } ] } ], \"x\": \"z\" }";
-    // const char* str = "{\"a1\": 5689,\"b\": {\"d\": 23,\"n\": 23,\"can\": 23,\"cn\": null},\"ad\": 1}";
-    // const char* str = "{ \"a\": 5689, \"b\": [ \"1\", 2, { \"c\": 1, \"d\": 1, \"e\": 1 }, 4 ], \"f\": 1 }";
-
-    jsmn_init(&parser, data);
+    if (jsmn_init(&parser, data) == -1) {
+        return -1;
+    }
 
     if (jsmn_parse(&parser) < 0) {
         return -1;
@@ -155,24 +151,6 @@ int config_parse_data(const char* data) {
     if (!jsmn_is_object(token_object)) {
         return -1;
     }
-
-    // jsmntok_t* field_a = jsmn_object_get_field(token_object, "ad");
-
-    // // printf("%d\n", field_a->type);
-
-    // const char* field_a_value = jsmn_get_value(field_a);
-
-    // printf("%s\n", field_a_value);
-
-    // // ------------------------------
-
-    // jsmntok_t* field_b = jsmn_object_get_field(token_object, "x");
-
-    // // printf("%d\n", field_b->type);
-
-    // const char* field_b_value = jsmn_get_value(field_b);
-
-    // printf("%s\n", field_b_value);
 
     return 0;
 }

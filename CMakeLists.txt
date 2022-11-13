@@ -51,7 +51,9 @@ add_library(connection STATIC src/connection/connection.c)
 
 #add_library(mimetype STATIC src/mimetype/mimetype.cpp)
 
-add_library(thread STATIC src/thread/thread.c)
+add_library(threadhandler STATIC src/thread/threadhandler.c)
+
+add_library(threadworker STATIC src/thread/threadworker.c)
 
 # Pages
 add_library(indexpage SHARED src/handlers/index.c)
@@ -78,7 +80,8 @@ target_link_libraries(
 #	database
 #	openssl
 #	mimetype
-	thread
+	threadhandler
+	threadworker
 	domain
 	server
 	epoll

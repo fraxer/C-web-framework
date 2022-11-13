@@ -100,9 +100,9 @@ void signal_before_abort(int s) {
 void signal_USR1(int s) {
     signal_flush_streams();
 
-    // module_loader_reload();
-
     printf("signal_USR1\n");
+
+    module_loader_reload();
 
     // syslog(LOG_INFO, "Amount queues of thread handlers: %ld", queue_objs->size());
 

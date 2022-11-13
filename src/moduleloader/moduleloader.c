@@ -13,71 +13,107 @@
 // #include "../database/database.h"
 // #include "../openssl/openssl.h"
 // #include "../mimetype/mimetype.h"
-#include "../thread/thread.h"
+#include "../thread/threadhandler.h"
+#include "../thread/threadworker.h"
 #include "../jsmn/jsmn.h"
 #include "moduleloader.h"
     #include <stdio.h>
 
+int module_loader_load_thread_workers();
+
+int module_loader_load_thread_handlers();
+
 int module_loader_init(int argc, char* argv[]) {
+    int result = -1;
 
     if (config_init(argc, argv) == -1) return -1;
 
-    if (module_loader_init_modules() == -1) return -1;
+    if (module_loader_init_modules() == -1) goto failed;
 
-    if (config_free() == -1) return -1;
+    result = 0;
 
-    return 0;
+    failed:
+
+    config_free();
+
+    return result;
 }
 
 int module_loader_reload() {
+    int result = -1;
 
     if (config_reload() == -1) return -1;
 
-    if (module_loader_init_modules() == -1) return -1;
+    if (module_loader_reinit_modules() == -1) goto failed;
 
-    if (config_free() == -1) return -1;
+    result = 0;
 
-    return 0;
+    failed:
+
+    config_free();
+
+    return result;
 }
 
 int module_loader_init_modules() {
+    log_init();
 
-    if (module_loader_init_module(&log_init, NULL) == -1) return -1;
+    if (module_loader_load_servers()) return -1;
 
-    // if (module_loader_init_module(&route_init, &module_loader_load_routes) == -1) return -1;
+    if (module_loader_load_thread_workers() == -1) return -1;
 
-    if (module_loader_init_module(&server_iinit, &module_loader_load_servers) == -1) return -1;
-
-    // if (module_loader_init_module(&database::init, &module_loader_parse_database) == -1) return -1;
-
-    // if (module_loader_init_module(&openssl::init, &module_loader_parse_openssl) == -1) return -1;
-
-    // if (module_loader_init_module(&mimetype::init, &module_loader_parse_mimetype) == -1) return -1;
-
-    // if (module_loader_init_module(&yookassa::init, &module_loader_parse_yookassa) == -1) return -1;
-
-    // if (module_loader_init_module(&s3::init, &module_loader_parse_s3) == -1) return -1;
-
-    // if (module_loader_init_module(&mail::init, &module_loader_parse_mail) == -1) return -1;
-
-    // if (module_loader_init_module(&encryption::init, &module_loader_parse_encryption) == -1) return -1;
-
-    if (module_loader_init_module(&thread_init, &module_loader_load_threads) == -1) return -1;
+    if (module_loader_load_thread_handlers() == -1) return -1;
 
     return 0;
 }
 
-int module_loader_init_module(void* (*init)(), int (*parse)(void*)) {
+int module_loader_reinit_modules() {
+    int reload_is_hard = module_loader_reload_is_hard();
 
-    if (init == NULL) return -1;
+    // если что-то пойдет не так, изменения не должны примениться
 
-    void* moduleStruct = init();
+    if (reload_is_hard == 1) {
 
-    if (parse == NULL) return 0;
+    } else if (reload_is_hard == 0) {
 
-    if (parse(moduleStruct) == -1) return -1;
+    } else if (reload_is_hard == -1) {
+        return -1;
+    }
+
+    log_reinit();
+
+    if (module_loader_load_servers()) return -1;
+
+    if (module_loader_load_thread_workers() == -1) return -1;
+
+    if (module_loader_load_thread_handlers() == -1) return -1;
+
+    server_chain_destroy_first();
 
     return 0;
+}
+
+int module_loader_reload_is_hard() {
+    const jsmntok_t* token_root = config_get_section("main");
+
+    for (jsmntok_t* token = token_root->child; token; token = token->sibling) {
+        const char* key = jsmn_get_value(token);
+
+        if (strcmp(key, "reload") == 0) {
+            const char* value = jsmn_get_value(token->child);
+
+            if (strcmp(value, "hard") == 0) {
+                return 1;
+            }
+            else if (strcmp(value, "soft") == 0) {
+                return 0;
+            }
+        }
+    }
+
+    log_error("Reload error: Reload type must be hard or soft\n");
+
+    return -1;
 }
 
 route_t* module_loader_load_routes(const jsmntok_t* token_object) {
@@ -159,10 +195,13 @@ domain_t* module_loader_load_domains(const jsmntok_t* token_array) {
     return result;
 }
 
-int module_loader_load_servers(void* moduleStruct) {
+int module_loader_load_servers() {
     const jsmntok_t* token_array = config_get_section("servers");
 
     if (token_array->type != JSMN_ARRAY) return -1;
+
+    server_t* first_server = NULL;
+    server_t* last_server = NULL;
 
     int result = -1;
 
@@ -175,6 +214,16 @@ int module_loader_load_servers(void* moduleStruct) {
         const jsmntok_t* token_server = token_item;
 
         server_t* server = server_create();
+
+        if (first_server == NULL) {
+            first_server = server;
+        }
+
+        if (last_server) {
+            last_server->next = server;
+        }
+
+        last_server = server;
 
         if (token_server->type != JSMN_OBJECT) return -1;
 
@@ -279,12 +328,19 @@ int module_loader_load_servers(void* moduleStruct) {
         }
     }
 
+    if (first_server == NULL) {
+        log_error("Error: Section server not found in config\n");
+        return -1;
+    }
+
+    if (server_chain_append(first_server) == -1) goto failed;
+
     result = 0;
 
     failed:
 
     if (result == -1) {
-        server_free(server_get_first());
+        server_free(first_server);
     }
 
     return result;
@@ -312,200 +368,60 @@ int module_loader_parse_database(void* moduleStruct) {
     return 0;
 }
 
-int module_loader_parse_openssl(void* moduleStruct) {
-    return 0;
-}
-
-int module_loader_parse_mimetype(void* moduleStruct) {
-    return 0;
-}
-
-int module_loader_load_threads(void* moduleStruct) {
+int module_loader_load_thread_workers() {
     const jsmntok_t* token_root = config_get_section("main");
 
-    unsigned int workers = 0;
-    unsigned int handlers = 0;
+    int count = 0;
 
     for (jsmntok_t* token = token_root->child; token; token = token->sibling) {
         const char* key = jsmn_get_value(token);
-        const char* value = jsmn_get_value(token->child);
 
         if (strcmp(key, "workers") == 0) {
-            workers = atoi(value);
-        }
-        else if (strcmp(key, "threads") == 0) {
-            handlers = atoi(value);
+            const char* value = jsmn_get_value(token->child);
+
+            count = atoi(value);
+
+            break;
         }
     }
 
-    if (!workers || !handlers) {
+    if (count <= 0) {
+        log_error("Thread error: Set the number of workers\n");
+        return -1;
+    }
+
+    server_chain_t* server_chain = server_chain_last();
+
+    if (server_chain == NULL) return -1;
+
+    if (thread_worker_run(count, server_chain->server) == -1) return -1;
+
+    return 0;
+}
+
+int module_loader_load_thread_handlers() {
+    const jsmntok_t* token_root = config_get_section("main");
+
+    int count = 0;
+
+    for (jsmntok_t* token = token_root->child; token; token = token->sibling) {
+        const char* key = jsmn_get_value(token);
+
+        if (strcmp(key, "threads") == 0) {
+            const char* value = jsmn_get_value(token->child);
+
+            count = atoi(value);
+
+            break;
+        }
+    }
+
+    if (count <= 0) {
         log_error("Thread error: Set the number of threads\n");
         return -1;
     }
 
-    pthread_t thread_workers[workers];
-
-    for(int i = 0; i < workers; i++) {
-
-        int err_thread = pthread_create(&thread_workers[i], NULL, thread_worker, NULL);
-
-        pthread_setname_np(thread_workers[i], "Server worker");
-
-        if (err_thread != 0) {
-            log_error("Thread error: Unable to create worker thread\n");
-            return -1;
-        }
-        else {
-            // log_info("Worker thread created %d\n", i);
-        }
-    }
-
-    pthread_t thread_handlers[handlers];
-
-    for(int i = 0; i < handlers; i++) {
-
-        int err_thread = pthread_create(&thread_handlers[i], NULL, thread_handler, NULL);
-
-        pthread_setname_np(thread_handlers[i], "Server handler");
-
-        if (err_thread != 0) {
-            log_error("Thread error: Unable to create handler thread\n");
-            return -1;
-        }
-        else {
-            // log_info("Handler thread created %d\n", i);
-        }
-    }
-
-    for (int i = 0; i < workers; i++) {
-        pthread_join(thread_workers[i], NULL);
-    }
-
-    for (int i = 0; i < handlers; i++) {
-        pthread_join(thread_handlers[i], NULL);
-    }
-
-    return 0;
-}
-
-int module_loader_parse_yookassa(void* moduleStruct) {
-    return 0;
-}
-
-int module_loader_parse_s3(void* moduleStruct) {
-    return 0;
-}
-
-int module_loader_parse_mail(void* moduleStruct) {
-    return 0;
-}
-
-int module_loader_parse_encryption(void* moduleStruct) {
-    return 0;
-}
-
-int module_loader_set_string(const void* p_object, char** value, const char* key) {
-
-    // auto& object = *(rapidjson::GenericValue<rapidjson::UTF8<>>::ConstObject*)p_object;
-
-    // if (!object.HasMember(key) || !object[key].IsString()) return -1;
-
-    // *value = (char*)malloc(object[key].GetStringLength() + 1);
-
-    // if (*value == NULL) return -1;
-
-    // strcpy(*value, (char*)object[key].GetString());
-
-    return 0;
-}
-
-char* module_loader_get_string(const void* p_object, const char* key) {
-
-    // auto& object = *(rapidjson::GenericValue<rapidjson::UTF8<>>::ConstObject*)p_object;
-
-    // if (!object.HasMember(key) || !object[key].IsString()) return NULL;
-
-    // return (char*)object[key].GetString();
-
-    return NULL;
-}
-
-int module_loader_set_int(const void* p_object, int* value, const char* key) {
-
-    // auto& object = *(rapidjson::GenericValue<rapidjson::UTF8<>>::ConstObject*)p_object;
-
-    // if (!object.HasMember(key) || !object[key].IsInt64()) return -1;
-
-    // *value = object[key].GetUint64();
-
-    return 0;
-}
-
-int module_loader_set_ushort(const void* p_object, unsigned short* value, const char* key) {
-
-    // auto& object = *(rapidjson::GenericValue<rapidjson::UTF8<>>::ConstObject*)p_object;
-
-    // if (!object.HasMember(key) || !object[key].IsUint64()) return -1;
-
-    // *value = object[key].GetUint64();
-
-    // if (*value < 0 || *value > 65535) return -1;
-
-    return 0;
-}
-
-unsigned short module_loader_get_ushort(const void* p_object, const char* key) {
-
-    // auto& object = *(rapidjson::GenericValue<rapidjson::UTF8<>>::ConstObject*)p_object;
-
-    // if (!object.HasMember(key) || !object[key].IsUint64()) return -1;
-
-    // unsigned short value = object[key].GetUint64();
-
-    // if (value < 0 || value > 65535) return -1;
-
-    // return value;
-
-    return 0;
-}
-
-int module_loader_set_database_driver(const void* p_object, void* p_value, const char* key) {
-
-    // auto& object = *(rapidjson::GenericValue<rapidjson::UTF8<>>::ConstObject*)p_object;
-
-    // if (!object.HasMember(key) || !object[key].IsString()) return -1;
-
-    // char* driver = (char*)object[key].GetString();
-
-    // database::driver_e& value = *(database::driver_e*)p_value;
-
-    // if (strcmp(driver, "postgresql") == 0) {
-    //     value = database::POSTGRESQL;
-    // }
-    // else if (strcmp(driver, "mysql") == 0) {
-    //     value = database::MYSQL;
-    // }
-
-    // if (value == database::NONE) return -1;
-
-    return 0;
-}
-
-int module_loader_set_database_connections(const void* p_object, void* p_value, const char* key) {
-
-    // auto& object = *(rapidjson::GenericValue<rapidjson::UTF8<>>::ConstObject*)p_object;
-
-    // int connectionsCount = module_loader_get_ushort(&object, "connections_count");
-
-    // if (connectionsCount < 1) return -1;
-
-    // database::connection_t* connections = (database::connection_t*)malloc(sizeof(database::connection_t) * connectionsCount);
-
-    // for (int i = 0; i < connectionsCount; i += sizeof(database::connection_t)) {
-    //     // database::initConnections(connections[i]);
-    // }
-
-    // p_value = connections;
+    if (thread_handler_run(count) == -1) return -1;
 
     return 0;
 }

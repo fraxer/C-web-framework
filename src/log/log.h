@@ -3,9 +3,11 @@
 
 #include <stdarg.h>
 
-void* log_init();
+void log_init();
 
-int log_close();
+void log_close();
+
+void log_reinit();
 
 void log_print(const char*, ...);
 

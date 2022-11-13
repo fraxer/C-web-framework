@@ -3,16 +3,17 @@
 #include <syslog.h>
 #include "log.h"
 
-void* log_init() {
+void log_init() {
     openlog(NULL, LOG_CONS | LOG_NDELAY, LOG_USER);
-
-    return NULL;
 }
 
-int log_close() {
+void log_close() {
     closelog();
+}
 
-    return 0;
+void log_reinit() {
+    log_close();
+    log_init();
 }
 
 void log_full(int level, const char* format, va_list* args) {

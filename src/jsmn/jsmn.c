@@ -424,6 +424,16 @@ void jsmn_free(jsmn_parser_t *parser) {
   if (parser->tokens) {
     free(parser->tokens);
   }
+
+  parser->dirty_pos = 0;
+  parser->pos = 0;
+  parser->toknext = 0;
+  parser->tokens_count = 0;
+  parser->toksuper = 0;
+  parser->string_len = 0;
+  parser->string = NULL;
+  parser->string_internal = NULL;
+  parser->tokens = NULL;
 }
 
 jsmntok_t* jsmn_get_root_token(jsmn_parser_t* parser) {

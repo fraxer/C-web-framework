@@ -55,6 +55,9 @@ void domain_free(domain_t* domain) {
         domain_t* next = current->next;
 
         if (current->template) free(current->template);
+        if (current->prepared_template) free(current->prepared_template);
+
+        pcre_free(current->pcre_template);
 
         free(current);
 

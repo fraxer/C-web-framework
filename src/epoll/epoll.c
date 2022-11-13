@@ -15,7 +15,6 @@
     #include <stdio.h>
 
 #define EPOLL_MAX_EVENTS 16
-
 #define EPOLL_BUFFER 16384
 
 typedef struct epoll_event epoll_event_t;
@@ -25,7 +24,7 @@ typedef struct socket_epoll {
     epoll_event_t* event;
 } socket_epoll_t;
 
-int epoll_init(socket_epoll_t** first_socket);
+int epoll_init(socket_epoll_t** first_socket, server_t*);
 
 int epoll_after_create_connection(connection_t*);
 
@@ -49,21 +48,32 @@ int epoll_connection_set_event(connection_t*);
 
 void epoll_connection_set_hooks(connection_t*);
 
-void epoll_run() {
+void epoll_run(void* server) {
+    int result = -1;
+
     socket_epoll_t* first_socket = NULL;
 
-    int basefd = epoll_init(&first_socket);
+    int basefd = epoll_init(&first_socket, (server_t*)server);
 
-    if (basefd == -1) return;
+    if (basefd == -1) goto failed;
 
     char* buffer = epoll_buffer_alloc();
 
-    if (buffer == NULL) return;
+    if (buffer == NULL) goto failed;
 
     epoll_event_t events[EPOLL_MAX_EVENTS];
 
     while(1) {
-        int n = epoll_wait(basefd, events, EPOLL_MAX_EVENTS, -1);
+        if (((server_t*)server)->is_deprecated) {
+            socket_free((socket_t*)first_socket);
+            first_socket = NULL;
+
+            break;
+
+            // if ((epoll_base_t*)st->countfd == 0) break;
+        }
+
+        int n = epoll_wait(basefd, events, EPOLL_MAX_EVENTS, 500);
 
         while (--n >= 0) {
             epoll_event_t* ev = &events[n];
@@ -95,12 +105,20 @@ void epoll_run() {
         }
     }
 
-    socket_free((socket_t*)first_socket);
+    result = 0;
+
+    free(buffer);
+
+    failed:
+
+    if (result == -1) {
+        socket_free((socket_t*)first_socket);
+    }
 
     close(basefd);
 }
 
-int epoll_init(socket_epoll_t** first_socket) {
+int epoll_init(socket_epoll_t** first_socket, server_t* first_server) {
     int basefd = epoll_create1(0);
 
     if (basefd == -1) {
@@ -110,7 +128,7 @@ int epoll_init(socket_epoll_t** first_socket) {
 
     socket_epoll_t* last_socket = NULL;
 
-    for (server_t* server = server_get_first(); server; server = server->next) {
+    for (server_t* server = first_server; server; server = server->next) {
         socket_epoll_t* socket = (socket_epoll_t*)socket_listen_create(basefd, server->ip, server->port, (void*(*)())epoll_socket_alloc);
 
         if (socket == NULL) return -1;

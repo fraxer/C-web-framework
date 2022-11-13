@@ -1,7 +1,8 @@
 {
     "main": {
-        "workers": 20,
+        "workers": 2,
         "threads": 1,
+        "reload": "hard",
         "head_buffer": 2048,
         "client_max_body_size": 110485760,
         "environment": "dev",

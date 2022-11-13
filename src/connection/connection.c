@@ -64,6 +64,7 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->apidata = NULL;
     connection->close = NULL;
     connection->read = NULL;
+    connection->handle = NULL;
     connection->write = NULL;
     connection->after_read_request = NULL;
     connection->after_write_request = NULL;

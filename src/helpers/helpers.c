@@ -15,6 +15,8 @@ char* helpers_read_file(int fd) {
 
     if (bytesRead == -1) return NULL;
 
+    buf[size] = 0;
+
     return buf;
 }
 

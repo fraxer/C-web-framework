@@ -1,6 +1,6 @@
 #ifndef __EPOLL__
 #define __EPOLL__
 
-void epoll_run();
+void epoll_run(void*);
 
 #endif
