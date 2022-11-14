@@ -19,6 +19,10 @@
 #include "moduleloader.h"
     #include <stdio.h>
 
+typedef struct server_destroy {
+    
+} server_destroy_t;
+
 int module_loader_load_thread_workers();
 
 int module_loader_load_thread_handlers();
@@ -44,7 +48,7 @@ int module_loader_reload() {
 
     if (config_reload() == -1) return -1;
 
-    if (module_loader_reinit_modules() == -1) goto failed;
+    if (module_loader_init_modules() == -1) goto failed;
 
     result = 0;
 
@@ -56,18 +60,6 @@ int module_loader_reload() {
 }
 
 int module_loader_init_modules() {
-    log_init();
-
-    if (module_loader_load_servers()) return -1;
-
-    if (module_loader_load_thread_workers() == -1) return -1;
-
-    if (module_loader_load_thread_handlers() == -1) return -1;
-
-    return 0;
-}
-
-int module_loader_reinit_modules() {
     int reload_is_hard = module_loader_reload_is_hard();
 
     // если что-то пойдет не так, изменения не должны примениться
@@ -82,13 +74,11 @@ int module_loader_reinit_modules() {
 
     log_reinit();
 
-    if (module_loader_load_servers()) return -1;
+    if (module_loader_load_servers(reload_is_hard)) return -1;
 
     if (module_loader_load_thread_workers() == -1) return -1;
 
     if (module_loader_load_thread_handlers() == -1) return -1;
-
-    server_chain_destroy_first();
 
     return 0;
 }
@@ -195,7 +185,7 @@ domain_t* module_loader_load_domains(const jsmntok_t* token_array) {
     return result;
 }
 
-int module_loader_load_servers() {
+int module_loader_load_servers(int reload_is_hard) {
     const jsmntok_t* token_array = config_get_section("servers");
 
     if (token_array->type != JSMN_ARRAY) return -1;
@@ -333,7 +323,7 @@ int module_loader_load_servers() {
         return -1;
     }
 
-    if (server_chain_append(first_server) == -1) goto failed;
+    if (server_chain_append(first_server, reload_is_hard) == -1) goto failed;
 
     result = 0;
 
@@ -394,7 +384,7 @@ int module_loader_load_thread_workers() {
 
     if (server_chain == NULL) return -1;
 
-    if (thread_worker_run(count, server_chain->server) == -1) return -1;
+    if (thread_worker_run(count, server_chain) == -1) return -1;
 
     return 0;
 }

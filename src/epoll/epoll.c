@@ -26,7 +26,7 @@ typedef struct socket_epoll {
 
 int epoll_init(socket_epoll_t** first_socket, server_t*);
 
-int epoll_after_create_connection(connection_t*);
+int epoll_after_create_connection(connection_t*, void*);
 
 int epoll_after_read_request(connection_t*);
 
@@ -48,12 +48,14 @@ int epoll_connection_set_event(connection_t*);
 
 void epoll_connection_set_hooks(connection_t*);
 
-void epoll_run(void* server) {
+void epoll_run(void* chain) {
     int result = -1;
+
+    server_chain_t* server_chain = chain;
 
     socket_epoll_t* first_socket = NULL;
 
-    int basefd = epoll_init(&first_socket, (server_t*)server);
+    int basefd = epoll_init(&first_socket, server_chain->server);
 
     if (basefd == -1) goto failed;
 
@@ -63,17 +65,10 @@ void epoll_run(void* server) {
 
     epoll_event_t events[EPOLL_MAX_EVENTS];
 
+    int timeout = -1;
+
     while(1) {
-        if (((server_t*)server)->is_deprecated) {
-            socket_free((socket_t*)first_socket);
-            first_socket = NULL;
-
-            break;
-
-            // if ((epoll_base_t*)st->countfd == 0) break;
-        }
-
-        int n = epoll_wait(basefd, events, EPOLL_MAX_EVENTS, 500);
+        int n = epoll_wait(basefd, events, EPOLL_MAX_EVENTS, timeout);
 
         while (--n >= 0) {
             epoll_event_t* ev = &events[n];
@@ -81,7 +76,12 @@ void epoll_run(void* server) {
             socket_t* listen_socket = socket_find(ev->data.fd, basefd, (socket_t*)first_socket);
 
             if (listen_socket != NULL) {
-                while (connection_create(listen_socket->fd, basefd, epoll_after_create_connection) != NULL);
+                connection_t* connection = NULL;
+
+                while ((connection = connection_create(listen_socket->fd, basefd)) != NULL) {
+                    if (epoll_after_create_connection(connection, server_chain) == -1) break;
+                }
+
                 continue;
             }
 
@@ -103,6 +103,16 @@ void epoll_run(void* server) {
 
             connection_unlock(connection);
         }
+
+        if (server_chain->is_deprecated) {
+            socket_free((socket_t*)first_socket);
+
+            first_socket = NULL;
+
+            timeout = 500;
+
+            if (server_chain->connection_count == 0) break;
+        }
     }
 
     result = 0;
@@ -114,6 +124,8 @@ void epoll_run(void* server) {
     if (result == -1) {
         socket_free((socket_t*)first_socket);
     }
+
+    ((server_chain_t*)server_chain)->thread_count--;
 
     close(basefd);
 }
@@ -159,11 +171,13 @@ char* epoll_buffer_alloc() {
     return (char*)malloc(EPOLL_BUFFER);
 }
 
-int epoll_after_create_connection(connection_t* connection) {
+int epoll_after_create_connection(connection_t* connection, void* server_chain) {
     if (epoll_connection_set_event(connection) == -1) {
         log_error("Epoll error: Error event allocation\n");
         return -1;
     }
+
+    connection->counter = &((server_chain_t*)server_chain)->thread_count;
 
     protmgr_set_http1(connection);
 
@@ -239,7 +253,13 @@ int epoll_control(connection_t* connection, int action, uint32_t flags) {
 }
 
 int epoll_control_add(connection_t* connection, uint32_t flags) {
-    return epoll_control(connection, EPOLL_CTL_ADD, flags);
+    int result = epoll_control(connection, EPOLL_CTL_ADD, flags);
+
+    if (result == 0) {
+        *connection->counter++;
+    }
+
+    return result;
 }
 
 int epoll_control_mod(connection_t* connection, uint32_t flags) {
@@ -247,7 +267,13 @@ int epoll_control_mod(connection_t* connection, uint32_t flags) {
 }
 
 int epoll_control_del(connection_t* connection) {
-    return epoll_control(connection, EPOLL_CTL_DEL, 0);
+    int result = epoll_control(connection, EPOLL_CTL_DEL, 0);
+
+    if (result == 0) {
+        *connection->counter--;
+    }
+
+    return result;
 }
 
 int epoll_connection_set_event(connection_t* connection) {

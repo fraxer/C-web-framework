@@ -5,6 +5,6 @@
 
 void* thread_worker(void* arg);
 
-int thread_worker_run(int, server_t*);
+int thread_worker_run(int, server_chain_t*);
 
 #endif

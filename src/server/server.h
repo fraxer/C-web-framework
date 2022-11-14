@@ -17,7 +17,6 @@ typedef struct redirect {
 } redirect_t;
 
 typedef struct server {
-    int is_deprecated;
     unsigned short int port;
     domain_t* domain;
     in_addr_t ip;
@@ -30,8 +29,14 @@ typedef struct server {
 } server_t;
 
 typedef struct server_chain {
+    int is_deprecated;
+    int is_hard_reload;
+    int thread_count;
+    int connection_count;
     server_t* server;
+    struct server_chain* prev;
     struct server_chain* next;
+    void(*destroy)(struct server_chain*);
 } server_chain_t;
 
 void* server_init();
@@ -46,12 +51,12 @@ void server_free(server_t*);
 
 server_chain_t* server_chain_alloc();
 
-server_chain_t* server_chain_create(server_t* server);
+server_chain_t* server_chain_create(server_t* server, int);
 
 server_chain_t* server_chain_last();
 
-int server_chain_append(server_t*);
+int server_chain_append(server_t*, int);
 
-void server_chain_destroy_first();
+void server_chain_destroy(server_chain_t*);
 
 #endif

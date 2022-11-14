@@ -8,6 +8,7 @@ typedef struct connection {
     int basefd;
     int ssl_enabled;
     int keepalive_enabled;
+    int* counter;
     void* ssl;
     void* apidata;
     void* protocol;
@@ -24,7 +25,7 @@ typedef struct connection {
     int(*switch_to_websocket)(struct connection*);
 } connection_t;
 
-connection_t* connection_create(int, int, int(*)(connection_t*));
+connection_t* connection_create(int, int);
 
 connection_t* connection_alloc(int fd, int basefd);
 

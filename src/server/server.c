@@ -17,7 +17,6 @@ server_t* server_create() {
 
     if (server == NULL) return NULL;
 
-    server->is_deprecated = 0;
     server->port = 0;
     server->domain = NULL;
     server->ip = 0;
@@ -98,7 +97,7 @@ server_chain_t* server_chain_alloc() {
     return (server_chain_t*)malloc(sizeof(server_chain_t));
 }
 
-server_chain_t* server_chain_create(server_t* server) {
+server_chain_t* server_chain_create(server_t* server, int is_hard_reload) {
     server_chain_t* chain = server_chain_alloc();
 
     if (chain == NULL) return NULL;
@@ -107,8 +106,14 @@ server_chain_t* server_chain_create(server_t* server) {
         server_chain = chain;
     }
 
+    chain->is_deprecated = 0;
+    chain->is_hard_reload = is_hard_reload;
+    chain->thread_count = 0;
+    chain->connection_count = 0;
     chain->server = server;
+    chain->prev = NULL;
     chain->next = NULL;
+    chain->destroy = server_chain_destroy;
 
     return chain;
 }
@@ -117,13 +122,15 @@ server_chain_t* server_chain_last() {
     return last_server_chain;
 }
 
-int server_chain_append(server_t* server) {
-    server_chain_t* chain = server_chain_create(server);
+int server_chain_append(server_t* server, int is_hard_reload) {
+    server_chain_t* chain = server_chain_create(server, is_hard_reload);
 
     if (chain == NULL) return -1;
 
     if (last_server_chain) {
         last_server_chain->next = chain;
+
+        chain->prev = last_server_chain;
     }
 
     last_server_chain = chain;
@@ -133,16 +140,22 @@ int server_chain_append(server_t* server) {
     return 0;
 }
 
-void server_chain_destroy_first() {
-    if (server_chain == NULL) return;
+void server_chain_destroy(server_chain_t* _server_chain) {
+    if (_server_chain == NULL) return;
 
-    server_chain_t* first_server_chain = server_chain;
+    server_chain_t* chain = _server_chain;
 
-    server_chain = server_chain->next;
+    if (chain->prev) {
+        chain->prev = chain->next;
+    }
+
+    if (server_chain == _server_chain) {
+        server_chain = server_chain->next;
+    }
 
     if (server_chain == NULL) last_server_chain = NULL;
 
-    server_free(first_server_chain->server);
+    server_free(_server_chain->server);
 
-    free(first_server_chain);
+    free(_server_chain);
 }

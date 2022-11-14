@@ -12,15 +12,13 @@ int module_loader_reload();
 
 int module_loader_init_modules();
 
-int module_loader_reinit_modules();
-
 int module_loader_reload_is_hard();
 
 route_t* module_loader_load_routes(const jsmntok_t*);
 
 domain_t* module_loader_load_domains(const jsmntok_t*);
 
-int module_loader_load_servers();
+int module_loader_load_servers(int);
 
 int module_loader_load_thread_workers();
 

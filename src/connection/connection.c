@@ -6,7 +6,7 @@
 #include "../socket/socket.h"
 #include "connection.h"
 
-connection_t* connection_create(int listen_socket, int basefd, int(*after_create_connection)(connection_t*)) {
+connection_t* connection_create(int listen_socket, int basefd) {
     connection_t* result = NULL;
 
     struct sockaddr in_addr;
@@ -38,8 +38,6 @@ connection_t* connection_create(int listen_socket, int basefd, int(*after_create
 
     if (connection == NULL) goto failed;
 
-    after_create_connection(connection);
-
     result = connection;
 
     failed:
@@ -60,6 +58,7 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->basefd = basefd;
     connection->ssl_enabled = 0;
     connection->keepalive_enabled = 0;
+    connection->counter = NULL;
     connection->ssl = NULL;
     connection->apidata = NULL;
     connection->close = NULL;
