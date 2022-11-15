@@ -1,5 +1,7 @@
+#define _GNU_SOURCE
 #include <stddef.h>
 #include <string.h>
+#include <pthread.h>
 #include "../log/log.h"
 #include "../route/route.h"
 #include "server.h"
@@ -115,6 +117,8 @@ server_chain_t* server_chain_create(server_t* server, int is_hard_reload) {
     chain->next = NULL;
     chain->destroy = server_chain_destroy;
 
+    pthread_mutex_init(&chain->mutex, NULL);
+
     return chain;
 }
 
@@ -156,6 +160,8 @@ void server_chain_destroy(server_chain_t* _server_chain) {
     if (server_chain == NULL) last_server_chain = NULL;
 
     server_free(_server_chain->server);
+
+    pthread_mutex_destroy(&_server_chain->mutex);
 
     free(_server_chain);
 }

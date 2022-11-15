@@ -64,13 +64,7 @@ int module_loader_init_modules() {
 
     // если что-то пойдет не так, изменения не должны примениться
 
-    if (reload_is_hard == 1) {
-
-    } else if (reload_is_hard == 0) {
-
-    } else if (reload_is_hard == -1) {
-        return -1;
-    }
+    if (reload_is_hard == -1) return -1;
 
     log_reinit();
 

@@ -33,6 +33,9 @@ typedef struct server_chain {
     int is_hard_reload;
     int thread_count;
     int connection_count;
+
+    pthread_mutex_t mutex;
+
     server_t* server;
     struct server_chain* prev;
     struct server_chain* next;

@@ -91,7 +91,8 @@ void epoll_run(void* chain) {
                 continue;
             }
 
-            if (ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) {
+            if ((ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) ||
+                (server_chain->is_deprecated && server_chain->is_hard_reload)) {
                 connection->close(connection);
             }
             else if (ev->events & EPOLLIN) {
@@ -125,7 +126,11 @@ void epoll_run(void* chain) {
         socket_free((socket_t*)first_socket);
     }
 
-    ((server_chain_t*)server_chain)->thread_count--;
+    pthread_mutex_lock(&server_chain->mutex);
+
+    server_chain->thread_count--;
+
+    pthread_mutex_unlock(&server_chain->mutex);
 
     close(basefd);
 }
@@ -177,7 +182,7 @@ int epoll_after_create_connection(connection_t* connection, void* server_chain) 
         return -1;
     }
 
-    connection->counter = &((server_chain_t*)server_chain)->thread_count;
+    connection->counter = &((server_chain_t*)server_chain)->connection_count;
 
     protmgr_set_http1(connection);
 

@@ -76,16 +76,23 @@ connection_t* connection_alloc(int fd, int basefd) {
 }
 
 void connection_free(connection_t* connection) {
+    if (connection == NULL) return;
+
     pthread_mutex_destroy(&connection->mutex);
 
     free(connection->apidata);
     free(connection);
+    connection = NULL;
 }
 
 int connection_trylock(connection_t* connection) {
+    if (connection == NULL) return -1;
+
     return pthread_mutex_trylock(&connection->mutex);
 }
 
 int connection_unlock(connection_t* connection) {
+    if (connection == NULL) return -1;
+
     return pthread_mutex_unlock(&connection->mutex);
 }
