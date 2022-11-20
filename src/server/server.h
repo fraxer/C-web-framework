@@ -1,7 +1,9 @@
+
 #ifndef __SERVER__
 #define __SERVER__
 
 #include <arpa/inet.h>
+#include <search.h>
 #include "../route/route.h"
 #include "../domain/domain.h"
 
@@ -19,6 +21,7 @@ typedef struct redirect {
 typedef struct server {
     unsigned short int port;
     domain_t* domain;
+    struct hsearch_data* domain_hashes;
     in_addr_t ip;
     char* root;
     index_t* index;
@@ -33,6 +36,7 @@ typedef struct server_chain {
     int is_hard_reload;
     int thread_count;
     int connection_count;
+    int domain_hash_bucket_size;
 
     pthread_mutex_t mutex;
 

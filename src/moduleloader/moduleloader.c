@@ -163,11 +163,15 @@ domain_t* module_loader_load_domains(const jsmntok_t* token_array) {
 
         const char* value = jsmn_get_value(token_domain);
 
-        domain_t* domain = domain_create(value, last_domain);
+        domain_t* domain = domain_create(value);
 
         if (domain == NULL) goto failed;
 
         if (first_domain == NULL) first_domain = domain;
+
+        if (last_domain) {
+            last_domain->next = domain;
+        }
 
         last_domain = domain;
     }
@@ -177,6 +181,55 @@ domain_t* module_loader_load_domains(const jsmntok_t* token_array) {
     failed:
 
     return result;
+}
+
+int module_loader_domains_hash_create(server_t* server) {
+    if (hcreate_r(domain_count(server->domain) * 2, server->domain_hashes) == 0) {
+        log_error("Error: Can't create domain hashes\n");
+        return -1;
+    }
+
+    domain_t* current = server->domain;
+
+    while (current) {
+        domain_t* next = current->next;
+
+        ENTRY entry;
+        ENTRY* entry_result;
+
+        entry.key = current->template;
+        entry.data = (void*)current->template;
+
+        if (hsearch_r(entry, ENTER, &entry_result, server->domain_hashes) == 0) {
+            log_error("Error: hash table entry failed\n");
+            return -1;
+        }
+
+        current = next;
+    }
+
+    return 0;
+}
+
+int module_loader_check_unique_domains(server_t* first_server) {
+    for (server_t* current_server = first_server; current_server; current_server = current_server->next) {
+        for (domain_t* current_domain = current_server->domain; current_domain; current_domain = current_domain->next) {
+
+            for (server_t* server = first_server; server; server = server->next) {
+                for (domain_t* domain = server->domain; domain; domain = domain->next) {
+
+                    if (current_domain != domain) {
+                        if (strcmp(current_domain->template, domain->template) == 0) {
+                            log_error("Error: Domains must be unique. %s\n", current_domain->template);
+                            return -1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return 0;
 }
 
 int module_loader_load_servers(int reload_is_hard) {
@@ -189,7 +242,11 @@ int module_loader_load_servers(int reload_is_hard) {
 
     int result = -1;
 
-    for (jsmntok_t* token_item = token_array->child; token_item; token_item = token_item->sibling) {
+    int array_pos = 0;
+    int ports[token_array->size];
+    in_addr_t ips[token_array->size];
+
+    for (jsmntok_t* token_item = token_array->child; token_item; token_item = token_item->sibling, array_pos++) {
         enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
         enum fields { DOMAINS = 0, IP, PORT, ROOT, REDIRECTS, INDEX, ROUTES, DATABASE, FIELDS_COUNT };
 
@@ -211,7 +268,6 @@ int module_loader_load_servers(int reload_is_hard) {
 
         if (token_server->type != JSMN_OBJECT) return -1;
 
-        // server properties
         for (jsmntok_t* token_key = token_server->child; token_key; token_key = token_key->sibling) {
             const char* key = jsmn_get_value(token_key);
 
@@ -226,6 +282,10 @@ int module_loader_load_servers(int reload_is_hard) {
                     log_error("Error: Can't load domains\n");
                     goto failed;
                 }
+
+                if (module_loader_domains_hash_create(server) == -1) {
+                    goto failed;
+                }
             }
             else if (strcmp(key, "ip") == 0) {
                 finded_fields[IP] = 1;
@@ -235,6 +295,8 @@ int module_loader_load_servers(int reload_is_hard) {
                 const char* value = jsmn_get_value(token_key->child);
 
                 server->ip = inet_addr(value);
+
+                ips[array_pos] = server->ip;
             }
             else if (strcmp(key, "port") == 0) {
                 finded_fields[PORT] = 1;
@@ -244,6 +306,8 @@ int module_loader_load_servers(int reload_is_hard) {
                 const char* value = jsmn_get_value(token_key->child);
 
                 server->port = atoi(value);
+
+                ports[array_pos] = server->port;
             }
             else if (strcmp(key, "root") == 0) {
                 finded_fields[ROOT] = 1;
@@ -310,7 +374,23 @@ int module_loader_load_servers(int reload_is_hard) {
                 goto failed;
             }
         }
+
+        for (int i = 0; i < array_pos; i++) {
+            if (ips[i] == server->ip && ports[i] == server->port) {
+                struct sockaddr_in addr = {0};
+
+                addr.sin_addr.s_addr = server->ip;
+
+                log_error("Error: Ip and port must be unique. Ip: %s, port: %d\n", inet_ntoa(addr.sin_addr), server->port);
+
+                goto failed;
+            }
+        }
+
+        if (module_loader_check_unique_domains(first_server) == -1) goto failed;
     }
+
+
 
     if (first_server == NULL) {
         log_error("Error: Section server not found in config\n");

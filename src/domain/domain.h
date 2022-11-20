@@ -13,12 +13,14 @@ typedef struct domain {
     struct domain* next;
 } domain_t;
 
-domain_t* domain_create(const char*, domain_t*);
+domain_t* domain_create(const char*);
 
 domain_t* domain_alloc(const char*);
 
 void domain_free(domain_t*);
 
 int domain_parse(domain_t*);
+
+int domain_count(domain_t*);
 
 #endif

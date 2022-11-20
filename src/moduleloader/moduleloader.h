@@ -18,6 +18,8 @@ route_t* module_loader_load_routes(const jsmntok_t*);
 
 domain_t* module_loader_load_domains(const jsmntok_t*);
 
+int module_loader_domains_hash_create(server_t*);
+
 int module_loader_load_servers(int);
 
 int module_loader_load_thread_workers();

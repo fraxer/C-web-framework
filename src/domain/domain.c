@@ -21,7 +21,7 @@ void domain_parser_insert_symbol(domain_parser_t* parser);
 
 void domain_parser_insert_custom_symbol(domain_parser_t* parser, char ch);
 
-domain_t* domain_create(const char* value, domain_t* last_domain) {
+domain_t* domain_create(const char* value) {
     domain_t* result = NULL;
     domain_t* domain = domain_alloc(value);
 
@@ -32,10 +32,6 @@ domain_t* domain_create(const char* value, domain_t* last_domain) {
     domain->pcre_template = pcre_compile(domain->prepared_template, 0, &domain->pcre_error, &domain->pcre_erroffset, NULL);
 
     if (domain->pcre_error != NULL) goto failed;
-
-    if (last_domain) {
-        last_domain->next = domain;
-    }
 
     result = domain;
 
@@ -242,4 +238,17 @@ void domain_parser_insert_symbol(domain_parser_t* parser) {
 void domain_parser_insert_custom_symbol(domain_parser_t* parser, char ch) {
     parser->prepared_template[parser->pcre_pos] = ch;
     parser->pcre_pos++;
+}
+
+int domain_count(domain_t* domain) {
+    domain_t* current = domain;
+
+    int count = 0;
+
+    while (current) {
+        count++;
+        current = current->next;
+    }
+
+    return count;
 }
