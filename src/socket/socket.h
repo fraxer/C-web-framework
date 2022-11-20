@@ -2,13 +2,15 @@
 #define __SOCKET__
 
 #include <arpa/inet.h>
+#include "../server/server.h"
 
 typedef struct socket {
     int fd;
+    server_t* server;
     struct socket* next;
 } socket_t;
 
-socket_t* socket_listen_create(int, in_addr_t, unsigned short int, void*(*)());
+socket_t* socket_listen_create(int, server_t*, in_addr_t, unsigned short int, void*(*)());
 
 void socket_free();
 

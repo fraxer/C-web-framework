@@ -61,6 +61,7 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->counter = NULL;
     connection->ssl = NULL;
     connection->apidata = NULL;
+    connection->server = NULL;
     connection->close = NULL;
     connection->read = NULL;
     connection->handle = NULL;

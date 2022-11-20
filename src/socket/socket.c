@@ -5,19 +5,21 @@
 #include <fcntl.h>
 #include <errno.h>
 #include "../log/log.h"
+#include "../server/server.h"
 #include "socket.h"
 
 int socket_init(in_addr_t, unsigned short int);
 
 int socket_set_options(int);
 
-socket_t* socket_listen_create(int basefd, in_addr_t ip, unsigned short int port, void*(*socket_alloc)()) {
+socket_t* socket_listen_create(int basefd, server_t* server, in_addr_t ip, unsigned short int port, void*(*socket_alloc)()) {
     socket_t* result = NULL;
     socket_t* socket = (socket_t*)socket_alloc();
 
     if (socket == NULL) return NULL;
 
     socket->fd = socket_init(ip, port);
+    socket->server = server;
 
     if (socket->fd == -1) {
         log_error("Socket error: Can't create socket on port %d\n", port);

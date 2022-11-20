@@ -2,6 +2,7 @@
 #define __CONNECTION__
 
 #include <pthread.h>
+#include "../server/server.h"
 
 typedef struct connection {
     int fd;
@@ -12,6 +13,7 @@ typedef struct connection {
     void* ssl;
     void* apidata;
     void* protocol;
+    server_t* server;
 
     pthread_mutex_t mutex;
 
