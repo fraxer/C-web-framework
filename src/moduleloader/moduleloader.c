@@ -242,11 +242,7 @@ int module_loader_load_servers(int reload_is_hard) {
 
     int result = -1;
 
-    int array_pos = 0;
-    int ports[token_array->size];
-    in_addr_t ips[token_array->size];
-
-    for (jsmntok_t* token_item = token_array->child; token_item; token_item = token_item->sibling, array_pos++) {
+    for (jsmntok_t* token_item = token_array->child; token_item; token_item = token_item->sibling) {
         enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
         enum fields { DOMAINS = 0, IP, PORT, ROOT, REDIRECTS, INDEX, ROUTES, DATABASE, FIELDS_COUNT };
 
@@ -295,8 +291,6 @@ int module_loader_load_servers(int reload_is_hard) {
                 const char* value = jsmn_get_value(token_key->child);
 
                 server->ip = inet_addr(value);
-
-                ips[array_pos] = server->ip;
             }
             else if (strcmp(key, "port") == 0) {
                 finded_fields[PORT] = 1;
@@ -306,8 +300,6 @@ int module_loader_load_servers(int reload_is_hard) {
                 const char* value = jsmn_get_value(token_key->child);
 
                 server->port = atoi(value);
-
-                ports[array_pos] = server->port;
             }
             else if (strcmp(key, "root") == 0) {
                 finded_fields[ROOT] = 1;
@@ -375,22 +367,8 @@ int module_loader_load_servers(int reload_is_hard) {
             }
         }
 
-        for (int i = 0; i < array_pos; i++) {
-            if (ips[i] == server->ip && ports[i] == server->port) {
-                struct sockaddr_in addr = {0};
-
-                addr.sin_addr.s_addr = server->ip;
-
-                log_error("Error: Ip and port must be unique. Ip: %s, port: %d\n", inet_ntoa(addr.sin_addr), server->port);
-
-                goto failed;
-            }
-        }
-
         if (module_loader_check_unique_domains(first_server) == -1) goto failed;
     }
-
-
 
     if (first_server == NULL) {
         log_error("Error: Section server not found in config\n");
