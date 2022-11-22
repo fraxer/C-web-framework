@@ -3,6 +3,7 @@
 
 #include "../jsmn/jsmn.h"
 #include "../route/route.h"
+#include "../route/routeloader.h"
 #include "../domain/domain.h"
 #include "../server/server.h"
 
@@ -14,7 +15,9 @@ int module_loader_init_modules();
 
 int module_loader_reload_is_hard();
 
-route_t* module_loader_load_routes(const jsmntok_t*);
+route_t* module_loader_routes_load(routeloader_lib_t**, const jsmntok_t*);
+
+routeloader_lib_t* module_loader_routes_init(const jsmntok_t*, const route_t*);
 
 domain_t* module_loader_load_domains(const jsmntok_t*);
 

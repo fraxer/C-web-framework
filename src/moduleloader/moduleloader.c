@@ -60,6 +60,7 @@ int module_loader_reload() {
 }
 
 int module_loader_init_modules() {
+    int result = -1;
     int reload_is_hard = module_loader_reload_is_hard();
 
     // если что-то пойдет не так, изменения не должны примениться
@@ -70,11 +71,19 @@ int module_loader_init_modules() {
 
     if (module_loader_load_servers(reload_is_hard)) return -1;
 
-    if (module_loader_load_thread_workers() == -1) return -1;
+    if (module_loader_load_thread_workers() == -1) goto failed;
 
-    if (module_loader_load_thread_handlers() == -1) return -1;
+    if (module_loader_load_thread_handlers() == -1) goto failed;
 
-    return 0;
+    result = 0;
+
+    failed:
+
+    if (result == -1) {
+        server_chain_destroy(server_chain_last());
+    }
+
+    return result;
 }
 
 int module_loader_reload_is_hard() {
@@ -100,19 +109,26 @@ int module_loader_reload_is_hard() {
     return -1;
 }
 
-route_t* module_loader_load_routes(const jsmntok_t* token_object) {
+route_t* module_loader_routes_load(routeloader_lib_t** first_lib, const jsmntok_t* token_object) {
     route_t* result = NULL;
     route_t* first_route = NULL;
     route_t* last_route = NULL;
+    routeloader_lib_t* last_lib = routeloader_get_last(*first_lib);
 
     for (jsmntok_t* token_path = token_object->child; token_path; token_path = token_path->sibling) {
         const char* route_path = jsmn_get_value(token_path);
 
-        route_t* route = route_create(route_path, last_route);
+        route_t* route = route_create(route_path);
 
         if (route == NULL) goto failed;
 
-        if (first_route == NULL) first_route = route;
+        if (first_route == NULL) {
+            first_route = route;
+        }
+
+        if (last_route) {
+            last_route->next = route;
+        }
 
         last_route = route;
 
@@ -124,9 +140,25 @@ route_t* module_loader_load_routes(const jsmntok_t* token_object) {
             const char* lib_file = jsmn_get_array_value(token_array, 0);
             const char* lib_handler = jsmn_get_array_value(token_array, 1);
 
-            if (routeloader_load_lib(lib_file) == -1) goto failed;
+            routeloader_lib_t* routeloader_lib = NULL;
 
-            void*(*function)(void*) = (void*(*)(void*))routeloader_get_handler(lib_file, lib_handler);
+            if (!routeloader_has_lib(*first_lib, lib_file)) {
+                routeloader_lib = routeloader_load_lib(lib_file);
+
+                if (routeloader_lib == NULL) goto failed;
+
+                if (*first_lib == NULL) {
+                    *first_lib = routeloader_lib;
+                }
+
+                if (last_lib) {
+                    last_lib->next = routeloader_lib;
+                }
+
+                last_lib = routeloader_lib;
+            }
+
+            void*(*function)(void*) = (void*(*)(void*))routeloader_get_handler(*first_lib, lib_file, lib_handler);
 
             if (function == NULL) goto failed;
 
@@ -149,6 +181,11 @@ route_t* module_loader_load_routes(const jsmntok_t* token_object) {
     result = first_route;
 
     failed:
+
+    if (result == NULL) {
+        route_free(first_route);
+        routeloader_free(*first_lib);
+    }
 
     return result;
 }
@@ -179,6 +216,10 @@ domain_t* module_loader_load_domains(const jsmntok_t* token_array) {
     result = first_domain;
 
     failed:
+
+    if (result == NULL) {
+        domain_free(first_domain);
+    }
 
     return result;
 }
@@ -239,6 +280,8 @@ int module_loader_load_servers(int reload_is_hard) {
 
     server_t* first_server = NULL;
     server_t* last_server = NULL;
+
+    routeloader_lib_t* first_lib = NULL;
 
     int result = -1;
 
@@ -339,7 +382,7 @@ int module_loader_load_servers(int reload_is_hard) {
 
                 if (token_key->child->type != JSMN_OBJECT) goto failed;
 
-                server->route = module_loader_load_routes(token_key->child);
+                server->route = module_loader_routes_load(&first_lib, token_key->child);
 
                 if (server->route == NULL) {
                     log_error("Error: Can't load routes\n");
@@ -375,7 +418,7 @@ int module_loader_load_servers(int reload_is_hard) {
         return -1;
     }
 
-    if (server_chain_append(first_server, reload_is_hard) == -1) goto failed;
+    if (server_chain_append(first_server, first_lib, reload_is_hard) == -1) goto failed;
 
     result = 0;
 
@@ -383,6 +426,8 @@ int module_loader_load_servers(int reload_is_hard) {
 
     if (result == -1) {
         server_free(first_server);
+
+        routeloader_free(first_lib);
     }
 
     return result;

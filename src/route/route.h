@@ -34,7 +34,7 @@ typedef struct route {
 
 void* route_init();
 
-route_t* route_create(const char*, route_t*);
+route_t* route_create(const char*);
 
 int route_set_method_handler(route_t* route, const char* method, void* function);
 

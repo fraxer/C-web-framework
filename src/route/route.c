@@ -43,7 +43,7 @@ void* route_init() {
     return 0;
 }
 
-route_t* route_create(const char* dirty_location, route_t* last_route) {
+route_t* route_create(const char* dirty_location) {
     int result = -1;
 
     route_t* route = route_init_route();
@@ -59,10 +59,6 @@ route_t* route_create(const char* dirty_location, route_t* last_route) {
     route->location = pcre_compile(parser.location, 0, &route->location_error, &route->location_erroffset, NULL);
 
     if (route->location_error != NULL) goto failed;
-
-    if (last_route) {
-        last_route->next = route;
-    }
 
     route->is_primitive = parser.is_primitive;
     route->path = parser.location;

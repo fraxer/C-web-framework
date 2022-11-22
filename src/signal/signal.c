@@ -5,7 +5,6 @@
 #include "signal.h"
 #include "../log/log.h"
 #include "../moduleloader/moduleloader.h"
-#include "../route/routeloader.h"
 
 void signal_flush_streams() {
     fflush(stdout);
@@ -80,8 +79,6 @@ void signal_before_terminate(int s) {
     log_close();
 
     // close_database_connections();
-
-    routeloader_free();
 
     exit(EXIT_SUCCESS);
 }

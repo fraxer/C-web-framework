@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <search.h>
 #include "../route/route.h"
+#include "../route/routeloader.h"
 #include "../domain/domain.h"
 
 typedef struct index {
@@ -41,6 +42,7 @@ typedef struct server_chain {
     pthread_mutex_t mutex;
 
     server_t* server;
+    routeloader_lib_t* routeloader;
     struct server_chain* prev;
     struct server_chain* next;
     void(*destroy)(struct server_chain*);
@@ -58,11 +60,11 @@ void server_free(server_t*);
 
 server_chain_t* server_chain_alloc();
 
-server_chain_t* server_chain_create(server_t* server, int);
+server_chain_t* server_chain_create(server_t* server, routeloader_lib_t*, int);
 
 server_chain_t* server_chain_last();
 
-int server_chain_append(server_t*, int);
+int server_chain_append(server_t*, routeloader_lib_t*, int);
 
 void server_chain_destroy(server_chain_t*);
 

@@ -4,54 +4,29 @@
 #include <stdlib.h>
 #include "../log/log.h"
 #include "routeloader.h"
-    #include <stdio.h>
-
-typedef struct routeloader_lib {
-    char* filepath;
-    void* pointer;
-
-    struct routeloader_lib* next;
-} routeloader_lib_t;
-
-static routeloader_lib_t* first_lib = NULL;
-static routeloader_lib_t* last_lib = NULL;
 
 routeloader_lib_t* routeloader_init_container(const char*, void*);
 
-int routeloader_has_lib(const char*);
-
-int routeloader_load_lib(const char* filepath) {
+routeloader_lib_t* routeloader_load_lib(const char* filepath) {
     void* shared_lib_p = dlopen(filepath, RTLD_LAZY);
 
     if (shared_lib_p == NULL) {
         log_error(ROUTELOADER_LIB_NOT_FOUND, filepath);
-        return -1;
+        return NULL;
     }
-
-    if (routeloader_has_lib(filepath)) return 0;
 
     routeloader_lib_t* routeloader_lib = routeloader_init_container(filepath, shared_lib_p);
 
     if (routeloader_lib == NULL) {
         log_error(ROUTELOADER_OUT_OF_MEMORY);
-        return -1;
+        dlclose(shared_lib_p);
+        return NULL;
     }
 
-    if (first_lib == NULL) {
-        first_lib = routeloader_lib;
-    }
-
-    if (last_lib == NULL) {
-        last_lib = routeloader_lib;
-    } else {
-        last_lib->next = routeloader_lib;
-        last_lib = last_lib->next;
-    }
-
-    return 0;
+    return routeloader_lib;
 }
 
-void* routeloader_get_handler(const char* filepath, const char* function_name) {
+void* routeloader_get_handler(routeloader_lib_t* first_lib, const char* filepath, const char* function_name) {
     routeloader_lib_t* lib = first_lib;
 
     while (lib) {
@@ -74,7 +49,7 @@ void* routeloader_get_handler(const char* filepath, const char* function_name) {
     return NULL;
 }
 
-void routeloader_free() {
+void routeloader_free(routeloader_lib_t* first_lib) {
     routeloader_lib_t* lib = first_lib;
 
     while (lib) {
@@ -97,7 +72,10 @@ routeloader_lib_t* routeloader_init_container(const char* filepath, void* shared
 
     routeloader_lib->filepath = (char*)malloc(strlen(filepath) + 1);
 
-    if (routeloader_lib->filepath == NULL) return NULL;
+    if (routeloader_lib->filepath == NULL) {
+        free(routeloader_lib);
+        return NULL;
+    }
 
     strcpy(routeloader_lib->filepath, filepath);
 
@@ -107,7 +85,7 @@ routeloader_lib_t* routeloader_init_container(const char* filepath, void* shared
     return routeloader_lib;
 }
 
-int routeloader_has_lib(const char* filepath) {
+int routeloader_has_lib(routeloader_lib_t* first_lib, const char* filepath) {
     routeloader_lib_t* lib = first_lib;
 
     while (lib) {
@@ -117,4 +95,16 @@ int routeloader_has_lib(const char* filepath) {
     }
 
     return 0;
+}
+
+routeloader_lib_t* routeloader_get_last(routeloader_lib_t* first_lib) {
+    routeloader_lib_t* lib = first_lib;
+
+    while (lib) {
+        if (lib->next == NULL) return lib;
+
+        lib = lib->next;
+    }
+
+    return lib;
 }
