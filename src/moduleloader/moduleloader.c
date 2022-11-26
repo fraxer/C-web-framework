@@ -6,11 +6,12 @@
 #include <stdlib.h>
 #include "../config/config.h"
 #include "../log/log.h"
+#include "../jsmn/jsmn.h"
 #include "../route/route.h"
 #include "../route/routeloader.h"
 #include "../domain/domain.h"
 #include "../server/server.h"
-// #include "../database/database.h"
+#include "../database/database.h"
 // #include "../openssl/openssl.h"
 // #include "../mimetype/mimetype.h"
 #include "../thread/threadhandler.h"
@@ -19,13 +20,16 @@
 #include "moduleloader.h"
     #include <stdio.h>
 
-typedef struct server_destroy {
-    
-} server_destroy_t;
+int module_loader_init_modules();
+
+int module_loader_load_servers(int);
 
 int module_loader_load_thread_workers();
 
 int module_loader_load_thread_handlers();
+
+int module_loader_reload_is_hard();
+
 
 int module_loader_init(int argc, char* argv[]) {
     int result = -1;
@@ -224,6 +228,123 @@ domain_t* module_loader_load_domains(const jsmntok_t* token_array) {
     return result;
 }
 
+database_t* module_loader_load_database(const jsmntok_t* token_object) {
+    database_t* result = NULL;
+    database_t* database = database_create();
+
+    enum fields { HOST = 0, PORT, DBNAME, USER, PASSWORD, DRIVER, CONNECTION_TIMEOUT, CONNECTION_COUNT, FIELDS_COUNT };
+
+    int finded_fields[FIELDS_COUNT] = {0};
+
+    for (jsmntok_t* token = token_object->child; token; token = token->sibling) {
+        const char* key = jsmn_get_value(token);
+
+        if (strcmp(key, "host") == 0) {
+            finded_fields[HOST] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            database->host = (char*)malloc(strlen(value) + 1);
+
+            if (database->host == NULL) goto failed;
+
+            strcpy(database->host, value);
+        }
+        else if (strcmp(key, "port") == 0) {
+            finded_fields[PORT] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            database->port = atoi(value);
+        }
+        else if (strcmp(key, "dbname") == 0) {
+            finded_fields[DBNAME] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            database->dbname = (char*)malloc(strlen(value) + 1);
+
+            if (database->dbname == NULL) goto failed;
+
+            strcpy(database->dbname, value);
+        }
+        else if (strcmp(key, "user") == 0) {
+            finded_fields[USER] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            database->user = (char*)malloc(strlen(value) + 1);
+
+            if (database->user == NULL) goto failed;
+
+            strcpy(database->user, value);
+        }
+        else if (strcmp(key, "password") == 0) {
+            finded_fields[PASSWORD] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            database->password = (char*)malloc(strlen(value) + 1);
+
+            if (database->password == NULL) goto failed;
+
+            strcpy(database->password, value);
+        }
+        else if (strcmp(key, "driver") == 0) {
+            finded_fields[DRIVER] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            database->driver = NONE;
+
+            if (strcmp(value, "postgresql") == 0) {
+                database->driver = POSTGRESQL;
+            }
+            else if (strcmp(value, "mysql") == 0) {
+                database->driver = MYSQL;
+            }
+
+            if (database->driver == NONE) {
+                log_error("Error: Database driver incorrect\n");
+                goto failed;
+            }
+        }
+        else if (strcmp(key, "connection_timeout") == 0) {
+            finded_fields[CONNECTION_TIMEOUT] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            database->connection_timeout = atoi(value);
+        }
+        else if (strcmp(key, "connection_count") == 0) {
+            finded_fields[CONNECTION_COUNT] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            database->port = atoi(value);
+        }
+    }
+
+    for (int i = 0; i < FIELDS_COUNT; i++) {
+        if (finded_fields[i] == 0) {
+            log_error("Error: Fill database config\n");
+            goto failed;
+        }
+    }
+
+    // printf("driver: %ld\n", sizeof(*structure->connections));
+
+    result = database;
+
+    failed:
+
+    if (result == NULL) {
+        database_free(database);
+    }
+
+    return result;
+}
+
 int module_loader_domains_hash_create(server_t* server) {
     if (hcreate_r(domain_count(server->domain) * 2, server->domain_hashes) == 0) {
         log_error("Error: Can't create domain hashes\n");
@@ -391,6 +512,15 @@ int module_loader_load_servers(int reload_is_hard) {
             }
             else if (strcmp(key, "database") == 0) {
                 finded_fields[DATABASE] = 1;
+
+                if (token_key->child->type != JSMN_OBJECT) goto failed;
+
+                server->database = module_loader_load_database(token_key->child);
+
+                if (server->database == NULL) {
+                    log_error("Error: Can't load database\n");
+                    goto failed;
+                }
             }
         }
 
@@ -431,28 +561,6 @@ int module_loader_load_servers(int reload_is_hard) {
     }
 
     return result;
-}
-
-int module_loader_parse_database(void* moduleStruct) {
-
-    // database::database_t* structure = (database::database_t*)moduleStruct;
-
-    const jsmntok_t* document = config_get_section("database");
-
-    // const auto& object = document->GetObject();
-
-    // if (module_loader_set_string(&object, &structure->host, "host") == -1) return -1;
-    // if (module_loader_set_string(&object, &structure->dbname, "dbname") == -1) return -1;
-    // if (module_loader_set_string(&object, &structure->user, "user") == -1) return -1;
-    // if (module_loader_set_string(&object, &structure->password, "password") == -1) return -1;
-    // if (module_loader_set_ushort(&object, &structure->port, "port") == -1) return -1;
-    // if (module_loader_set_ushort(&object, &structure->connections_timeout, "connections_timeout") == -1) return -1;
-    // if (module_loader_set_database_driver(&object, &structure->driver, "driver") == -1) return -1;
-    // if (module_loader_set_database_connections(&object, &structure->connections, "connections_count") == -1) return -1;
-
-    // printf("driver: %ld\n", sizeof(*structure->connections));
-
-    return 0;
 }
 
 int module_loader_load_thread_workers() {

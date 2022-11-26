@@ -7,6 +7,7 @@
 #include "../route/route.h"
 #include "../route/routeloader.h"
 #include "../domain/domain.h"
+#include "../database/database.h"
 
 typedef struct index {
     char* value;
@@ -28,7 +29,7 @@ typedef struct server {
     index_t* index;
     redirect_t* redirect;
     route_t* route;
-    // database_t* database;
+    database_t* database;
     struct server* next;
 } server_t;
 

@@ -40,7 +40,7 @@ server_t* server_create() {
     server->index = NULL;
     server->redirect = NULL;
     server->route = NULL;
-    // server->database = NULL;
+    server->database = NULL;
     server->next = NULL;
 
     result = server;
@@ -64,28 +64,33 @@ void server_free(server_t* server) {
 
         server->port = 0;
 
-        domain_free(server->domain);
+        if (server->domain) domain_free(server->domain);
         server->domain = NULL;
 
-        hdestroy_r(server->domain_hashes);
-        free(server->domain_hashes);
+        if (server->domain_hashes) {
+            hdestroy_r(server->domain_hashes);
+            free(server->domain_hashes);
+        }
+
         server->domain_hashes = NULL;
 
         server->ip = 0;
 
-        free(server->root);
+        if (server->root) free(server->root);
         server->root = NULL;
 
-        free(server->index->value);
-        free(server->index);
+        if (server->index->value) free(server->index->value);
+        if (server->index) free(server->index);
         server->index = NULL;
 
         server->redirect = NULL;
 
-        route_free(server->route);
+        if (server->route) route_free(server->route);
         server->route = NULL;
 
-        // server->database = NULL;
+        if (server->database) database_free(server->database);
+        server->database = NULL;
+
         server->next = NULL;
 
         free(server);

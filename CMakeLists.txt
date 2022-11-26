@@ -45,7 +45,7 @@ add_library(websockets STATIC src/protocols/websockets.c)
 
 add_library(connection STATIC src/connection/connection.c)
 
-#add_library(database STATIC src/database/database.cpp)
+add_library(database STATIC src/database/database.c)
 
 #add_library(openssl STATIC src/openssl/openssl.cpp)
 
@@ -77,7 +77,7 @@ target_link_libraries(
 	config
 	route
 	routeloader
-#	database
+	database
 #	openssl
 #	mimetype
 	threadhandler
