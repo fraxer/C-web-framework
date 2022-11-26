@@ -16,6 +16,7 @@ typedef enum transaction_level {
 
 typedef struct database_connection {
     char* host;
+    pthread_mutex_t mutex;
     struct database_connection* next;
 } database_connection_t;
 

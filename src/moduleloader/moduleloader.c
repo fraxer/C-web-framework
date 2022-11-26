@@ -22,11 +22,11 @@
 
 int module_loader_init_modules();
 
-int module_loader_load_servers(int);
+int module_loader_servers_load(int);
 
-int module_loader_load_thread_workers();
+int module_loader_thread_workers_load();
 
-int module_loader_load_thread_handlers();
+int module_loader_thread_handlers_load();
 
 int module_loader_reload_is_hard();
 
@@ -67,17 +67,15 @@ int module_loader_init_modules() {
     int result = -1;
     int reload_is_hard = module_loader_reload_is_hard();
 
-    // если что-то пойдет не так, изменения не должны примениться
-
     if (reload_is_hard == -1) return -1;
 
     log_reinit();
 
-    if (module_loader_load_servers(reload_is_hard)) return -1;
+    if (module_loader_servers_load(reload_is_hard)) return -1;
 
-    if (module_loader_load_thread_workers() == -1) goto failed;
+    if (module_loader_thread_workers_load() == -1) goto failed;
 
-    if (module_loader_load_thread_handlers() == -1) goto failed;
+    if (module_loader_thread_handlers_load() == -1) goto failed;
 
     result = 0;
 
@@ -194,7 +192,7 @@ route_t* module_loader_routes_load(routeloader_lib_t** first_lib, const jsmntok_
     return result;
 }
 
-domain_t* module_loader_load_domains(const jsmntok_t* token_array) {
+domain_t* module_loader_domains_load(const jsmntok_t* token_array) {
     domain_t* result = NULL;
     domain_t* first_domain = NULL;
     domain_t* last_domain = NULL;
@@ -228,7 +226,7 @@ domain_t* module_loader_load_domains(const jsmntok_t* token_array) {
     return result;
 }
 
-database_t* module_loader_load_database(const jsmntok_t* token_object) {
+database_t* module_loader_database_load(const jsmntok_t* token_object) {
     database_t* result = NULL;
     database_t* database = database_create();
 
@@ -394,7 +392,7 @@ int module_loader_check_unique_domains(server_t* first_server) {
     return 0;
 }
 
-int module_loader_load_servers(int reload_is_hard) {
+int module_loader_servers_load(int reload_is_hard) {
     const jsmntok_t* token_array = config_get_section("servers");
 
     if (token_array->type != JSMN_ARRAY) return -1;
@@ -436,7 +434,7 @@ int module_loader_load_servers(int reload_is_hard) {
 
                 if (token_key->child->type != JSMN_ARRAY) goto failed;
 
-                server->domain = module_loader_load_domains(token_key->child);
+                server->domain = module_loader_domains_load(token_key->child);
 
                 if (server->domain == NULL) {
                     log_error("Error: Can't load domains\n");
@@ -515,7 +513,7 @@ int module_loader_load_servers(int reload_is_hard) {
 
                 if (token_key->child->type != JSMN_OBJECT) goto failed;
 
-                server->database = module_loader_load_database(token_key->child);
+                server->database = module_loader_database_load(token_key->child);
 
                 if (server->database == NULL) {
                     log_error("Error: Can't load database\n");
@@ -563,7 +561,7 @@ int module_loader_load_servers(int reload_is_hard) {
     return result;
 }
 
-int module_loader_load_thread_workers() {
+int module_loader_thread_workers_load() {
     const jsmntok_t* token_root = config_get_section("main");
 
     int count = 0;
@@ -594,7 +592,7 @@ int module_loader_load_thread_workers() {
     return 0;
 }
 
-int module_loader_load_thread_handlers() {
+int module_loader_thread_handlers_load() {
     const jsmntok_t* token_root = config_get_section("main");
 
     int count = 0;
