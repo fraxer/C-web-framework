@@ -41,6 +41,7 @@ server_t* server_create() {
     server->redirect = NULL;
     server->route = NULL;
     server->database = NULL;
+    server->openssl = NULL;
     server->next = NULL;
 
     result = server;
@@ -90,6 +91,9 @@ void server_free(server_t* server) {
 
         if (server->database) database_free(server->database);
         server->database = NULL;
+
+        if (server->openssl) openssl_free(server->openssl);
+        server->openssl = NULL;
 
         server->next = NULL;
 

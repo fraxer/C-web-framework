@@ -7,9 +7,6 @@
 #include "http1.h"
     #include <stdio.h>
 
-int SSL_read(void*, const void*, int);
-int SSL_write(void*, const void*, int);
-
 void http1_read(connection_t* connection, char* buffer, size_t size) {
     while (1) {
         int readed = http1_read_internal(connection, buffer, size);
@@ -56,6 +53,3 @@ ssize_t http1_write_internal(connection_t* connection, const char* response, siz
         
     return write(connection->fd, response, size);
 }
-
-int SSL_read(void*, const void*, int) { return 0; }
-int SSL_write(void*, const void*, int) { return 0; }

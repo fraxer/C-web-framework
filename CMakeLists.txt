@@ -8,6 +8,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 #find_package(RapidJSON REQUIRED)
 find_package(PCRE REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 include(CTest)
 
@@ -43,11 +44,13 @@ add_library(http1 STATIC src/protocols/http1.c)
 
 add_library(websockets STATIC src/protocols/websockets.c)
 
+add_library(tls STATIC src/protocols/tls.c)
+
 add_library(connection STATIC src/connection/connection.c)
 
 add_library(database STATIC src/database/database.c)
 
-#add_library(openssl STATIC src/openssl/openssl.cpp)
+add_library(openssl STATIC src/openssl/openssl.c)
 
 #add_library(mimetype STATIC src/mimetype/mimetype.cpp)
 
@@ -78,7 +81,7 @@ target_link_libraries(
 	route
 	routeloader
 	database
-#	openssl
+	openssl
 #	mimetype
 	threadhandler
 	threadworker
@@ -90,9 +93,11 @@ target_link_libraries(
 	protocolmanager
 	http1
 	websockets
+	tls
 
 	pthread
 	pcre
+	${OPENSSL_LIBRARIES}
 )
 
 target_link_libraries(

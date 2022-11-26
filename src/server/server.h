@@ -8,6 +8,7 @@
 #include "../route/routeloader.h"
 #include "../domain/domain.h"
 #include "../database/database.h"
+#include "../openssl/openssl.h"
 
 typedef struct index {
     char* value;
@@ -30,6 +31,7 @@ typedef struct server {
     redirect_t* redirect;
     route_t* route;
     database_t* database;
+    openssl_t* openssl;
     struct server* next;
 } server_t;
 

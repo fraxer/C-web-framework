@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include "../server/server.h"
+#include "../openssl/openssl.h"
 
 typedef struct connection {
     int fd;
@@ -10,9 +11,9 @@ typedef struct connection {
     int ssl_enabled;
     int keepalive_enabled;
     int* counter;
-    void* ssl;
     void* apidata;
     void* protocol;
+    SSL* ssl;
     server_t* server;
 
     pthread_mutex_t mutex;

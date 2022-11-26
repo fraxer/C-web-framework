@@ -343,6 +343,72 @@ database_t* module_loader_database_load(const jsmntok_t* token_object) {
     return result;
 }
 
+openssl_t* module_loader_openssl_load(const jsmntok_t* token_object) {
+    openssl_t* result = NULL;
+    openssl_t* openssl = openssl_create();
+
+    enum fields { FULLCHAIN = 0, PRIVATE, CIPHERS, FIELDS_COUNT };
+
+    int finded_fields[FIELDS_COUNT] = {0};
+
+    for (jsmntok_t* token = token_object->child; token; token = token->sibling) {
+        const char* key = jsmn_get_value(token);
+
+        if (strcmp(key, "fullchain") == 0) {
+            finded_fields[FULLCHAIN] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            openssl->fullchain = (char*)malloc(strlen(value) + 1);
+
+            if (openssl->fullchain == NULL) goto failed;
+
+            strcpy(openssl->fullchain, value);
+        }
+        else if (strcmp(key, "private") == 0) {
+            finded_fields[PRIVATE] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            openssl->private = (char*)malloc(strlen(value) + 1);
+
+            if (openssl->private == NULL) goto failed;
+
+            strcpy(openssl->private, value);
+        }
+        else if (strcmp(key, "ciphers") == 0) {
+            finded_fields[CIPHERS] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            openssl->ciphers = (char*)malloc(strlen(value) + 1);
+
+            if (openssl->ciphers == NULL) goto failed;
+
+            strcpy(openssl->ciphers, value);
+        }
+    }
+
+    for (int i = 0; i < FIELDS_COUNT; i++) {
+        if (finded_fields[i] == 0) {
+            log_error("Error: Fill openssl config\n");
+            goto failed;
+        }
+    }
+
+    if (openssl_init(openssl) == -1) goto failed;
+
+    result = openssl;
+
+    failed:
+
+    if (result == NULL) {
+        openssl_free(openssl);
+    }
+
+    return result;
+}
+
 int module_loader_domains_hash_create(server_t* server) {
     if (hcreate_r(domain_count(server->domain) * 2, server->domain_hashes) == 0) {
         log_error("Error: Can't create domain hashes\n");
@@ -406,7 +472,7 @@ int module_loader_servers_load(int reload_is_hard) {
 
     for (jsmntok_t* token_item = token_array->child; token_item; token_item = token_item->sibling) {
         enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
-        enum fields { DOMAINS = 0, IP, PORT, ROOT, REDIRECTS, INDEX, ROUTES, DATABASE, FIELDS_COUNT };
+        enum fields { DOMAINS = 0, IP, PORT, ROOT, REDIRECTS, INDEX, ROUTES, DATABASE, OPENSSL, FIELDS_COUNT };
 
         int finded_fields[FIELDS_COUNT] = {0};
 
@@ -517,6 +583,17 @@ int module_loader_servers_load(int reload_is_hard) {
 
                 if (server->database == NULL) {
                     log_error("Error: Can't load database\n");
+                    goto failed;
+                }
+            }
+            else if (strcmp(key, "openssl") == 0) {
+                finded_fields[OPENSSL] = 1;
+
+                if (token_key->child->type != JSMN_OBJECT) goto failed;
+
+                server->openssl = module_loader_openssl_load(token_key->child);
+
+                if (server->openssl == NULL) {
                     goto failed;
                 }
             }

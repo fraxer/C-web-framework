@@ -185,7 +185,11 @@ int epoll_after_create_connection(connection_t* connection, server_chain_t* serv
     connection->counter = &server_chain->connection_count;
     connection->server = server;
 
-    protmgr_set_http1(connection);
+    if (server->openssl) {
+        protmgr_set_tls(connection);
+    } else {
+        protmgr_set_http1(connection);
+    }
 
     epoll_connection_set_hooks(connection);
 
