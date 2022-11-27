@@ -82,8 +82,10 @@ void connection_free(connection_t* connection) {
 
     pthread_mutex_destroy(&connection->mutex);
 
-    SSL_free_buffers(connection->ssl);
-    SSL_free(connection->ssl);
+    if (connection->ssl_enabled) {
+        SSL_free_buffers(connection->ssl);
+        SSL_free(connection->ssl);
+    }
 
     free(connection->apidata);
     free(connection);
