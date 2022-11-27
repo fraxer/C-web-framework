@@ -11,19 +11,22 @@ void http1_read(connection_t* connection, char* buffer, size_t size) {
     while (1) {
         int readed = http1_read_internal(connection, buffer, size);
 
-        if (readed == -1) {
+        switch (readed) {
+        case -1:
             connection->after_read_request(connection);
             return;
-        }
-        else if (readed == 0) {
-            connection->after_read_request(connection);
+        case 0:
+            connection->keepalive_enabled = 0;
+            connection->close(connection);
             return;
+        default:
+            // TODO: parse request
         }
     }
 }
 
 void http1_write(connection_t* connection) {
-    const char* response = "HTTP/1.1 200 OK\r\nServer: TEST\r\nContent-Length: 8\r\nContent-Type: text/html\r\nConnection: Closed\r\n\r\nResponse";
+    const char* response = "HTTP/1.1 200 OK\r\nServer: TEST\r\nContent-Length: 8\r\nContent-Type: text/html\r\nConnection: Close\r\n\r\nResponse";
 
     int size = strlen(response);
 

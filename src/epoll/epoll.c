@@ -48,6 +48,9 @@ int epoll_connection_set_event(connection_t*);
 
 void epoll_connection_set_hooks(connection_t*);
 
+int epoll_disable(socket_t*, int);
+
+
 void epoll_run(void* chain) {
     int result = -1;
 
@@ -106,6 +109,8 @@ void epoll_run(void* chain) {
         }
 
         if (server_chain->is_deprecated) {
+            epoll_disable((socket_t*)first_socket, basefd);
+
             socket_free((socket_t*)first_socket);
 
             first_socket = NULL;
@@ -170,6 +175,20 @@ int epoll_init(socket_epoll_t** first_socket, server_t* first_server) {
     }
 
     return basefd;
+}
+
+int epoll_disable(socket_t* first_socket, int basefd) {
+    socket_t* socket = first_socket;
+
+    while (socket) {
+        socket_t* next = socket->next;
+
+        if (epoll_ctl(basefd, EPOLL_CTL_DEL, socket->fd, NULL) == -1) {
+            log_error("Epoll error: disable failed\n");
+        }
+
+        socket = next;
+    }
 }
 
 char* epoll_buffer_alloc() {
@@ -271,7 +290,7 @@ int epoll_control_add(connection_t* connection, uint32_t flags) {
     int result = epoll_control(connection, EPOLL_CTL_ADD, flags);
 
     if (result == 0) {
-        *connection->counter++;
+        (*connection->counter)++;
     }
 
     return result;
@@ -285,7 +304,7 @@ int epoll_control_del(connection_t* connection) {
     int result = epoll_control(connection, EPOLL_CTL_DEL, 0);
 
     if (result == 0) {
-        *connection->counter--;
+        (*connection->counter)--;
     }
 
     return result;

@@ -58,7 +58,7 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->fd = fd;
     connection->basefd = basefd;
     connection->ssl_enabled = 0;
-    connection->keepalive_enabled = 0;
+    connection->keepalive_enabled = 1;
     connection->counter = NULL;
     connection->ssl = NULL;
     connection->apidata = NULL;
