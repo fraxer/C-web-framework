@@ -239,6 +239,10 @@ int epoll_after_write_request(connection_t* connection) {
 int epoll_connection_close(connection_t* connection) {
     if (epoll_control_del(connection) == -1) return -1;
 
+    SSL_shutdown(connection->ssl);
+    
+    SSL_clear(connection->ssl);
+
     shutdown(connection->fd, 2);
 
     close(connection->fd);

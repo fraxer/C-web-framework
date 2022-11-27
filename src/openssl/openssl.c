@@ -9,6 +9,12 @@
 #define OPENSSL_ERROR_CHECK_PRIVATE_FILE "Openssl error: private file check failed\n"
 #define OPENSSL_ERROR_CIPHER_LIST "Openssl error: cipher list is invalid\n"
 #define OPENSSL_ERROR_BIO_NEW_FILE "Openssl error: can't create new bio\n"
+#define OPENSSL_ERROR_SSL "Openssl error: ssl error\n"
+#define OPENSSL_ERROR_WANT_READ "Openssl error: ssl want read\n"
+#define OPENSSL_ERROR_WANT_WRITE "Openssl error: ssl want write\n"
+#define OPENSSL_ERROR_WANT_ACCEPT "Openssl error: ssl want accept\n"
+#define OPENSSL_ERROR_WANT_CONNECT "Openssl error: ssl want connect\n"
+#define OPENSSL_ERROR_ZERO_RETURN "Openssl error: ssl zero return\n"
 
 int openssl_context_init(openssl_t*);
 
@@ -103,4 +109,45 @@ void openssl_free(openssl_t* openssl) {
     openssl->ctx = NULL;
 
     if (openssl) free(openssl);
+}
+
+int openssl_read(SSL* ssl, void* buffer, int num) {
+    return SSL_read(ssl, buffer, num);
+}
+
+int openssl_write(SSL* ssl, const void* buffer, int num) {
+    return SSL_write(ssl, buffer, num);
+}
+
+int openssl_get_status(SSL* ssl, int result) {
+    int error = SSL_get_error(ssl, result);
+
+    switch (error) {
+        case SSL_ERROR_WANT_READ:
+            // log_error(OPENSSL_ERROR_WANT_READ);
+            return 1;
+
+        case SSL_ERROR_WANT_WRITE:
+            // log_error(OPENSSL_ERROR_WANT_WRITE);
+            return 1;
+
+        case SSL_ERROR_SYSCALL:
+        case SSL_ERROR_SSL:
+            // log_error(OPENSSL_ERROR_SSL);
+            return 3;
+
+        case SSL_ERROR_WANT_ACCEPT:
+            // log_error(OPENSSL_ERROR_WANT_ACCEPT);
+            return 4;
+
+        case SSL_ERROR_WANT_CONNECT:
+            // log_error(OPENSSL_ERROR_WANT_CONNECT);
+            return 5;
+
+        case SSL_ERROR_ZERO_RETURN:
+            // log_error(OPENSSL_ERROR_ZERO_RETURN);
+            return 6;
+    }
+
+    return 0;
 }

@@ -23,22 +23,22 @@ void tls_read(connection_t* connection, char* buffer, size_t size) {
 }
 
 void tls_write(connection_t* connection) {
-    tls_handshake(connection);
+    log_error("tls write\n");
 }
 
 void tls_handshake(connection_t* connection) {
     int result = 0;
 
-    if(connection->ssl == NULL) {
+    if (connection->ssl == NULL) {
 
         connection->ssl = SSL_new(connection->server->openssl->ctx);
 
-        if(connection->ssl == NULL) {
+        if (connection->ssl == NULL) {
             log_error(TLS_ERROR_ALLOC_SSL);
             goto epoll_ssl_error;
         }
 
-        if(!SSL_set_fd(connection->ssl, connection->fd)) {
+        if (!SSL_set_fd(connection->ssl, connection->fd)) {
             log_error(TLS_ERROR_SET_SSL_FD);
             goto epoll_ssl_error;
         }
@@ -58,7 +58,7 @@ void tls_handshake(connection_t* connection) {
         return;
     }
 
-    switch(SSL_get_error(connection->ssl, result)) {
+    switch (SSL_get_error(connection->ssl, result)) {
 
         case SSL_ERROR_SYSCALL:
         case SSL_ERROR_SSL:
@@ -68,12 +68,10 @@ void tls_handshake(connection_t* connection) {
 
         case SSL_ERROR_WANT_READ:
             // log_error(TLS_ERROR_WANT_READ);
-            connection->after_read_request(connection);
             return;
 
         case SSL_ERROR_WANT_WRITE:
             // log_error(TLS_ERROR_WANT_WRITE);
-            connection->after_write_request(connection);
             return;
 
         case SSL_ERROR_WANT_ACCEPT:

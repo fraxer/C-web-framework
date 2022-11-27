@@ -4,6 +4,7 @@
 #include <errno.h>
 #include "../log/log.h"
 #include "../socket/socket.h"
+#include "../openssl/openssl.h"
 #include "connection.h"
 
 connection_t* connection_create(int listen_socket, int basefd) {
@@ -57,7 +58,7 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->fd = fd;
     connection->basefd = basefd;
     connection->ssl_enabled = 0;
-    connection->keepalive_enabled = 1;
+    connection->keepalive_enabled = 0;
     connection->counter = NULL;
     connection->ssl = NULL;
     connection->apidata = NULL;
@@ -68,8 +69,8 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->write = NULL;
     connection->after_read_request = NULL;
     connection->after_write_request = NULL;
-    connection->switch_to_http1 = NULL;
-    connection->switch_to_websocket = NULL;
+    // connection->switch_to_http1 = NULL;
+    // connection->switch_to_websocket = NULL;
 
     pthread_mutex_init(&connection->mutex, NULL);
 
@@ -80,6 +81,9 @@ void connection_free(connection_t* connection) {
     if (connection == NULL) return;
 
     pthread_mutex_destroy(&connection->mutex);
+
+    SSL_free_buffers(connection->ssl);
+    SSL_free(connection->ssl);
 
     free(connection->apidata);
     free(connection);

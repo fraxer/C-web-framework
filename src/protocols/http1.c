@@ -2,8 +2,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
-#include <errno.h>
 #include "../log/log.h"
+#include "../openssl/openssl.h"
 #include "http1.h"
     #include <stdio.h>
 
@@ -34,18 +34,18 @@ void http1_write(connection_t* connection) {
 
 ssize_t http1_read_internal(connection_t* connection, char* buffer, size_t size) {
     return connection->ssl_enabled ?
-        SSL_read(connection->ssl, buffer, size) :
+        openssl_read(connection->ssl, buffer, size) :
         read(connection->fd, buffer, size);
 }
 
 ssize_t http1_write_internal(connection_t* connection, const char* response, size_t size) {
     if (connection->ssl_enabled) {
-        size_t sended = SSL_write(connection->ssl, response, size);
+        size_t sended = openssl_write(connection->ssl, response, size);
 
         if (sended == -1) {
-            // int err = ssl_get_error(connection->ssl, sended);
+            int err = openssl_get_status(connection->ssl, sended);
 
-            // if (err == 1) return;
+            if (err == 1) return 0;
         }
 
         return sended;

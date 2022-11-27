@@ -24,8 +24,8 @@ typedef struct connection {
     void(*write)(struct connection*);
     int(*after_read_request)(struct connection*);
     int(*after_write_request)(struct connection*);
-    int(*switch_to_http1)(struct connection*);
-    int(*switch_to_websocket)(struct connection*);
+    // int(*switch_to_http1)(struct connection*);
+    // int(*switch_to_websocket)(struct connection*);
 } connection_t;
 
 connection_t* connection_create(int, int);

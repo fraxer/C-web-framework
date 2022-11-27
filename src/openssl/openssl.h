@@ -16,4 +16,10 @@ openssl_t* openssl_create();
 
 void openssl_free(openssl_t*);
 
+int openssl_read(SSL*, void*, int);
+
+int openssl_write(SSL*, const void*, int);
+
+int openssl_get_status(SSL*, int);
+
 #endif
