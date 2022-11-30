@@ -146,7 +146,6 @@ server_chain_t* server_chain_create(server_t* server, routeloader_lib_t* lib, in
     chain->is_deprecated = 0;
     chain->is_hard_reload = is_hard_reload;
     chain->thread_count = 0;
-    chain->connection_count = 0;
     chain->routeloader = lib;
     chain->server = server;
     chain->prev = NULL;

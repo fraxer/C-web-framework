@@ -22,10 +22,7 @@ openssl_t* openssl_alloc();
 
 
 int openssl_init(openssl_t* openssl) {
-    if (!SSL_library_init()) {
-        log_error("Can't init ssl library\n");
-        return -1;
-    }
+    SSL_library_init();
 
     if (openssl_context_init(openssl) == -1) return -1;
 

@@ -26,7 +26,7 @@ typedef struct socket_epoll {
 
 int epoll_init(socket_epoll_t** first_socket, server_t*);
 
-int epoll_after_create_connection(connection_t*, server_chain_t*, server_t*);
+int epoll_after_create_connection(connection_t*, server_chain_t*, server_t*, int*);
 
 int epoll_after_read_request(connection_t*);
 
@@ -53,6 +53,8 @@ int epoll_disable(socket_t*, int);
 
 void epoll_run(void* chain) {
     int result = -1;
+
+    int connection_count = 0;
 
     server_chain_t* server_chain = chain;
 
@@ -82,7 +84,7 @@ void epoll_run(void* chain) {
                 connection_t* connection = NULL;
 
                 while ((connection = connection_create(listen_socket->fd, basefd)) != NULL) {
-                    if (epoll_after_create_connection(connection, server_chain, listen_socket->server) == -1) break;
+                    if (epoll_after_create_connection(connection, server_chain, listen_socket->server, &connection_count) == -1) break;
                 }
 
                 continue;
@@ -96,6 +98,8 @@ void epoll_run(void* chain) {
 
             if ((ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) ||
                 (server_chain->is_deprecated && server_chain->is_hard_reload)) {
+
+                printf("close conn %d\n", connection->fd);
                 connection->close(connection);
             }
             else if (ev->events & EPOLLIN) {
@@ -115,9 +119,7 @@ void epoll_run(void* chain) {
 
             first_socket = NULL;
 
-            timeout = 500;
-
-            if (server_chain->connection_count == 0) break;
+            if (connection_count == 0) break;
         }
     }
 
@@ -195,13 +197,13 @@ char* epoll_buffer_alloc() {
     return (char*)malloc(EPOLL_BUFFER);
 }
 
-int epoll_after_create_connection(connection_t* connection, server_chain_t* server_chain, server_t* server) {
+int epoll_after_create_connection(connection_t* connection, server_chain_t* server_chain, server_t* server, int* connection_count) {
     if (epoll_connection_set_event(connection) == -1) {
         log_error("Epoll error: Error event allocation\n");
         return -1;
     }
 
-    connection->counter = &server_chain->connection_count;
+    connection->counter = connection_count;
     connection->server = server;
 
     if (server->openssl) {

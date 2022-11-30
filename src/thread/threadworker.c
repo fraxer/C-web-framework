@@ -3,6 +3,7 @@
 #include <sys/epoll.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <signal.h>
 #include "threadworker.h"
 #include "../log/log.h"
 #include "../epoll/epoll.h"
@@ -18,6 +19,8 @@ static int thread_worker_count = 0;
 
 static thread_worker_item_t* thread_workers = NULL;
 
+static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 void* thread_worker(void* server_chain) {
     // if (fd_handler == THREAD_EPOLL) {
         epoll_run(server_chain);
@@ -32,10 +35,15 @@ void* thread_worker(void* server_chain) {
     //     kqueue_run();
     // }
 
-    server_chain_t* chain = (server_chain_t*)server_chain;
+    if (pthread_mutex_trylock(&mutex) == 0) {
 
-    if (chain->thread_count == 0) {
-        chain->destroy(chain);
+        server_chain_t* chain = (server_chain_t*)server_chain;
+
+        if (chain && chain->thread_count == 0) {
+            chain->destroy(chain);
+        }
+
+        pthread_mutex_unlock(&mutex);
     }
 
     pthread_exit(NULL);
@@ -53,6 +61,7 @@ thread_worker_item_t* thread_worker_create(int count, server_chain_t* server_cha
     size_t thread_size = sizeof(thread_worker_item_t);
 
     for (int i = 0; i < count; i++) {
+        threads[i].thread = 0;
         threads[i].server_chain = server_chain;
     }
 
@@ -76,11 +85,16 @@ int thread_worker_run(int worker_count, server_chain_t* server_chain) {
     for (int i = thread_worker_index, j = 0; i < thread_worker_index + thread_worker_count; i++, j++) {
         threads[j].server_chain = thread_workers[i].server_chain;
         threads[j].server_chain->is_deprecated = 1;
+
+        if (threads[j].thread) {
+            pthread_kill(threads[j].thread, SIGHUP);
+        }
     }
 
     for (int i = thread_worker_count; i < thread_worker_count + worker_count; i++) {
         if (pthread_create(&threads[i].thread, NULL, thread_worker, threads[i].server_chain) != 0) {
             log_error("Thread error: Unable to create worker thread\n");
+            if (thread_workers) free(thread_workers);
             return -1;
         }
 

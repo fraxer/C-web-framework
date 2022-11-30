@@ -16,8 +16,9 @@ void http1_read(connection_t* connection, char* buffer, size_t size) {
             connection->after_read_request(connection);
             return;
         case 0:
-            connection->keepalive_enabled = 0;
-            connection->close(connection);
+            connection->after_read_request(connection);
+            // connection->keepalive_enabled = 0;
+            // connection->close(connection);
             return;
         default:
             // TODO: parse request

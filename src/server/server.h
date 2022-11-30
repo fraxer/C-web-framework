@@ -39,7 +39,6 @@ typedef struct server_chain {
     int is_deprecated;
     int is_hard_reload;
     int thread_count;
-    int connection_count;
     int domain_hash_bucket_size;
 
     pthread_mutex_t mutex;
