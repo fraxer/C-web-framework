@@ -8,6 +8,12 @@ http1request_t* http1request_alloc() {
 
 void http1request_header_free(http1request_header_t* header) {
 
+    header = NULL;
+}
+
+void http1request_query_free(http1request_query_t* query) {
+
+    query = NULL;
 }
 
 void http1request_free(void* arg) {
@@ -15,10 +21,10 @@ void http1request_free(void* arg) {
 
     request->method = HTTP1_NONE;
 
-    if (request->uri) free(request->uri);
+    if (request->uri) free((void*)request->uri);
     request->uri = NULL;
 
-    if (request->path) free(request->path);
+    if (request->path) free((void*)request->path);
     request->path = NULL;
 
     if (request->query) free(request->query);
@@ -27,8 +33,9 @@ void http1request_free(void* arg) {
     if (request->payload) free(request->payload);
     request->payload = NULL;
 
+    http1request_query_free(request->query);
+
     http1request_header_free(request->header);
-    request->header = NULL;
 
     free(request);
 
@@ -44,8 +51,8 @@ http1request_t* http1request_create() {
     request->version = HTTP1_VER_NONE;
     request->uri = NULL;
     request->path = NULL;
-    request->query = NULL;
     request->payload = NULL;
+    request->query = NULL;
     request->header = NULL;
     request->last_header = NULL;
     request->base.free = (void(*)(void*))http1request_free;

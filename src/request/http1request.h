@@ -25,14 +25,20 @@ typedef struct http1request_header {
     struct http1request_header* next;
 } http1request_header_t;
 
+typedef struct http1request_query {
+    const char* key;
+    const char* value;
+    struct http1request_query* next;
+} http1request_query_t;
+
 typedef struct http1request {
     request_t base;
     http1request_method_e method;
     http1request_version_e version;
-    char* uri;
-    char* path;
-    char* query;
+    const char* uri;
+    const char* path;
     char* payload;
+    http1request_query_t* query;
     http1request_header_t* header;
     http1request_header_t* last_header;
 } http1request_t;

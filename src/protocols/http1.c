@@ -44,9 +44,13 @@ int http1_parser_parse_payload(http1_parser_t*);
 int http1_set_method(http1request_t*, const char*, size_t);
 int http1_parser_string_append(http1_parser_t*);
 int http1_set_uri(http1request_t*, const char*, size_t);
+int http1_set_query(http1request_t*, const char*, size_t, size_t);
 int http1_set_protocol(http1request_t*, const char*);
 http1request_header_t* http1_header_alloc();
 http1request_header_t* http1_header_create(const char*, const char*);
+http1request_query_t* http1_query_alloc();
+http1request_query_t* http1_query_create();
+const char* http1_query_set_field(const char*, size_t);
 int http1_handle(connection_t*);
 
 
@@ -62,11 +66,14 @@ void http1_read(connection_t* connection, char* buffer, size_t size) {
 
         switch (bytes_readed) {
         case -1:
+            // printf("req 1\n");
             http1_handle(connection);
 
             connection->after_read_request(connection);
             return;
         case 0:
+            // printf("req 2\n");
+            // http1_handle(connection);
             // invoke default handler
             connection->after_read_request(connection);
             // connection->keepalive_enabled = 0;
@@ -163,11 +170,17 @@ int http1_parser_parse_method(http1_parser_t* parser) {
     int method_max_length = 7;
 
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
-        if (parser->buffer[parser->pos] < 32) return -1;
+        if (parser->buffer[parser->pos] < 32) {
+            log_error("HTTP error: denied symbols in method\n");
+            return -1;
+        }
 
         if (parser->buffer[parser->pos] == ' ') goto next;
 
-        if (parser->pos > method_max_length) return -1;
+        if (parser->pos - parser->pos_start > method_max_length) {
+            log_error("HTTP error: method limit\n");
+            return -1;
+        }
     }
 
     return http1_parser_string_append(parser);
@@ -204,11 +217,17 @@ int http1_parser_parse_uri(http1_parser_t* parser) {
     // int uri_max_length = 8192;
 
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
-        if (parser->buffer[parser->pos] < 32) return -1;
+        if (parser->buffer[parser->pos] < 32) {
+            log_error("HTTP error: denied symbols in method\n");
+            return -1;
+        }
 
         if (parser->buffer[parser->pos] == ' ') goto next;
 
-        // if (parser->uri_max_length > uri_max_length) return -1;
+        // if (parser->pos - parser->pos_start > uri_max_length) {
+        //     log_error("HTTP error: uri limit\n");
+        //     return -1;
+        // }
     }
 
     return http1_parser_string_append(parser);
@@ -222,15 +241,22 @@ int http1_parser_parse_uri(http1_parser_t* parser) {
     if (parser->string) {
         if (http1_set_uri(request, parser->string, parser->string_len) == -1) return -1;
     } else {
-        if (http1_set_uri(request, &parser->buffer[parser->pos_start], parser->pos - parser->pos_start) == -1) return -1;
+        parser->string_len = parser->pos  - parser->pos_start;
+
+        parser->string = (char*)malloc(parser->string_len + 1);
+
+        if (parser->string == NULL) return -1;
+
+        strncpy(parser->string, &parser->buffer[parser->pos_start], parser->string_len);
+
+        parser->string[parser->string_len] = 0;
+
+        if (http1_set_uri(request, parser->string, parser->string_len) == -1) return -1;
     }
 
     parser->pos_start = parser->pos + 1;
 
-    if (parser->string) {
-        free(parser->string);
-        parser->string = NULL;
-    }
+    parser->string = NULL;
 
     parser->string_len = 0;
 
@@ -242,12 +268,15 @@ int http1_parser_parse_uri(http1_parser_t* parser) {
 }
 
 int http1_parser_parse_protocol(http1_parser_t* parser) {
-    int protocol_max_length = 10; // with \r\n
+    int protocol_max_length = 8;
 
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
         char ch = parser->buffer[parser->pos];
 
-        if (ch < 32 && !(ch == '\r' || ch == '\n')) return -1;
+        if (ch < 32 && !(ch == '\r' || ch == '\n')) {
+            log_error("HTTP error: denied symbols in protocol\n");
+            return -1;
+        }
 
         if (ch == '\n') {
             if (parser->buffer[parser->pos - 1] == '\r') {
@@ -259,7 +288,10 @@ int http1_parser_parse_protocol(http1_parser_t* parser) {
             goto next;
         }
 
-        if (parser->pos > protocol_max_length) return -1;
+        if (parser->pos - parser->pos_start > protocol_max_length) {
+            log_error("HTTP error: protocol limit\n");
+            return -1;
+        }
     }
 
     return http1_parser_string_append(parser);
@@ -556,7 +588,115 @@ int http1_parser_string_append(http1_parser_t* parser) {
 }
 
 int http1_set_uri(http1request_t* request, const char* string, size_t length) {
-    // printf("%.*s\n", length, string);
+    if (string[0] != '/') return -1;
+
+    request->uri = string;
+
+    size_t path_point_end = 0;
+
+    for (size_t pos = 0; pos < length; pos++) {
+        switch (string[pos]) {
+        case '?':
+            if (path_point_end == 0) path_point_end = pos;
+
+            int result = http1_set_query(request, string, length, pos);
+
+            if (result == 0) goto next;
+            if (result < 0) return result;
+
+            break;
+        case '#':
+            if (path_point_end == 0) path_point_end = pos;
+            goto next;
+            break;
+        }
+    }
+
+    next:
+
+    if (path_point_end == 0) path_point_end = length;
+
+    request->path = (char*)malloc(path_point_end + 1);
+
+    if (request->path == NULL) return -1;
+
+    strncpy((char*)request->path, string, path_point_end);
+
+    return 0;
+}
+
+int http1_set_query(http1request_t* request, const char* string, size_t length, size_t pos) {
+    size_t point_start = pos + 1;
+
+    enum { KEY, VALUE } stage = KEY;
+
+    http1request_query_t* query = http1_query_create();
+
+    if (query == NULL) {
+        log_error("HTTP error: can't alloc query\n");
+        return -1;
+    }
+
+    request->query = query;
+
+    for (++pos; pos < length; pos++) {
+        switch (string[pos]) {
+        case '=':
+            if (string[pos - 1] == '=') continue;
+
+            stage = VALUE;
+
+            query->key = http1_query_set_field(&string[point_start], pos - point_start);
+
+            if (query->key == NULL) return -1;
+
+            point_start = pos + 1;
+            break;
+        case '&':
+            stage = KEY;
+
+            query->value = http1_query_set_field(&string[point_start], pos - point_start);
+
+            if (query->value == NULL) return -1;
+
+            http1request_query_t* query_new = http1_query_create();
+
+            if (query_new == NULL) {
+                log_error("HTTP error: can't alloc query\n");
+                return -1;
+            }
+
+            query->next = query_new;
+
+            query = query_new;
+
+            point_start = pos + 1;
+            break;
+        case '#':
+            if (stage == KEY) {
+                query->key = http1_query_set_field(&string[point_start], pos - point_start);
+                if (query->key == NULL) return -1;
+            }
+            else if (stage == VALUE) {
+                query->value = http1_query_set_field(&string[point_start], pos - point_start);
+                if (query->value == NULL) return -1;
+            }
+
+            return 0;
+        }
+    }
+
+    if (stage == KEY) {
+        query->key = http1_query_set_field(&string[point_start], pos - point_start);
+        if (query->key == NULL) return -1;
+
+        query->value = http1_query_set_field("", 0);
+        if (query->value == NULL) return -1;
+    }
+    else if (stage == VALUE) {
+        query->value = http1_query_set_field(&string[point_start], pos - point_start);
+        if (query->value == NULL) return -1;
+    }
 
     return 0;
 }
@@ -611,21 +751,57 @@ http1request_header_t* http1_header_create(const char* key, const char* value) {
     return header;
 }
 
+http1request_query_t* http1_query_alloc() {
+    return (http1request_query_t*)malloc(sizeof(http1request_query_t));
+}
+
+http1request_query_t* http1_query_create() {
+    http1request_query_t* query = http1_query_alloc();
+
+    query->key = NULL;
+    query->value = NULL;
+    query->next = NULL;
+
+    return query;
+}
+
+const char* http1_query_set_field(const char* string, size_t length) {
+    char* field = (char*)calloc(length + 1, sizeof(char));
+
+    if (field == NULL) {
+        log_error("HTTP error: can't alloc query field\n");
+        return NULL;
+    }
+
+    strncpy(field, string, length);
+
+    field[length] = 0;
+
+    return field;
+}
+
 int http1_handle(connection_t* connection) {
     http1request_t* request = (http1request_t*)connection->request;
 
-    // printf("method %d\n", request->method);
-    // printf("version %d\n", request->version);
-    // printf("uri %s\n", request->uri);
-    // printf("path %s\n", request->path);
-    // printf("query %s\n", request->query);
+    printf("method %d\n", request->method);
+    printf("version %d\n", request->version);
+    printf("uri %s\n", request->uri);
+    printf("path %s\n", request->path);
 
-    http1request_header_t* header = request->header;
+    // http1request_header_t* header = request->header;
 
-    while (header) {
-        // printf("%s: %s\n", header->key, header->value);
+    // while (header) {
+    //     printf("%s: %s\n", header->key, header->value);
 
-        header = header->next;
+    //     header = header->next;
+    // }
+
+    http1request_query_t* query = request->query;
+
+    while (query) {
+        printf("%s: %s\n", query->key, query->value);
+
+        query = query->next;
     }
 
     return 0;
