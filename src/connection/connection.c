@@ -63,6 +63,7 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->ssl = NULL;
     connection->apidata = NULL;
     connection->server = NULL;
+    connection->request = NULL;
     connection->close = NULL;
     connection->read = NULL;
     connection->handle = NULL;
@@ -85,6 +86,11 @@ void connection_free(connection_t* connection) {
     if (connection->ssl_enabled) {
         SSL_free_buffers(connection->ssl);
         SSL_free(connection->ssl);
+    }
+
+    if (connection->request != NULL) {
+        connection->request->free(connection->request);
+        connection->request = NULL;
     }
 
     free(connection->apidata);

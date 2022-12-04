@@ -42,6 +42,8 @@ add_library(protocolmanager STATIC src/protocols/protocolmanager.c)
 
 add_library(http1 STATIC src/protocols/http1.c)
 
+add_library(http1request STATIC src/request/http1request.c)
+
 add_library(websockets STATIC src/protocols/websockets.c)
 
 add_library(tls STATIC src/protocols/tls.c)
@@ -92,6 +94,7 @@ target_link_libraries(
 	socket
 	protocolmanager
 	http1
+	http1request
 	websockets
 	tls
 

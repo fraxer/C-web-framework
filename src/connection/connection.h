@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include "../server/server.h"
 #include "../openssl/openssl.h"
+#include "../request/request.h"
 
 typedef struct connection {
     int fd;
@@ -15,6 +16,7 @@ typedef struct connection {
     void* protocol;
     SSL* ssl;
     server_t* server;
+    request_t* request;
 
     pthread_mutex_t mutex;
 

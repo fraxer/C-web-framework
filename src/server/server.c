@@ -10,9 +10,10 @@
 static server_chain_t* server_chain = NULL;
 static server_chain_t* last_server_chain = NULL;
 
-void* server_init() {
-    return NULL;
-}
+server_t* server_alloc();
+
+server_chain_t* server_chain_alloc();
+
 
 struct hsearch_data* server_domain_hash_table_alloc() {
     struct hsearch_data* table = (struct hsearch_data*)malloc(sizeof(struct hsearch_data));
@@ -42,6 +43,7 @@ server_t* server_create() {
     server->route = NULL;
     server->database = NULL;
     server->openssl = NULL;
+    server->info = NULL;
     server->next = NULL;
 
     result = server;
@@ -95,6 +97,8 @@ void server_free(server_t* server) {
         if (server->openssl) openssl_free(server->openssl);
         server->openssl = NULL;
 
+        server->info = NULL;
+
         server->next = NULL;
 
         free(server);
@@ -134,7 +138,7 @@ server_chain_t* server_chain_alloc() {
     return (server_chain_t*)malloc(sizeof(server_chain_t));
 }
 
-server_chain_t* server_chain_create(server_t* server, routeloader_lib_t* lib, int is_hard_reload) {
+server_chain_t* server_chain_create(server_t* server, routeloader_lib_t* lib, server_info_t* server_info, int is_hard_reload) {
     server_chain_t* chain = server_chain_alloc();
 
     if (chain == NULL) return NULL;
@@ -148,6 +152,7 @@ server_chain_t* server_chain_create(server_t* server, routeloader_lib_t* lib, in
     chain->thread_count = 0;
     chain->routeloader = lib;
     chain->server = server;
+    chain->info = server_info;
     chain->prev = NULL;
     chain->next = NULL;
     chain->destroy = server_chain_destroy;
@@ -161,8 +166,8 @@ server_chain_t* server_chain_last() {
     return last_server_chain;
 }
 
-int server_chain_append(server_t* server, routeloader_lib_t* lib, int is_hard_reload) {
-    server_chain_t* chain = server_chain_create(server, lib, is_hard_reload);
+int server_chain_append(server_t* server, routeloader_lib_t* lib, server_info_t* server_info, int is_hard_reload) {
+    server_chain_t* chain = server_chain_create(server, lib, server_info, is_hard_reload);
 
     if (chain == NULL) return -1;
 
@@ -200,5 +205,22 @@ void server_chain_destroy(server_chain_t* _server_chain) {
 
     pthread_mutex_destroy(&_server_chain->mutex);
 
+    server_info_free(_server_chain->info);
+
     free(_server_chain);
+}
+
+server_info_t* server_info_alloc() {
+    return (server_info_t*)malloc(sizeof(server_info_t));
+}
+
+void server_info_free(server_info_t* server_info) {
+    if (server_info == NULL) return;
+
+    if (server_info->tmp_dir) free(server_info->tmp_dir);
+    server_info->tmp_dir = NULL;
+
+    free(server_info);
+
+    server_info = NULL;
 }

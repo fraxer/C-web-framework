@@ -1,14 +1,15 @@
 {
     "main": {
-        "workers": 2,
+        "workers": 30,
         "threads": 1,
         "reload": "hard",
-        "head_buffer": 2048,
+        "read_buffer": 16384,
         "client_max_body_size": 110485760,
         "environment": "dev",
         "keepalive_timeout": 65,
         "tmp": "/var/www/tmp/",
-        "server_hash_bucket_size": 4096,
+        "route_hash_bucket_size": 4096,
+        "redirect_hash_bucket_size": 4096,
         "mimetype_hash_bucket_size": 4096
     },
     "log": {
@@ -24,6 +25,42 @@
                 "(a1|a2|a3).domain.com",
                 "(.1|.*|a3).domain.com",
                 "mail.*"
+            ],
+            "ip": "127.0.0.1",
+            "port": 4443,
+            "root": "/var/www/webroot/",
+            "redirects": {
+                ".*": "https://domain.com",
+                "/user": "/persons",
+                "/user(.*)/(\\d)": "/person_%1_/_%2"
+            },
+            "index": "index.html",
+            "routes": {
+                "/": {
+                    "GET": ["./libindexpage.so", "view"],
+                    "PUT": ["./libindexpage.so", "view"],
+                    "DELETE": ["./libindexpage.so", "view"]
+                }
+            },
+            "database": {
+                "host": "127.0.0.1",
+                "port": 5432,
+                "dbname": "database",
+                "user": "root",
+                "password": "",
+                "driver": "postgresql",
+                "connection_timeout": 3,
+                "connection_count": 3
+            },
+            "openssl": {
+                "fullchain": "/var/www/fullchain.pem",
+                "private": "/var/www/privkey.pem",
+                "ciphers": "TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256 TLS_AES_128_GCM_SHA256 TLS_AES_128_CCM_8_SHA256 TLS_AES_128_CCM_SHA256 ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256"
+            },
+        },
+        {
+            "domains": [
+                "wwww.example.com"
             ],
             "ip": "127.0.0.1",
             "port": 8080,
@@ -48,8 +85,8 @@
                 "user": "root",
                 "password": "",
                 "driver": "postgresql",
-                "connections_timeout": 3,
-                "connections_count": 3
+                "connection_timeout": 3,
+                "connection_count": 3
             }
         }
     ],

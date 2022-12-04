@@ -30,6 +30,8 @@ int module_loader_thread_handlers_load();
 
 int module_loader_reload_is_hard();
 
+server_info_t* module_loader_server_info_load();
+
 
 int module_loader_init(int argc, char* argv[]) {
     int result = -1;
@@ -470,6 +472,10 @@ int module_loader_servers_load(int reload_is_hard) {
 
     int result = -1;
 
+    server_info_t* server_info = module_loader_server_info_load();
+
+    if (server_info == NULL) goto failed;
+
     for (jsmntok_t* token_item = token_array->child; token_item; token_item = token_item->sibling) {
         enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
         enum fields { DOMAINS = 0, IP, PORT, ROOT, REDIRECTS, INDEX, ROUTES, DATABASE, OPENSSL, FIELDS_COUNT };
@@ -479,6 +485,10 @@ int module_loader_servers_load(int reload_is_hard) {
         const jsmntok_t* token_server = token_item;
 
         server_t* server = server_create();
+
+        if (server == NULL) goto failed;
+
+        server->info = server_info;
 
         if (first_server == NULL) {
             first_server = server;
@@ -623,7 +633,7 @@ int module_loader_servers_load(int reload_is_hard) {
         return -1;
     }
 
-    if (server_chain_append(first_server, first_lib, reload_is_hard) == -1) goto failed;
+    if (server_chain_append(first_server, first_lib, server_info, reload_is_hard) == -1) goto failed;
 
     result = 0;
 
@@ -633,6 +643,83 @@ int module_loader_servers_load(int reload_is_hard) {
         server_free(first_server);
 
         routeloader_free(first_lib);
+    }
+
+    return result;
+}
+
+server_info_t* module_loader_server_info_load() {
+    server_info_t* result = NULL;
+
+    server_info_t* server_info = server_info_alloc();
+
+    if (server_info == NULL) return NULL;
+
+    const jsmntok_t* token_root = config_get_section("main");
+
+    enum fields { HEAD_BUFFER = 0, CLIENT, ENV, TMP, FIELDS_COUNT };
+
+    int finded_fields[FIELDS_COUNT] = {0};
+
+    for (jsmntok_t* token = token_root->child; token; token = token->sibling) {
+        const char* key = jsmn_get_value(token);
+
+        if (strcmp(key, "read_buffer") == 0) {
+            finded_fields[HEAD_BUFFER] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            server_info->read_buffer = atoi(value);
+        }
+        else if (strcmp(key, "client_max_body_size") == 0) {
+            finded_fields[CLIENT] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            server_info->client_max_body_size = atoi(value);
+        }
+        else if (strcmp(key, "environment") == 0) {
+            finded_fields[ENV] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            if (strcmp(value, "dev") == 0) {
+                server_info->environment = ENV_DEV;
+            }
+            else if (strcmp(value, "prod") == 0) {
+                server_info->environment = ENV_PROD;
+            }
+            else {
+                log_error("Error: Set up environment\n");
+                goto failed;
+            }
+        }
+        else if (strcmp(key, "tmp") == 0) {
+            finded_fields[TMP] = 1;
+
+            const char* value = jsmn_get_value(token->child);
+
+            server_info->tmp_dir = (char*)malloc(strlen(value) + 1);
+
+            if (server_info->tmp_dir == NULL) goto failed;
+
+            strcpy(server_info->tmp_dir, value);
+        }
+    }
+
+    for (int i = 0; i < FIELDS_COUNT; i++) {
+        if (finded_fields[i] == 0) {
+            log_error("Error: Fill main section\n");
+            goto failed;
+        }
+    }
+
+    result = server_info;
+
+    failed:
+
+    if (result == NULL) {
+        server_info_free(server_info);
     }
 
     return result;

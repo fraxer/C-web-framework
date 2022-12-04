@@ -15,7 +15,6 @@
     #include <stdio.h>
 
 #define EPOLL_MAX_EVENTS 16
-#define EPOLL_BUFFER 16384
 
 typedef struct epoll_event epoll_event_t;
 
@@ -42,7 +41,7 @@ int epoll_control_mod(connection_t*, uint32_t);
 
 int epoll_control_del(connection_t*);
 
-char* epoll_buffer_alloc();
+char* epoll_buffer_alloc(int);
 
 int epoll_connection_set_event(connection_t*);
 
@@ -64,7 +63,7 @@ void epoll_run(void* chain) {
 
     if (basefd == -1) goto failed;
 
-    char* buffer = epoll_buffer_alloc();
+    char* buffer = epoll_buffer_alloc(server_chain->info->read_buffer);
 
     if (buffer == NULL) goto failed;
 
@@ -103,7 +102,7 @@ void epoll_run(void* chain) {
                 connection->close(connection);
             }
             else if (ev->events & EPOLLIN) {
-                connection->read(connection, buffer, EPOLL_BUFFER);
+                connection->read(connection, buffer, server_chain->info->read_buffer);
             }
             else if (ev->events & EPOLLOUT) {
                 connection->write(connection);
@@ -193,8 +192,8 @@ int epoll_disable(socket_t* first_socket, int basefd) {
     }
 }
 
-char* epoll_buffer_alloc() {
-    return (char*)malloc(EPOLL_BUFFER);
+char* epoll_buffer_alloc(int size) {
+    return (char*)malloc(size);
 }
 
 int epoll_after_create_connection(connection_t* connection, server_chain_t* server_chain, server_t* server, int* connection_count) {
