@@ -20,8 +20,8 @@ typedef enum http1request_method {
 } http1request_method_e;
 
 typedef struct http1request_header {
-    char* key;
-    char* value;
+    const char* key;
+    const char* value;
     struct http1request_header* next;
 } http1request_header_t;
 
