@@ -19,7 +19,7 @@ void http1request_query_free(http1request_query_t* query) {
 void http1request_free(void* arg) {
     http1request_t* request = (http1request_t*)arg;
 
-    request->method = HTTP1_NONE;
+    request->method = ROUTE_NONE;
 
     if (request->uri) free((void*)request->uri);
     request->uri = NULL;
@@ -47,8 +47,10 @@ http1request_t* http1request_create() {
 
     if (request == NULL) return NULL;
 
-    request->method = HTTP1_NONE;
+    request->method = ROUTE_NONE;
     request->version = HTTP1_VER_NONE;
+    request->uri_length = 0;
+    request->path_length = 0;
     request->uri = NULL;
     request->path = NULL;
     request->payload = NULL;

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "../log/log.h"
 #include "../openssl/openssl.h"
+#include "../route/route.h"
 #include "../request/http1request.h"
 #include "http1.h"
     #include <stdio.h>
@@ -51,7 +52,10 @@ http1request_header_t* http1_header_create(const char*, const char*);
 http1request_query_t* http1_query_alloc();
 http1request_query_t* http1_query_create();
 const char* http1_query_set_field(const char*, size_t);
-int http1_handle(connection_t*);
+void http1_handle(connection_t*);
+int http1_get_resource(connection_t*);
+int http1_get_file(connection_t*);
+void http1_default_response(connection_t*, int);
 
 
 void http1_read(connection_t* connection, char* buffer, size_t size) {
@@ -68,7 +72,6 @@ void http1_read(connection_t* connection, char* buffer, size_t size) {
         case -1:
             // printf("req 1\n");
             http1_handle(connection);
-
             connection->after_read_request(connection);
             return;
         case 0:
@@ -83,6 +86,7 @@ void http1_read(connection_t* connection, char* buffer, size_t size) {
             parser.bytes_readed = bytes_readed;
 
             if (http1_parser_run(&parser) == -1) {
+                http1_default_response(connection, 400);
                 connection->after_read_request(connection);
                 return;
             }
@@ -518,30 +522,30 @@ int http1_set_method(http1request_t* request, const char* string, size_t length)
     switch (length) {
     case 3:
         if (string[0] == 'G' && string[1] == 'E' && string[2] == 'T') {
-            request->method = HTTP1_GET;
+            request->method = ROUTE_GET;
         }
         else if (string[0] == 'P' && string[1] == 'U' && string[2] == 'T') {
-            request->method = HTTP1_PUT;
+            request->method = ROUTE_PUT;
         }
         break;
     case 4:
         if (string[0] == 'P' && string[1] == 'O' && string[2] == 'S' && string[3] == 'T') {
-            request->method = HTTP1_POST;
+            request->method = ROUTE_POST;
         }
         break;
     case 5:
         if (string[0] == 'P' && string[1] == 'A' && string[2] == 'T' && string[3] == 'C' && string[4] == 'H') {
-            request->method = HTTP1_PATCH;
+            request->method = ROUTE_PATCH;
         }
         break;
     case 6:
         if (string[0] == 'D' && string[1] == 'E' && string[2] == 'L' && string[3] == 'E' && string[4] == 'T' && string[5] == 'E') {
-            request->method = HTTP1_DELETE;
+            request->method = ROUTE_DELETE;
         }
         break;
     case 7:
         if (string[0] == 'O' && string[1] == 'P' && string[2] == 'T' && string[3] == 'I' && string[4] == 'O' && string[5] == 'N' && string[6] == 'S') {
-            request->method = HTTP1_OPTIONS;
+            request->method = ROUTE_OPTIONS;
         }
         break;
     default:
@@ -591,6 +595,7 @@ int http1_set_uri(http1request_t* request, const char* string, size_t length) {
     if (string[0] != '/') return -1;
 
     request->uri = string;
+    request->uri_length = length;
 
     size_t path_point_end = 0;
 
@@ -616,11 +621,16 @@ int http1_set_uri(http1request_t* request, const char* string, size_t length) {
 
     if (path_point_end == 0) path_point_end = length;
 
-    request->path = (char*)malloc(path_point_end + 1);
+    char* path = (char*)malloc(path_point_end + 1);
 
-    if (request->path == NULL) return -1;
+    if (path == NULL) return -1;
 
-    strncpy((char*)request->path, string, path_point_end);
+    strncpy(path, string, path_point_end);
+
+    path[path_point_end] = 0;
+
+    request->path = path;
+    request->path_length = path_point_end;
 
     return 0;
 }
@@ -632,10 +642,7 @@ int http1_set_query(http1request_t* request, const char* string, size_t length, 
 
     http1request_query_t* query = http1_query_create();
 
-    if (query == NULL) {
-        log_error("HTTP error: can't alloc query\n");
-        return -1;
-    }
+    if (query == NULL) return -1;
 
     request->query = query;
 
@@ -661,10 +668,7 @@ int http1_set_query(http1request_t* request, const char* string, size_t length, 
 
             http1request_query_t* query_new = http1_query_create();
 
-            if (query_new == NULL) {
-                log_error("HTTP error: can't alloc query\n");
-                return -1;
-            }
+            if (query_new == NULL) return -1;
 
             query->next = query_new;
 
@@ -758,6 +762,11 @@ http1request_query_t* http1_query_alloc() {
 http1request_query_t* http1_query_create() {
     http1request_query_t* query = http1_query_alloc();
 
+    if (query == NULL) {
+        log_error("HTTP error: can't alloc query\n");
+        return NULL;
+    }
+
     query->key = NULL;
     query->value = NULL;
     query->next = NULL;
@@ -780,29 +789,100 @@ const char* http1_query_set_field(const char* string, size_t length) {
     return field;
 }
 
-int http1_handle(connection_t* connection) {
+void http1_handle(connection_t* connection) {
+    if (http1_get_resource(connection)) return;
+
+    if (http1_get_file(connection)) return;
+
+    http1_default_response(connection, 404);
+
+    {
+        // printf("method %d\n", request->method);
+        // printf("version %d\n", request->version);
+        // printf("uri %s\n", request->uri);
+        // printf("path %s\n", request->path);
+
+        // http1request_header_t* header = request->header;
+
+        // while (header) {
+        //     printf("%s: %s\n", header->key, header->value);
+
+        //     header = header->next;
+        // }
+
+        // http1request_query_t* query = request->query;
+
+        // while (query) {
+        //     printf("%s: %s\n", query->key, query->value);
+
+        //     query = query->next;
+        // }
+
+        // printf("\n\n");
+    }
+
+    return;
+}
+
+int http1_get_resource(connection_t* connection) {
     http1request_t* request = (http1request_t*)connection->request;
 
-    printf("method %d\n", request->method);
-    printf("version %d\n", request->version);
-    printf("uri %s\n", request->uri);
-    printf("path %s\n", request->path);
+    // handle redirect
+    // http1_get_redirect(request);
 
-    // http1request_header_t* header = request->header;
+    for (route_t* route = connection->server->route; route; route = route->next) {
+        if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {
+            route->method[request->method]((char*)request->path);
+            return 1;
+        }
 
-    // while (header) {
-    //     printf("%s: %s\n", header->key, header->value);
+        // vector size - count params * 3
+        int vector_size = 30;
+        int vector[vector_size];
 
-    //     header = header->next;
-    // }
+        // find resource by template
+        int matches_count = pcre_exec(route->location, NULL, request->path, request->path_length, 0, 0, vector, vector_size);
 
-    http1request_query_t* query = request->query;
+        if (matches_count > 1) {
+            printf("%s %s\n", route->path, request->path);
 
-    while (query) {
-        printf("%s: %s\n", query->key, query->value);
+            int i = 1; // escape full string match
 
-        query = query->next;
+            for (route_param_t* param = route->param; param; param = param->next, i++) {
+                size_t substring_length = vector[i * 2 + 1] - vector[i * 2];
+                printf("%s, %.*s\n", param->string, substring_length, &request->path[vector[i * 2]]);
+
+                http1request_query_t* query = http1_query_create();
+
+                if (query == NULL) return -1;
+
+                query->key = http1_query_set_field(param->string, param->string_len);
+                if (query->key == NULL) return -1;
+
+                query->value = http1_query_set_field(&request->path[vector[i * 2]], substring_length);
+                if (query->value == NULL) return -1;
+            }
+
+            route->method[request->method]((char*)request->path);
+
+            return 1;
+        }
     }
 
     return 0;
+}
+
+int http1_get_file(connection_t* connection) {
+    // for (route_t* route = connection->server->route; route; route = route->next) {
+    //     if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {
+    //         route->method[request->method]((char*)request->path);
+    //         return 1;
+    //     }
+    // }
+
+    return 1;
+}
+
+void http1_default_response(connection_t* connection, int status_code) {
+
 }

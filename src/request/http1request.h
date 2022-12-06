@@ -1,6 +1,7 @@
 #ifndef __HTTP1REQUEST__
 #define __HTTP1REQUEST__
 
+#include "../route/route.h"
 #include "request.h"
 
 typedef enum http1request_version {
@@ -8,16 +9,6 @@ typedef enum http1request_version {
     HTTP1_VER_1_0,
     HTTP1_VER_1_1
 } http1request_version_e;
-
-typedef enum http1request_method {
-    HTTP1_NONE = 0,
-    HTTP1_GET,
-    HTTP1_PUT,
-    HTTP1_POST,
-    HTTP1_PATCH,
-    HTTP1_DELETE,
-    HTTP1_OPTIONS
-} http1request_method_e;
 
 typedef struct http1request_header {
     const char* key;
@@ -33,8 +24,10 @@ typedef struct http1request_query {
 
 typedef struct http1request {
     request_t base;
-    http1request_method_e method;
+    route_methods_e method;
     http1request_version_e version;
+    size_t uri_length;
+    size_t path_length;
     const char* uri;
     const char* path;
     char* payload;

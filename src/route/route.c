@@ -62,6 +62,7 @@ route_t* route_create(const char* dirty_location) {
 
     route->is_primitive = parser.is_primitive;
     route->path = parser.location;
+    route->path_length = strlen(parser.location);
     route->param = parser.first_param;
 
     result = 0;
@@ -84,6 +85,7 @@ route_t* route_init_route() {
     }
 
     route->path = NULL;
+    route->path_length = 0;
     route->location_error = NULL;
 
     route->method[ROUTE_GET] = NULL;
@@ -362,4 +364,14 @@ void route_free(route_t* route) {
 
         route = route_next;
     }
+}
+
+int route_compare_primitive(route_t* route, const char* path, size_t length) {
+    if (route->path_length != length) return 0;
+
+    for (size_t i = 0, j = 0; i < route->path_length && j < length; i++, j++) {
+        if (route->path[i] != path[j]) return 0;
+    }
+
+    return 1;
 }
