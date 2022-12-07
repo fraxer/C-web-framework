@@ -32,6 +32,7 @@ typedef struct http1request {
     const char* path;
     char* payload;
     http1request_query_t* query;
+    http1request_query_t* last_query;
     http1request_header_t* header;
     http1request_header_t* last_header;
 } http1request_t;

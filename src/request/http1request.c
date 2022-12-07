@@ -55,6 +55,7 @@ http1request_t* http1request_create() {
     request->path = NULL;
     request->payload = NULL;
     request->query = NULL;
+    request->last_query = NULL;
     request->header = NULL;
     request->last_header = NULL;
     request->base.free = (void(*)(void*))http1request_free;

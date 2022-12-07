@@ -15,6 +15,7 @@
 
 typedef struct route_parser {
     int is_primitive;
+    int params_count;
     unsigned short int dirty_pos;
     unsigned short int pos;
     const char* dirty_location;
@@ -61,6 +62,7 @@ route_t* route_create(const char* dirty_location) {
     if (route->location_error != NULL) goto failed;
 
     route->is_primitive = parser.is_primitive;
+    route->params_count = parser.params_count;
     route->path = parser.location;
     route->path_length = strlen(parser.location);
     route->param = parser.first_param;
@@ -98,6 +100,7 @@ route_t* route_init_route() {
     route->location_erroffset = 0;
     route->location = NULL;
     route->is_primitive = 0;
+    route->params_count = 0;
     route->param = NULL;
     route->next = NULL;
 
@@ -105,10 +108,12 @@ route_t* route_init_route() {
 }
 
 int route_init_parser(route_parser_t* parser, const char* dirty_location) {
-    parser->dirty_location = dirty_location;
-    parser->location = (char*)malloc(strlen(dirty_location) + 1);
+    parser->is_primitive = 0;
+    parser->params_count = 0;
     parser->dirty_pos = 0;
     parser->pos = 0;
+    parser->dirty_location = dirty_location;
+    parser->location = (char*)malloc(strlen(dirty_location) + 1);
     parser->first_param = NULL;
     parser->last_param = NULL;
 
@@ -267,6 +272,8 @@ int route_alloc_param(route_parser_t* parser) {
     param->string_len = 0;
     param->string = NULL;
     param->next = NULL;
+
+    parser->params_count++;
 
     if (!parser->first_param) {
         parser->first_param = param;

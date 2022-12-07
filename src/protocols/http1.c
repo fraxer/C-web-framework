@@ -46,6 +46,7 @@ int http1_set_method(http1request_t*, const char*, size_t);
 int http1_parser_string_append(http1_parser_t*);
 int http1_set_uri(http1request_t*, const char*, size_t);
 int http1_set_query(http1request_t*, const char*, size_t, size_t);
+void http1_append_query(http1request_t*, http1request_query_t*);
 int http1_set_protocol(http1request_t*, const char*);
 http1request_header_t* http1_header_alloc();
 http1request_header_t* http1_header_create(const char*, const char*);
@@ -645,6 +646,7 @@ int http1_set_query(http1request_t* request, const char* string, size_t length, 
     if (query == NULL) return -1;
 
     request->query = query;
+    request->last_query = query;
 
     for (++pos; pos < length; pos++) {
         switch (string[pos]) {
@@ -670,7 +672,7 @@ int http1_set_query(http1request_t* request, const char* string, size_t length, 
 
             if (query_new == NULL) return -1;
 
-            query->next = query_new;
+            http1_append_query(request, query_new);
 
             query = query_new;
 
@@ -703,6 +705,14 @@ int http1_set_query(http1request_t* request, const char* string, size_t length, 
     }
 
     return 0;
+}
+
+void http1_append_query(http1request_t* request, http1request_query_t* query) {
+    if (request->last_query) {
+        request->last_query->next = query;
+    }
+
+    request->last_query = query;
 }
 
 int http1_set_protocol(http1request_t* request, const char* string) {
@@ -836,21 +846,17 @@ int http1_get_resource(connection_t* connection) {
             return 1;
         }
 
-        // vector size - count params * 3
-        int vector_size = 30;
+        int vector_size = route->params_count * 6;
         int vector[vector_size];
 
         // find resource by template
         int matches_count = pcre_exec(route->location, NULL, request->path, request->path_length, 0, 0, vector, vector_size);
 
         if (matches_count > 1) {
-            printf("%s %s\n", route->path, request->path);
-
             int i = 1; // escape full string match
 
             for (route_param_t* param = route->param; param; param = param->next, i++) {
                 size_t substring_length = vector[i * 2 + 1] - vector[i * 2];
-                printf("%s, %.*s\n", param->string, substring_length, &request->path[vector[i * 2]]);
 
                 http1request_query_t* query = http1_query_create();
 
@@ -861,6 +867,8 @@ int http1_get_resource(connection_t* connection) {
 
                 query->value = http1_query_set_field(&request->path[vector[i * 2]], substring_length);
                 if (query->value == NULL) return -1;
+
+                http1_append_query(request, query);
             }
 
             route->method[request->method]((char*)request->path);

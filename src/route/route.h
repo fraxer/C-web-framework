@@ -24,6 +24,7 @@ typedef struct route_param {
 typedef struct route {
     int location_erroffset;
     int is_primitive;
+    int params_count;
     char* path;
     size_t path_length;
     const char* location_error;
