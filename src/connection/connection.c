@@ -59,6 +59,7 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->basefd = basefd;
     connection->ssl_enabled = 0;
     connection->keepalive_enabled = 0;
+    connection->timeout = 0;
     connection->counter = NULL;
     connection->ssl = NULL;
     connection->apidata = NULL;
@@ -70,6 +71,8 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->write = NULL;
     connection->after_read_request = NULL;
     connection->after_write_request = NULL;
+    connection->queue_push = NULL;
+    connection->queue_pop = NULL;
     // connection->switch_to_http1 = NULL;
     // connection->switch_to_websocket = NULL;
 

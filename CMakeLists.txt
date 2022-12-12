@@ -50,6 +50,8 @@ add_library(tls STATIC src/protocols/tls.c)
 
 add_library(connection STATIC src/connection/connection.c)
 
+add_library(connection_queue STATIC src/connection/connection_queue.c)
+
 add_library(database STATIC src/database/database.c)
 
 add_library(openssl STATIC src/openssl/openssl.c)
@@ -91,6 +93,7 @@ target_link_libraries(
 	server
 	epoll
 	connection
+	connection_queue
 	socket
 	protocolmanager
 	http1

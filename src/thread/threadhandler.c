@@ -4,11 +4,7 @@
 #include <stdlib.h>
 #include "threadhandler.h"
 #include "../log/log.h"
-
-typedef struct thread_queue {
-    connection_t* connection;
-    struct thread_queue* next;
-} thread_queue_t;
+#include "../connection/connection_queue.h"
 
 typedef struct thread_handler_item {
     int is_deprecated;
@@ -19,91 +15,27 @@ static int thread_handler_count = 0;
 
 static thread_handler_item_t* thread_handlers = NULL;
 
-static pthread_cond_t thread_queue_cond = PTHREAD_COND_INITIALIZER;
-
-static pthread_mutex_t thread_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-static thread_queue_t* queue = NULL;
-static thread_queue_t* last_in_queue = NULL;
-
-thread_queue_t* thread_queue_wait_unshift();
-
-void thread_queue_free(thread_queue_t*);
 
 void* thread_handler(void* arg) {
+    thread_handler_item_t* thread_handler = (thread_handler_item_t*)arg;
+
     while (1) {
-        thread_queue_t* queue_item = thread_queue_wait_unshift();
+        pthread_mutex_lock(&connection_queue_mutex);
 
-        if (queue_item) {
-            queue_item->connection->handle(queue_item->connection);
-
-            thread_queue_free(queue_item);
+        if (connection_queue_empty()) {
+            pthread_cond_wait(&connection_queue_cond, &connection_queue_mutex);
         }
+
+        connection_t* connection = connection_queue_pop();
+
+        pthread_mutex_unlock(&connection_queue_mutex);
+
+        if (connection) connection->handle(connection);
+
+        if (thread_handler->is_deprecated) break;
     }
 
     pthread_exit(NULL);
-}
-
-thread_queue_t* thread_queue_alloc() {
-    return (thread_queue_t*)malloc(sizeof(thread_queue_t));
-}
-
-thread_queue_t* thread_queue_create(connection_t* connection) {
-    thread_queue_t* queue = thread_queue_alloc();
-
-    if (queue == NULL) return NULL;
-
-    queue->connection = connection;
-    queue->next = NULL;
-
-    return queue;
-}
-
-void thread_queue_push(connection_t* connection) {
-    thread_queue_t* queue_item = thread_queue_create(connection);
-
-    if (queue_item == NULL) return;
-
-    pthread_mutex_lock(&thread_queue_mutex);
-
-    if (last_in_queue) {
-        last_in_queue->next = queue_item;
-    } else {
-        queue = queue_item;
-        last_in_queue = queue_item;
-    }
-
-    pthread_cond_signal(&thread_queue_cond);
-
-    pthread_mutex_unlock(&thread_queue_mutex);
-}
-
-thread_queue_t* thread_queue_wait_unshift() {
-    pthread_mutex_lock(&thread_queue_mutex);
-
-    if (queue == NULL) {
-        pthread_cond_wait(&thread_queue_cond, &thread_queue_mutex);
-    }
-
-    if (queue == NULL) return NULL;
-
-    thread_queue_t* queue_item = queue;
-
-    queue = queue->next;
-
-    if (queue == NULL) {
-        last_in_queue = NULL;
-    }
-
-    pthread_mutex_unlock(&thread_queue_mutex);
-
-    queue_item->next = NULL;
-
-    return queue_item;
-}
-
-void thread_queue_free(thread_queue_t* queue_item) {
-    free(queue_item);
 }
 
 int thread_handler_run(int handler_count) {
@@ -118,15 +50,15 @@ int thread_handler_run(int handler_count) {
             threads[i].thread = thread_handlers[i].thread;
         }
 
-        pthread_mutex_lock(&thread_queue_mutex);
+        pthread_mutex_lock(&connection_queue_mutex);
 
         for (int i = handler_count; i < thread_handler_count; i++) {
             thread_handlers[i].is_deprecated = 1;
         }
 
-        pthread_cond_broadcast(&thread_queue_cond);
+        pthread_cond_broadcast(&connection_queue_cond);
 
-        pthread_mutex_unlock(&thread_queue_mutex);
+        pthread_mutex_unlock(&connection_queue_mutex);
     }
     else {
         for (int i = 0; i < thread_handler_count; i++) {
@@ -145,11 +77,7 @@ int thread_handler_run(int handler_count) {
 
     thread_handler_count = handler_count;
 
-    pthread_mutex_lock(&thread_queue_mutex);
-
     if (thread_handlers) free(thread_handlers);
-
-    pthread_mutex_unlock(&thread_queue_mutex);
 
     thread_handlers = threads;
 

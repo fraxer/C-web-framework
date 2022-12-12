@@ -86,6 +86,7 @@ void server_free(server_t* server) {
         if (server->index) free(server->index);
         server->index = NULL;
 
+        // if (server->redirect) redirect_free(server->redirect);
         server->redirect = NULL;
 
         if (server->route) route_free(server->route);

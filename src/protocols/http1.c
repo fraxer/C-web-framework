@@ -57,6 +57,7 @@ void http1_handle(connection_t*);
 int http1_get_resource(connection_t*);
 int http1_get_file(connection_t*);
 void http1_default_response(connection_t*, int);
+void http1_get_redirect(connection_t*);
 
 
 void http1_read(connection_t* connection, char* buffer, size_t size) {
@@ -837,12 +838,13 @@ void http1_handle(connection_t* connection) {
 int http1_get_resource(connection_t* connection) {
     http1request_t* request = (http1request_t*)connection->request;
 
-    // handle redirect
-    // http1_get_redirect(request);
+    http1_get_redirect(connection);
 
     for (route_t* route = connection->server->route; route; route = route->next) {
         if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {
-            route->method[request->method]((char*)request->path);
+            connection->handle = route->method[request->method];
+            connection->queue_push(connection);
+            // route->method[request->method]((char*)request->path);
             return 1;
         }
 
@@ -871,7 +873,10 @@ int http1_get_resource(connection_t* connection) {
                 http1_append_query(request, query);
             }
 
-            route->method[request->method]((char*)request->path);
+            connection->handle = route->method[request->method];
+            connection->queue_push(connection);
+
+            // route->method[request->method]((char*)request->path);
 
             return 1;
         }
@@ -893,4 +898,14 @@ int http1_get_file(connection_t* connection) {
 
 void http1_default_response(connection_t* connection, int status_code) {
 
+}
+
+void http1_get_redirect(connection_t* connection) {
+    http1request_t* request = (http1request_t*)connection->request;
+
+    redirect_t* redirect = connection->server->redirect;
+
+    for (; redirect; redirect = redirect->next) {
+        
+    }
 }

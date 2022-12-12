@@ -8,6 +8,7 @@
 #include "../server/server.h"
 #include "../socket/socket.h"
 #include "../connection/connection.h"
+#include "../connection/connection_queue.h"
 #include "../protocols/protocolmanager.h"
 #include "../protocols/http1.h"
 #include "../protocols/websockets.h"
@@ -236,7 +237,7 @@ socket_epoll_t* epoll_socket_alloc() {
 
 int epoll_after_read_request(connection_t* connection) {
     if (epoll_control_mod(connection, EPOLLOUT) == -1) {
-        log_error("Epoll error: Epoll_ctl failed in read done, %d, %d\n", gettid(), errno);
+        log_error("Epoll error: Epoll_ctl failed in read done\n");
         return -1;
     }
 
@@ -248,10 +249,36 @@ int epoll_after_write_request(connection_t* connection) {
         connection->close(connection);
     } else {
         if (epoll_control_mod(connection, EPOLLIN) == -1) {
-            log_error("Epoll error: Epoll_ctl failed in write done, %d, %d\n", gettid(), errno);
+            log_error("Epoll error: Epoll_ctl failed in write done\n");
             return -1;
         }
     }
+
+    return 0;
+}
+
+int epoll_queue_push(connection_t* connection) {
+    if (epoll_control_mod(connection, EPOLLONESHOT) == -1) {
+        log_error("Epoll error: Epoll_ctl failed oneshot\n");
+        return -1;
+    }
+
+    connection_queue_push(connection);
+
+    return 0;
+}
+
+int epoll_queue_pop(connection_t* connection) {
+    if (epoll_control_mod(connection, EPOLLOUT) == -1) {
+        log_error("Epoll error: Epoll_ctl failed epollout\n");
+        return -1;
+    }
+
+    // connection_t* connection = connection_queue_pop();
+
+    // if (connection == NULL) return 0;
+
+    // handle request
 
     return 0;
 }
@@ -281,7 +308,7 @@ int epoll_control(connection_t* connection, int action, uint32_t flags) {
     if (action == EPOLL_CTL_DEL) event = NULL;
 
     if (epoll_ctl(connection->basefd, action, connection->fd, event) == -1) {
-        log_error("Epoll error: Epoll_ctl failed, %d, %d\n", gettid(), errno);
+        log_error("Epoll error: Epoll_ctl failed\n");
         return -1;
     }
 
@@ -328,4 +355,6 @@ void epoll_connection_set_hooks(connection_t* connection) {
     connection->close = epoll_connection_close;
     connection->after_read_request = epoll_after_read_request;
     connection->after_write_request = epoll_after_write_request;
+    connection->queue_push = epoll_queue_push;
+    connection->queue_pop = epoll_queue_pop;
 }

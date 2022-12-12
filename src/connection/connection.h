@@ -11,6 +11,7 @@ typedef struct connection {
     int basefd;
     int ssl_enabled;
     int keepalive_enabled;
+    int timeout;
     int* counter;
     void* apidata;
     void* protocol;
@@ -26,6 +27,8 @@ typedef struct connection {
     void(*write)(struct connection*);
     int(*after_read_request)(struct connection*);
     int(*after_write_request)(struct connection*);
+    int(*queue_push)(struct connection*);
+    int(*queue_pop)(struct connection*);
     // int(*switch_to_http1)(struct connection*);
     // int(*switch_to_websocket)(struct connection*);
 } connection_t;
