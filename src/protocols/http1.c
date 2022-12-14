@@ -74,7 +74,7 @@ void http1_read(connection_t* connection, char* buffer, size_t size) {
         case -1:
             // printf("req 1\n");
             http1_handle(connection);
-            connection->after_read_request(connection);
+            // connection->after_read_request(connection);
             return;
         case 0:
             // printf("req 2\n");
@@ -801,11 +801,19 @@ const char* http1_query_set_field(const char* string, size_t length) {
 }
 
 void http1_handle(connection_t* connection) {
-    if (http1_get_resource(connection)) return;
+    if (http1_get_resource(connection)) {
+        // connection->after_read_request(connection);
+        return;
+    }
 
-    if (http1_get_file(connection)) return;
+    if (http1_get_file(connection)) {
+        connection->after_read_request(connection);
+        return;
+    }
 
     http1_default_response(connection, 404);
+
+    connection->after_read_request(connection);
 
     {
         // printf("method %d\n", request->method);

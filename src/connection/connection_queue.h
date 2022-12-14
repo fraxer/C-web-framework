@@ -5,13 +5,16 @@
 
 typedef struct connection_queue connection_queue_t;
 
-static pthread_cond_t connection_queue_cond = PTHREAD_COND_INITIALIZER;
-static pthread_mutex_t connection_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-void connection_queue_push(connection_t* connection);
+void connection_queue_push(connection_t*);
 
 int connection_queue_empty();
 
 connection_t* connection_queue_pop();
+
+void connection_queue_guard_push(connection_t*);
+
+connection_t* connection_queue_guard_pop();
+
+void connection_queue_broadcast();
 
 #endif

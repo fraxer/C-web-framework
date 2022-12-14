@@ -263,7 +263,7 @@ int epoll_queue_push(connection_t* connection) {
         return -1;
     }
 
-    connection_queue_push(connection);
+    connection_queue_guard_push(connection);
 
     return 0;
 }
@@ -273,12 +273,6 @@ int epoll_queue_pop(connection_t* connection) {
         log_error("Epoll error: Epoll_ctl failed epollout\n");
         return -1;
     }
-
-    // connection_t* connection = connection_queue_pop();
-
-    // if (connection == NULL) return 0;
-
-    // handle request
 
     return 0;
 }
