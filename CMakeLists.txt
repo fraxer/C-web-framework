@@ -44,6 +44,8 @@ add_library(http1 STATIC src/protocols/http1.c)
 
 add_library(http1request STATIC src/request/http1request.c)
 
+add_library(http1response STATIC src/response/http1response.c)
+
 add_library(websockets STATIC src/protocols/websockets.c)
 
 add_library(tls STATIC src/protocols/tls.c)
@@ -56,7 +58,7 @@ add_library(database STATIC src/database/database.c)
 
 add_library(openssl STATIC src/openssl/openssl.c)
 
-#add_library(mimetype STATIC src/mimetype/mimetype.cpp)
+add_library(mimetype STATIC src/mimetype/mimetype.c)
 
 add_library(threadhandler STATIC src/thread/threadhandler.c)
 
@@ -86,7 +88,7 @@ target_link_libraries(
 	routeloader
 	database
 	openssl
-#	mimetype
+	mimetype
 	threadhandler
 	threadworker
 	domain
@@ -98,6 +100,7 @@ target_link_libraries(
 	protocolmanager
 	http1
 	http1request
+	http1response
 	websockets
 	tls
 

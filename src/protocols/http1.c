@@ -5,7 +5,9 @@
 #include "../log/log.h"
 #include "../openssl/openssl.h"
 #include "../route/route.h"
+#include "../mimetype/mimetype.h"
 #include "../request/http1request.h"
+#include "../response/http1response.h"
 #include "http1.h"
     #include <stdio.h>
 
@@ -45,17 +47,20 @@ int http1_parser_parse_payload(http1_parser_t*);
 int http1_set_method(http1request_t*, const char*, size_t);
 int http1_parser_string_append(http1_parser_t*);
 int http1_set_uri(http1request_t*, const char*, size_t);
+int http1_set_path(http1request_t*, const char*, size_t);
+int http1_set_ext(http1request_t*, const char*, size_t);
 int http1_set_query(http1request_t*, const char*, size_t, size_t);
-void http1_append_query(http1request_t*, http1request_query_t*);
+void http1_append_query(http1request_t*, http1_query_t*);
 int http1_set_protocol(http1request_t*, const char*);
-http1request_header_t* http1_header_alloc();
-http1request_header_t* http1_header_create(const char*, const char*);
-http1request_query_t* http1_query_alloc();
-http1request_query_t* http1_query_create();
+http1_header_t* http1_header_alloc();
+http1_header_t* http1_header_create(const char*, const char*);
+http1_query_t* http1_query_alloc();
+http1_query_t* http1_query_create();
 const char* http1_query_set_field(const char*, size_t);
 void http1_handle(connection_t*);
 int http1_get_resource(connection_t*);
 int http1_get_file(connection_t*);
+const char* http1_get_mimetype(const char*);
 void http1_default_response(connection_t*, int);
 void http1_get_redirect(connection_t*);
 
@@ -600,6 +605,7 @@ int http1_set_uri(http1request_t* request, const char* string, size_t length) {
     request->uri_length = length;
 
     size_t path_point_end = 0;
+    size_t ext_point_start = 0;
 
     for (size_t pos = 0; pos < length; pos++) {
         switch (string[pos]) {
@@ -616,6 +622,9 @@ int http1_set_uri(http1request_t* request, const char* string, size_t length) {
             if (path_point_end == 0) path_point_end = pos;
             goto next;
             break;
+        case '.':
+            ext_point_start = pos + 1;
+            break;
         }
     }
 
@@ -623,16 +632,41 @@ int http1_set_uri(http1request_t* request, const char* string, size_t length) {
 
     if (path_point_end == 0) path_point_end = length;
 
-    char* path = (char*)malloc(path_point_end + 1);
+    if (http1_set_path(request, string, path_point_end) == -1) return -1;
+
+    if (ext_point_start == 0) ext_point_start = path_point_end;
+
+    if (http1_set_ext(request, &string[ext_point_start], path_point_end - ext_point_start) == -1) return -1;
+
+    return 0;
+}
+
+int http1_set_path(http1request_t* request, const char* string, size_t length) {
+    char* path = (char*)malloc(length + 1);
 
     if (path == NULL) return -1;
 
-    strncpy(path, string, path_point_end);
+    strncpy(path, string, length);
 
-    path[path_point_end] = 0;
+    path[length] = 0;
 
     request->path = path;
-    request->path_length = path_point_end;
+    request->path_length = length;
+
+    return 0;
+}
+
+int http1_set_ext(http1request_t* request, const char* string, size_t length) {
+    char* ext = (char*)malloc(length + 1);
+
+    if (ext == NULL) return -1;
+
+    strncpy(ext, string, length);
+
+    ext[length] = 0;
+
+    request->ext = ext;
+    request->ext_length = length;
 
     return 0;
 }
@@ -642,7 +676,7 @@ int http1_set_query(http1request_t* request, const char* string, size_t length, 
 
     enum { KEY, VALUE } stage = KEY;
 
-    http1request_query_t* query = http1_query_create();
+    http1_query_t* query = http1_query_create();
 
     if (query == NULL) return -1;
 
@@ -669,7 +703,7 @@ int http1_set_query(http1request_t* request, const char* string, size_t length, 
 
             if (query->value == NULL) return -1;
 
-            http1request_query_t* query_new = http1_query_create();
+            http1_query_t* query_new = http1_query_create();
 
             if (query_new == NULL) return -1;
 
@@ -708,7 +742,7 @@ int http1_set_query(http1request_t* request, const char* string, size_t length, 
     return 0;
 }
 
-void http1_append_query(http1request_t* request, http1request_query_t* query) {
+void http1_append_query(http1request_t* request, http1_query_t* query) {
     if (request->last_query) {
         request->last_query->next = query;
     }
@@ -732,7 +766,7 @@ int http1_set_protocol(http1request_t* request, const char* string) {
 }
 
 int http1_set_header(http1request_t* request, const char* key, const char* value) {
-    http1request_header_t* header = http1_header_create(key, value);
+    http1_header_t* header = http1_header_create(key, value);
 
     if (header == NULL) {
         log_error("HTTP error: can't alloc header memory\n");
@@ -752,12 +786,12 @@ int http1_set_header(http1request_t* request, const char* key, const char* value
     return 0;
 }
 
-http1request_header_t* http1_header_alloc() {
-    return (http1request_header_t*)malloc(sizeof(http1request_header_t));
+http1_header_t* http1_header_alloc() {
+    return (http1_header_t*)malloc(sizeof(http1_header_t));
 }
 
-http1request_header_t* http1_header_create(const char* key, const char* value) {
-    http1request_header_t* header = http1_header_alloc();
+http1_header_t* http1_header_create(const char* key, const char* value) {
+    http1_header_t* header = http1_header_alloc();
 
     header->key = key;
     header->value = value;
@@ -766,12 +800,12 @@ http1request_header_t* http1_header_create(const char* key, const char* value) {
     return header;
 }
 
-http1request_query_t* http1_query_alloc() {
-    return (http1request_query_t*)malloc(sizeof(http1request_query_t));
+http1_query_t* http1_query_alloc() {
+    return (http1_query_t*)malloc(sizeof(http1_query_t));
 }
 
-http1request_query_t* http1_query_create() {
-    http1request_query_t* query = http1_query_alloc();
+http1_query_t* http1_query_create() {
+    http1_query_t* query = http1_query_alloc();
 
     if (query == NULL) {
         log_error("HTTP error: can't alloc query\n");
@@ -801,12 +835,12 @@ const char* http1_query_set_field(const char* string, size_t length) {
 }
 
 void http1_handle(connection_t* connection) {
-    if (http1_get_resource(connection)) {
+    if (http1_get_resource(connection) == -1) {
         // connection->after_read_request(connection);
         return;
     }
 
-    if (http1_get_file(connection)) {
+    if (http1_get_file(connection) == -1) {
         connection->after_read_request(connection);
         return;
     }
@@ -821,7 +855,7 @@ void http1_handle(connection_t* connection) {
         // printf("uri %s\n", request->uri);
         // printf("path %s\n", request->path);
 
-        // http1request_header_t* header = request->header;
+        // http1_header_t* header = request->header;
 
         // while (header) {
         //     printf("%s: %s\n", header->key, header->value);
@@ -829,7 +863,7 @@ void http1_handle(connection_t* connection) {
         //     header = header->next;
         // }
 
-        // http1request_query_t* query = request->query;
+        // http1_query_t* query = request->query;
 
         // while (query) {
         //     printf("%s: %s\n", query->key, query->value);
@@ -853,7 +887,7 @@ int http1_get_resource(connection_t* connection) {
             connection->handle = route->method[request->method];
             connection->queue_push(connection);
             // route->method[request->method]((char*)request->path);
-            return 1;
+            return 0;
         }
 
         int vector_size = route->params_count * 6;
@@ -868,7 +902,7 @@ int http1_get_resource(connection_t* connection) {
             for (route_param_t* param = route->param; param; param = param->next, i++) {
                 size_t substring_length = vector[i * 2 + 1] - vector[i * 2];
 
-                http1request_query_t* query = http1_query_create();
+                http1_query_t* query = http1_query_create();
 
                 if (query == NULL) return -1;
 
@@ -886,7 +920,7 @@ int http1_get_resource(connection_t* connection) {
 
             // route->method[request->method]((char*)request->path);
 
-            return 1;
+            return 0;
         }
     }
 
@@ -894,14 +928,56 @@ int http1_get_resource(connection_t* connection) {
 }
 
 int http1_get_file(connection_t* connection) {
-    // for (route_t* route = connection->server->route; route; route = route->next) {
-    //     if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {
-    //         route->method[request->method]((char*)request->path);
-    //         return 1;
-    //     }
-    // }
+    http1request_t* request = (http1request_t*)connection->request;
+    http1response_t* response = (http1response_t*)connection->response;
 
-    return 1;
+    const char* mimetype = http1_get_mimetype(request->ext);
+
+    response->headern_add("Content-Type", 12, mimetype, strlen(mimetype));
+
+    size_t fullpath_length = connection->server->root_length + connection->request->path_length;
+
+    char* fullpath = (char*)malloc(fullpath_length + 1);
+
+    if (fullpath == NULL) return -1;
+
+    strncpy(&fullpath[0], connection->server->root, connection->server->root_length);
+    strncat(&fullpath[connection->server->root_length], connection->request->path, connection->request->path_length);
+
+    fullpath[fullpath_length] = 0;
+
+    struct stat stat_obj;
+
+    stat(a, &stat_obj);
+
+    if (S_ISDIR(stat_obj.st_mode)) {
+        http1_default_response(connection, 403);
+        return 0;
+    }
+
+    file_fd = open(full_path, O_RDWR);
+
+    ssize_t file_size = 0;
+    ssize_t file_size_part = 0;
+
+    if (file_fd == -1) {
+        http1_default_response(connection, 404);
+        return 1;
+    }
+
+    file_size = (unsigned int)lseek(file_fd, 0, SEEK_END);
+
+    lseek(file_fd, 0, SEEK_SET);
+
+    return 0;
+}
+
+const char* http1_get_mimetype(const char* extension) {
+    const char* mimetype = mimetype_find_type(extension);
+
+    if (mimetype == NULL) return "text/plain";
+
+    return mimetype;
 }
 
 void http1_default_response(connection_t* connection, int status_code) {

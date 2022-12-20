@@ -4,6 +4,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <search.h>
 #include "../config/config.h"
 #include "../log/log.h"
 #include "../jsmn/jsmn.h"
@@ -12,8 +13,8 @@
 #include "../domain/domain.h"
 #include "../server/server.h"
 #include "../database/database.h"
-// #include "../openssl/openssl.h"
-// #include "../mimetype/mimetype.h"
+#include "../openssl/openssl.h"
+#include "../mimetype/mimetype.h"
 #include "../thread/threadhandler.h"
 #include "../thread/threadworker.h"
 #include "../jsmn/jsmn.h"
@@ -29,6 +30,8 @@ int module_loader_thread_workers_load();
 int module_loader_thread_handlers_load();
 
 int module_loader_reload_is_hard();
+
+int module_loader_mimetype_load();
 
 server_info_t* module_loader_server_info_load();
 
@@ -74,6 +77,8 @@ int module_loader_init_modules() {
     log_reinit();
 
     if (module_loader_servers_load(reload_is_hard)) return -1;
+
+    if (module_loader_mimetype_load() == -1) return -1;
 
     if (module_loader_thread_workers_load() == -1) goto failed;
 
@@ -644,6 +649,72 @@ int module_loader_servers_load(int reload_is_hard) {
 
         routeloader_free(first_lib);
     }
+
+    return result;
+}
+
+int module_loader_mimetype_load() {
+    const jsmntok_t* token_root = config_get_section("mimetypes");
+
+    if (token_root->type != JSMN_OBJECT) return -1;
+
+    int result = -1;
+
+    jsmntok_t* token_array = token_root->child;
+
+    size_t table_type_size = token_root->size;
+    size_t table_ext_size = 0;
+
+    for (jsmntok_t* token = token_root->child; token; token = token->sibling) {
+        table_ext_size += token->child->size;
+    }
+
+    // + %25
+    table_type_size *= 1.25;
+    table_ext_size *= 1.25;
+
+    mimetype_lock();
+
+    if (mimetype_init_type(table_type_size) == -1) goto failed;
+
+    if (mimetype_init_ext(table_ext_size) == -1) goto failed;
+
+    for (jsmntok_t* token = token_root->child; token; token = token->sibling) {
+        const char* mimetype = jsmn_get_value(token);
+
+        if (token->child->type != JSMN_ARRAY) goto failed;
+
+        jsmntok_t* token_array = token->child;
+
+        int i = 0;
+
+        for (jsmntok_t* token_item = token_array->child; token_item; token_item = token_item->sibling, i++) {
+            if (token_item->type != JSMN_STRING) goto failed;
+
+            const char* extension = jsmn_get_value(token_item);
+
+            if (i == 0) {
+                if (mimetype_add(mimetype_get_table_type(), mimetype, extension) == -1) goto failed;
+            }
+
+            if (mimetype_add(mimetype_get_table_ext(), extension, mimetype) == -1) goto failed;
+        }
+    }
+
+    result = 0;
+
+    failed:
+
+    if (result == -1) {
+        log_error("Error: Mimetype alloc error\n");
+        mimetype_destroy(mimetype_get_table_type());
+        mimetype_destroy(mimetype_get_table_ext());
+    }
+
+    mimetype_unlock();
+
+    // printf("%s\n", mimetype_find_ext("text/html"));
+    // printf("%s\n", mimetype_find_type("html"));
 
     return result;
 }

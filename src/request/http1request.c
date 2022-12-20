@@ -6,12 +6,12 @@ http1request_t* http1request_alloc() {
     return (http1request_t*)malloc(sizeof(http1request_t));
 }
 
-void http1request_header_free(http1request_header_t* header) {
+void http1request_header_free(http1_header_t* header) {
 
     header = NULL;
 }
 
-void http1request_query_free(http1request_query_t* query) {
+void http1request_query_free(http1_query_t* query) {
 
     query = NULL;
 }
@@ -26,6 +26,9 @@ void http1request_free(void* arg) {
 
     if (request->path) free((void*)request->path);
     request->path = NULL;
+
+    if (request->ext) free((void*)request->ext);
+    request->ext = NULL;
 
     if (request->query) free(request->query);
     request->query = NULL;
@@ -51,8 +54,10 @@ http1request_t* http1request_create() {
     request->version = HTTP1_VER_NONE;
     request->uri_length = 0;
     request->path_length = 0;
+    request->ext_length = 0;
     request->uri = NULL;
     request->path = NULL;
+    request->ext = NULL;
     request->payload = NULL;
     request->query = NULL;
     request->last_query = NULL;
