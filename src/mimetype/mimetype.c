@@ -95,29 +95,51 @@ int mimetype_add(hsearch_data_t* table, const char* mimetype, const char* extens
 }
 
 const char* mimetype_find_ext(const char* mimetype) {
+    if (mimetype == NULL) return NULL;
     if (table_type == NULL) return NULL;
 
+    const char* result = NULL;
+
     ENTRY item;
-    ENTRY* result = NULL;
+    ENTRY* res = NULL;
 
     item.key = (char*)mimetype;
     item.data = NULL;
 
-    if (hsearch_r(item, FIND, &result, table_type) == 0) return NULL;
+    mimetype_lock();
 
-    return result->data;
+    if (hsearch_r(item, FIND, &res, table_type) == 0) goto failed;
+
+    result = res->data;
+
+    failed:
+
+    mimetype_unlock();
+
+    return result;
 }
 
 const char* mimetype_find_type(const char* extension) {
+    if (extension == NULL) return NULL;
     if (table_ext == NULL) return NULL;
 
+    const char* result = NULL;
+
     ENTRY item;
-    ENTRY* result = NULL;
+    ENTRY* res = NULL;
 
     item.key = (char*)extension;
     item.data = NULL;
 
-    if (hsearch_r(item, FIND, &result, table_ext) == 0) return NULL;
+    mimetype_lock();
 
-    return result->data;
+    if (hsearch_r(item, FIND, &res, table_ext) == 0) goto failed;
+
+    result = res->data;
+
+    failed:
+
+    mimetype_unlock();
+
+    return result;
 }

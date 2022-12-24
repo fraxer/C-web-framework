@@ -1,7 +1,8 @@
 #include "../connection/connection.h"
+#include "../request/http1request.h"
+#include "../response/http1response.h"
 #include "tls.h"
 #include "http1.h"
-#include "../request/http1request.h"
 #include "websockets.h"
 
 void protmgr_set_tls(connection_t* connection) {
@@ -18,6 +19,12 @@ void protmgr_set_http1(connection_t* connection) {
     }
 
     connection->request = (request_t*)http1request_create();
+
+    if (connection->response != NULL) {
+        connection->response->free(connection->response);
+    }
+
+    connection->response = (response_t*)http1response_create();
 }
 
 void protmgr_set_websockets(connection_t* connection) {

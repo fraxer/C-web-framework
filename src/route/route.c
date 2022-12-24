@@ -2,6 +2,8 @@
     #include <stdio.h>
 #include "pcre.h"
 #include "route.h"
+#include "../request/request.h"
+#include "../response/response.h"
 #include "../log/log.h"
 
 #define ROUTE_EMPTY_PATH "Route error: Empty path\n"
@@ -344,7 +346,7 @@ int route_set_method_handler(route_t* route, const char* method, void* function)
 
     if (route->method[m]) return 0;
 
-    route->method[m] = (void*(*)(void*))function;
+    route->method[m] = (void(*)(request_t*, response_t*))function;
 
     return 0;
 }

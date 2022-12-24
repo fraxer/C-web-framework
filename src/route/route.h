@@ -2,6 +2,8 @@
 #define __ROUTE__
 
 #include "pcre.h"
+#include "../request/request.h"
+#include "../response/response.h"
 
 typedef enum route_methods {
     ROUTE_NONE = -1,
@@ -31,7 +33,7 @@ typedef struct route {
     pcre* location;
     route_param_t* param;
     struct route* next;
-    void*(*method[6])(void*);
+    void(*method[6])(request_t*, response_t*);
 } route_t;
 
 void* route_init();

@@ -106,7 +106,7 @@ void epoll_run(void* chain) {
                 connection->read(connection, buffer, server_chain->info->read_buffer);
             }
             else if (ev->events & EPOLLOUT) {
-                connection->write(connection);
+                connection->write(connection, buffer, server_chain->info->read_buffer);
             }
 
             connection_unlock(connection);

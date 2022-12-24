@@ -6,7 +6,7 @@
 
 void tls_read(connection_t*, char*, size_t);
 
-void tls_write(connection_t*);
+void tls_write(connection_t*, char*, size_t);
 
 void tls_handshake(connection_t*);
 

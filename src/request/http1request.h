@@ -2,7 +2,7 @@
 #define __HTTP1REQUEST__
 
 #include "../route/route.h"
-#include "../protocols/http1structs.h"
+#include "../protocols/http1common.h"
 #include "request.h"
 
 typedef struct http1request {

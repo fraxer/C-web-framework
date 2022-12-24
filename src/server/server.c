@@ -34,6 +34,7 @@ server_t* server_create() {
     if (server->domain_hashes == NULL) goto failed;
 
     server->port = 0;
+    server->root_length = 0;
     server->domain = NULL;
     
     server->ip = 0;
@@ -66,6 +67,7 @@ void server_free(server_t* server) {
         server_t* next = server->next;
 
         server->port = 0;
+        server->root_length = 0;
 
         if (server->domain) domain_free(server->domain);
         server->domain = NULL;
@@ -82,8 +84,13 @@ void server_free(server_t* server) {
         if (server->root) free(server->root);
         server->root = NULL;
 
-        if (server->index->value) free(server->index->value);
-        if (server->index) free(server->index);
+        
+        if (server->index) {
+            if (server->index->value) {
+                free(server->index->value);
+            }
+            free(server->index);
+        }
         server->index = NULL;
 
         // if (server->redirect) redirect_free(server->redirect);

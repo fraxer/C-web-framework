@@ -5,6 +5,7 @@
 #include "../server/server.h"
 #include "../openssl/openssl.h"
 #include "../request/request.h"
+#include "../response/response.h"
 
 typedef struct connection {
     int fd;
@@ -18,19 +19,18 @@ typedef struct connection {
     SSL* ssl;
     server_t* server;
     request_t* request;
+    response_t* response;
 
     pthread_mutex_t mutex;
 
     int(*close)(struct connection*);
     void(*read)(struct connection*, char*, size_t);
-    void(*handle)(struct connection*);
-    void(*write)(struct connection*);
+    void(*handle)(request_t*, response_t*);
+    void(*write)(struct connection*, char*, size_t);
     int(*after_read_request)(struct connection*);
     int(*after_write_request)(struct connection*);
     int(*queue_push)(struct connection*);
     int(*queue_pop)(struct connection*);
-    // int(*switch_to_http1)(struct connection*);
-    // int(*switch_to_websocket)(struct connection*);
 } connection_t;
 
 connection_t* connection_create(int, int);

@@ -25,7 +25,7 @@ void websockets_read(connection_t* connection, char* buffer, size_t size) {
     }
 }
 
-void websockets_write(connection_t* connection) {
+void websockets_write(connection_t* connection, char*, size_t) {
     const char* response = "HTTP/1.1 200 OK\r\nServer: TEST\r\nContent-Length: 8\r\nContent-Type: text/html\r\nConnection: Closed\r\n\r\nResponse";
 
     int size = strlen(response);

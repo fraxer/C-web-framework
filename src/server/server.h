@@ -29,6 +29,7 @@ typedef struct server_info {
 
 typedef struct server {
     unsigned short int port;
+    size_t root_length;
     domain_t* domain;
     struct hsearch_data* domain_hashes;
     in_addr_t ip;

@@ -65,6 +65,7 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->apidata = NULL;
     connection->server = NULL;
     connection->request = NULL;
+    connection->response = NULL;
     connection->close = NULL;
     connection->read = NULL;
     connection->handle = NULL;
@@ -73,8 +74,6 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->after_write_request = NULL;
     connection->queue_push = NULL;
     connection->queue_pop = NULL;
-    // connection->switch_to_http1 = NULL;
-    // connection->switch_to_websocket = NULL;
 
     pthread_mutex_init(&connection->mutex, NULL);
 
@@ -94,6 +93,11 @@ void connection_free(connection_t* connection) {
     if (connection->request != NULL) {
         connection->request->free(connection->request);
         connection->request = NULL;
+    }
+
+    if (connection->response != NULL) {
+        connection->response->free(connection->response);
+        connection->response = NULL;
     }
 
     free(connection->apidata);

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <search.h>
 #include "../config/config.h"
 #include "../log/log.h"
@@ -551,14 +552,32 @@ int module_loader_servers_load(int reload_is_hard) {
 
                 const char* value = jsmn_get_value(token_key->child);
 
-                server->root = (char*)malloc(strlen(value) + 1);
+                size_t value_length = strlen(value);
+
+                if (value[value_length - 1] == '/') {
+                    value_length--;
+                }
+                server->root = (char*)malloc(value_length + 1);
 
                 if (server->root == NULL) {
                     log_error("Error: Can't alloc memory for root path\n");
                     goto failed;
                 }
 
-                strcpy(server->root, value);
+                strncpy(server->root, value, value_length);
+
+                server->root[value_length] = 0;
+
+                server->root_length = value_length;
+
+                struct stat stat_obj;
+
+                stat(server->root, &stat_obj);
+
+                if (!S_ISDIR(stat_obj.st_mode)) {
+                    log_error("Error: Webroot dir not found\n");
+                    goto failed;
+                }
             }
             else if (strcmp(key, "redirects") == 0) {
                 finded_fields[REDIRECTS] = 1;
@@ -712,9 +731,6 @@ int module_loader_mimetype_load() {
     }
 
     mimetype_unlock();
-
-    // printf("%s\n", mimetype_find_ext("text/html"));
-    // printf("%s\n", mimetype_find_type("html"));
 
     return result;
 }

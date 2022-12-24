@@ -22,7 +22,7 @@ void tls_read(connection_t* connection, char* buffer, size_t size) {
     tls_handshake(connection);
 }
 
-void tls_write(connection_t* connection) {
+void tls_write(connection_t* connection, char* buffer, size_t size) {
     log_error("tls write\n");
 }
 
