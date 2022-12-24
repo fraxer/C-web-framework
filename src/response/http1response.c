@@ -12,7 +12,6 @@ void http1response_data(http1response_t*, const char*);
 void http1response_datan(http1response_t*, const char*, size_t);
 int http1response_file(http1response_t*, const char*);
 int http1response_filen(http1response_t*, const char*, size_t);
-char* http1response_header_field_alloc(const char*, size_t);
 int http1response_header_add(http1response_t*, const char*, const char*);
 int http1response_headern_add(http1response_t*, const char*, size_t, const char*, size_t);
 const char* http1response_status_string(int);
@@ -211,31 +210,14 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
     return 0;
 }
 
-char* http1response_header_field_alloc(const char* string, size_t length) {
-    char* value = (char*)malloc(length + 1);
-
-    if (value == NULL) return value;
-
-    strcpy(value, string);
-
-    return value;
-}
-
 int http1response_header_add(http1response_t* response, const char* key, const char* value) {
     return http1response_headern_add(response, key, strlen(key), value, strlen(value));
 }
 
 int http1response_headern_add(http1response_t* response, const char* key, size_t key_length, const char* value, size_t value_length) {
-    http1_header_t* header = (http1_header_t*)malloc(sizeof(http1_header_t));
+    http1_header_t* header = http1_header_create(key, key_length, value, value_length);
 
     if (header == NULL) return -1;
-
-    // TODO
-    header->key = NULL;
-    header->value = NULL;
-    header->key_length = 0;
-    header->value_length = 0;
-    header->next = NULL;
 
     if (response->header == NULL) {
         response->header = header;
@@ -246,11 +228,6 @@ int http1response_headern_add(http1response_t* response, const char* key, size_t
     }
 
     response->last_header = header;
-
-    header->key = http1response_header_field_alloc(key, key_length);
-    header->key_length = key_length;
-    header->value = http1response_header_field_alloc(value, value_length);
-    header->value_length = value_length;
 
     if (header->key == NULL || header->value == NULL) return -1;
 

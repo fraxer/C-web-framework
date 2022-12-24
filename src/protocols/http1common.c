@@ -11,15 +11,15 @@ http1_header_t* http1_header_alloc() {
     return (http1_header_t*)malloc(sizeof(http1_header_t));
 }
 
-http1_header_t* http1_header_create(const char* key, size_t key_langth, const char* value, size_t value_langth) {
+http1_header_t* http1_header_create(const char* key, size_t key_length, const char* value, size_t value_length) {
     http1_header_t* header = http1_header_alloc();
 
     if (header == NULL) return NULL;
 
-    header->key = key;
-    header->key_length = key_langth;
-    header->value = value;
-    header->value_length = value_langth;
+    header->key = http1_set_field(key, key_length);
+    header->key_length = key_length;
+    header->value = http1_set_field(value, value_length);
+    header->value_length = value_length;
     header->next = NULL;
 
     return header;
@@ -29,26 +29,26 @@ http1_query_t* http1_query_alloc() {
     return (http1_query_t*)malloc(sizeof(http1_query_t));
 }
 
-http1_query_t* http1_query_create() {
+http1_query_t* http1_query_create(const char* key, size_t key_length, const char* value, size_t value_length) {
     http1_query_t* query = http1_query_alloc();
 
     if (query == NULL) return NULL;
 
-    query->key = NULL;
-    query->value = NULL;
+    query->key = http1_set_field(key, key_length);
+    query->value = http1_set_field(value, value_length);
     query->next = NULL;
 
     return query;
 }
 
-const char* http1_query_set_field(const char* string, size_t length) {
-    char* field = (char*)calloc(length + 1, sizeof(char));
+const char* http1_set_field(const char* string, size_t length) {
+    if (string == NULL) return NULL;
 
-    if (field == NULL) return NULL;
+    char* value = (char*)malloc(length + 1);
 
-    strncpy(field, string, length);
+    if (value == NULL) return value;
 
-    field[length] = 0;
+    strcpy(value, string);
 
-    return field;
+    return value;
 }

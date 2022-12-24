@@ -103,8 +103,8 @@ target_link_libraries(
 	socket
 	protocolmanager
 	http1
-	http1common
 	http1parser
+	http1common
 	http1request
 	http1response
 	websockets

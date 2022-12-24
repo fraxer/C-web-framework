@@ -166,15 +166,9 @@ int http1_get_resource(connection_t* connection) {
             for (route_param_t* param = route->param; param; param = param->next, i++) {
                 size_t substring_length = vector[i * 2 + 1] - vector[i * 2];
 
-                http1_query_t* query = http1_query_create();
+                http1_query_t* query = http1_query_create(param->string, param->string_len, &request->path[vector[i * 2]], substring_length);
 
-                if (query == NULL) return -1;
-
-                query->key = http1_query_set_field(param->string, param->string_len);
-                if (query->key == NULL) return -1;
-
-                query->value = http1_query_set_field(&request->path[vector[i * 2]], substring_length);
-                if (query->value == NULL) return -1;
+                if (query == NULL || query->key == NULL || query->value == NULL) return -1;
 
                 http1_parser_append_query(request, query);
             }

@@ -2,8 +2,8 @@
 #include "../connection/connection.h"
 #include "../request/http1request.h"
 #include "../log/log.h"
+#include "http1common.h"
 #include "http1parser.h"
-    #include <stdio.h>
 
 int http1_parser_parse_method(http1_parser_t*);
 int http1_parser_parse_uri(http1_parser_t*);
@@ -430,7 +430,7 @@ int http1_parser_string_append(http1_parser_t* parser) {
 
         if (parser->string == NULL) return -1;
 
-        strncpy(parser->string, &parser->buffer[parser->pos_start], parser->string_len);
+        memcpy(parser->string, &parser->buffer[parser->pos_start], parser->string_len);
     } else {
         size_t len = parser->string_len;
         parser->string_len = parser->string_len + string_len;
@@ -446,7 +446,7 @@ int http1_parser_string_append(http1_parser_t* parser) {
         parser->string = data;
 
         if (parser->string_len > len) {
-            strncat(parser->string, &parser->buffer[parser->pos_start], string_len);
+            memcpy(parser->string, &parser->buffer[parser->pos_start], string_len);
         }
     }
 
@@ -519,6 +519,8 @@ int http1_parser_set_uri(http1request_t* request, const char* string, size_t len
             break;
         case '.':
             ext_point_start = pos + 1;
+
+            if (pos + 2 < length && string[pos + 1] == '.' && string[pos + 2] == '/') return -1;
             break;
         }
     }
@@ -577,7 +579,7 @@ int http1_parser_set_path(http1request_t* request, const char* string, size_t le
 
     if (path == NULL) return -1;
 
-    strncpy(path, string, length);
+    memcpy(path, string, length);
 
     path[length] = 0;
 
@@ -607,7 +609,7 @@ int http1_parser_set_query(http1request_t* request, const char* string, size_t l
 
     enum { KEY, VALUE } stage = KEY;
 
-    http1_query_t* query = http1_query_create();
+    http1_query_t* query = http1_query_create(NULL, 0, NULL, 0);
 
     if (query == NULL) return -1;
 
@@ -621,7 +623,7 @@ int http1_parser_set_query(http1request_t* request, const char* string, size_t l
 
             stage = VALUE;
 
-            query->key = http1_query_set_field(&string[point_start], pos - point_start);
+            query->key = http1_set_field(&string[point_start], pos - point_start);
 
             if (query->key == NULL) return -1;
 
@@ -630,11 +632,11 @@ int http1_parser_set_query(http1request_t* request, const char* string, size_t l
         case '&':
             stage = KEY;
 
-            query->value = http1_query_set_field(&string[point_start], pos - point_start);
+            query->value = http1_set_field(&string[point_start], pos - point_start);
 
             if (query->value == NULL) return -1;
 
-            http1_query_t* query_new = http1_query_create();
+            http1_query_t* query_new = http1_query_create(NULL, 0, NULL, 0);
 
             if (query_new == NULL) return -1;
 
@@ -646,11 +648,11 @@ int http1_parser_set_query(http1request_t* request, const char* string, size_t l
             break;
         case '#':
             if (stage == KEY) {
-                query->key = http1_query_set_field(&string[point_start], pos - point_start);
+                query->key = http1_set_field(&string[point_start], pos - point_start);
                 if (query->key == NULL) return -1;
             }
             else if (stage == VALUE) {
-                query->value = http1_query_set_field(&string[point_start], pos - point_start);
+                query->value = http1_set_field(&string[point_start], pos - point_start);
                 if (query->value == NULL) return -1;
             }
 
@@ -659,14 +661,14 @@ int http1_parser_set_query(http1request_t* request, const char* string, size_t l
     }
 
     if (stage == KEY) {
-        query->key = http1_query_set_field(&string[point_start], pos - point_start);
+        query->key = http1_set_field(&string[point_start], pos - point_start);
         if (query->key == NULL) return -1;
 
-        query->value = http1_query_set_field("", 0);
+        query->value = http1_set_field("", 0);
         if (query->value == NULL) return -1;
     }
     else if (stage == VALUE) {
-        query->value = http1_query_set_field(&string[point_start], pos - point_start);
+        query->value = http1_set_field(&string[point_start], pos - point_start);
         if (query->value == NULL) return -1;
     }
 
