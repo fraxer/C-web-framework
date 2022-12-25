@@ -14,7 +14,6 @@
 void http1_handle(connection_t*);
 int http1_get_resource(connection_t*);
 int http1_get_file(connection_t*);
-void http1_default_response(connection_t*, int);
 void http1_get_redirect(connection_t*);
 char* http1_get_fullpath(connection_t*);
 
@@ -35,17 +34,14 @@ void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
             // connection->after_read_request(connection);
             return;
         case 0:
-            // http1_handle(connection);
-            // invoke default handler
+            connection->keepalive_enabled = 0;
             connection->after_read_request(connection);
-            // connection->keepalive_enabled = 0;
-            // connection->close(connection);
             return;
         default:
             http1_parser_set_bytes_readed(&parser, bytes_readed);
 
             if (http1_parser_run(&parser) == -1) {
-                http1_default_response(connection, 400);
+                http1response_default_response((http1response_t*)connection->response, 400);
                 connection->after_read_request(connection);
                 return;
             }
@@ -186,33 +182,10 @@ int http1_get_resource(connection_t* connection) {
 }
 
 int http1_get_file(connection_t* connection) {
-    int result = -1;
-
     http1request_t* request = (http1request_t*)connection->request;
     http1response_t* response = (http1response_t*)connection->response;
 
-    char* fullpath = http1_get_fullpath(connection);
-
-    if (fullpath == NULL) {
-        http1_default_response(connection, 500);
-        goto failed;
-    }
-
-    size_t fullpath_length = connection->server->root_length + request->path_length;
-
-    if (response->filen(response, fullpath, fullpath_length) == -1) goto failed;
-
-    result = 0;
-
-    failed:
-
-    free(fullpath);
-
-    return result;
-}
-
-void http1_default_response(connection_t* connection, int status_code) {
-
+    return response->filen(response, request->path, request->path_length);
 }
 
 void http1_get_redirect(connection_t* connection) {
@@ -223,21 +196,4 @@ void http1_get_redirect(connection_t* connection) {
     for (; redirect; redirect = redirect->next) {
         
     }
-}
-
-char* http1_get_fullpath(connection_t* connection) {
-    http1request_t* request = (http1request_t*)connection->request;
-
-    size_t length = connection->server->root_length + request->path_length;
-
-    char* fullpath = (char*)malloc(length + 1);
-
-    if (fullpath == NULL) return NULL;
-
-    memcpy(&fullpath[0], connection->server->root, connection->server->root_length);
-    memcpy(&fullpath[connection->server->root_length], request->path, request->path_length);
-
-    fullpath[length] = 0;
-
-    return fullpath;
 }

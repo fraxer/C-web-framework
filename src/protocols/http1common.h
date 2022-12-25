@@ -35,7 +35,11 @@ typedef struct http1_file {
 
 http1_header_t* http1_header_create(const char*, size_t, const char*, size_t);
 
+void http1_header_free(http1_header_t*);
+
 http1_query_t* http1_query_create(const char*, size_t, const char*, size_t);
+
+void http1_query_free(http1_query_t*);
 
 const char* http1_set_field(const char*, size_t);
 

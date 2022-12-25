@@ -91,8 +91,6 @@ openssl_t* openssl_alloc() {
 }
 
 void openssl_free(openssl_t* openssl) {
-    // free
-
     if (openssl->fullchain) free(openssl->fullchain);
     openssl->fullchain = NULL;
 

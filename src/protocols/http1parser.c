@@ -1,4 +1,5 @@
 #include <string.h>
+#include <ctype.h>
 #include "../connection/connection.h"
 #include "../request/http1request.h"
 #include "../log/log.h"
@@ -22,7 +23,8 @@ int http1_parser_set_header(http1request_t*, const char*, size_t, const char*, s
 int http1_parser_set_path(http1request_t*, const char*, size_t);
 int http1_parser_set_ext(http1request_t*, const char*, size_t);
 int http1_parser_set_query(http1request_t*, const char*, size_t, size_t);
-
+void http1_parser_set_state(http1_parser_t*);
+int http1_parser_set_keepalive(http1_parser_t*);
 
 void http1_parser_init(http1_parser_t* parser, connection_t* connection, char* buffer) {
     parser->stage = METHOD;
@@ -374,6 +376,8 @@ int http1_parser_parse_header_value(http1_parser_t* parser) {
         request->last_header->value_length = parser->string_len;
     }
 
+    http1_parser_set_state(parser);
+
     // printf("VV %s\n", parser->string);
 
     parser->pos_start = parser->pos + 1;
@@ -554,12 +558,17 @@ int http1_parser_set_protocol(http1request_t* request, const char* string) {
 }
 
 int http1_parser_set_header(http1request_t* request, const char* key, size_t key_length, const char* value, size_t value_length) {
-    http1_header_t* header = http1_header_create(key, key_length, value, value_length);
+    http1_header_t* header = http1_header_create(NULL, 0, NULL, 0);
 
     if (header == NULL) {
         log_error("HTTP error: can't alloc header memory\n");
         return -1;
     }
+
+    header->key = key;
+    header->key_length = key_length;
+    header->value = value;
+    header->value_length = value_length;
 
     if (request->header == NULL) {
         request->header = header;
@@ -681,4 +690,31 @@ void http1_parser_append_query(http1request_t* request, http1_query_t* query) {
     }
 
     request->last_query = query;
+}
+
+void http1_parser_set_state(http1_parser_t* parser) {
+    if (http1_parser_set_keepalive(parser) == 0) return;
+}
+
+int http1_parser_set_keepalive(http1_parser_t* parser) {
+    http1request_t* request = (http1request_t*)parser->connection->request;
+
+    http1_header_t* header = request->last_header;
+
+    const char* connection_key = "connection";
+    size_t connection_key_length = 10;
+    const char* connection_value = "keep-alive";
+    size_t connection_value_length = 10;
+
+    if (header->key_length != connection_key_length) return -1;
+
+    for (int i = 0, j = 0; i < header->key_length && j < connection_key_length; i++, j++) {
+        if (tolower(header->key[i]) != tolower(connection_key[j])) return -1;
+    }
+
+    for (int i = 0, j = 0; i < header->value_length && j < connection_value_length; i++, j++) {
+        if (tolower(header->value[i]) != tolower(connection_value[j])) return -1;
+    }
+
+    parser->connection->keepalive_enabled = 1;
 }

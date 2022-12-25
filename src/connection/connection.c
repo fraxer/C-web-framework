@@ -105,6 +105,18 @@ void connection_free(connection_t* connection) {
     connection = NULL;
 }
 
+void connection_reset(connection_t* connection) {
+    if (connection == NULL) return;
+
+    if (connection->request != NULL) {
+        connection->request->reset(connection->request);
+    }
+
+    if (connection->response != NULL) {
+        connection->response->reset(connection->response);
+    }
+}
+
 int connection_trylock(connection_t* connection) {
     if (connection == NULL) return -1;
 

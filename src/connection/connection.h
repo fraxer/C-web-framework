@@ -39,6 +39,8 @@ connection_t* connection_alloc(int fd, int basefd);
 
 void connection_free(connection_t*);
 
+void connection_reset(connection_t*);
+
 int connection_trylock(connection_t*);
 
 int connection_unlock(connection_t*);

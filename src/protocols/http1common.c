@@ -25,6 +25,12 @@ http1_header_t* http1_header_create(const char* key, size_t key_length, const ch
     return header;
 }
 
+void http1_header_free(http1_header_t* header) {
+    free((void*)header->key);
+    free((void*)header->value);
+    free(header);
+}
+
 http1_query_t* http1_query_alloc() {
     return (http1_query_t*)malloc(sizeof(http1_query_t));
 }
@@ -39,6 +45,12 @@ http1_query_t* http1_query_create(const char* key, size_t key_length, const char
     query->next = NULL;
 
     return query;
+}
+
+void http1_query_free(http1_query_t* query) {
+    free((void*)query->key);
+    free((void*)query->value);
+    free(query);
 }
 
 const char* http1_set_field(const char* string, size_t length) {

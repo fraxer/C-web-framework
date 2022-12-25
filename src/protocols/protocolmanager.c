@@ -18,13 +18,13 @@ void protmgr_set_http1(connection_t* connection) {
         connection->request->free(connection->request);
     }
 
-    connection->request = (request_t*)http1request_create();
+    connection->request = (request_t*)http1request_create(connection);
 
     if (connection->response != NULL) {
         connection->response->free(connection->response);
     }
 
-    connection->response = (response_t*)http1response_create();
+    connection->response = (response_t*)http1response_create(connection);
 }
 
 void protmgr_set_websockets(connection_t* connection) {

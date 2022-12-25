@@ -246,12 +246,14 @@ int epoll_after_read_request(connection_t* connection) {
 
 int epoll_after_write_request(connection_t* connection) {
     if (connection->keepalive_enabled == 0) {
-        connection->close(connection);
-    } else {
-        if (epoll_control_mod(connection, EPOLLIN) == -1) {
-            log_error("Epoll error: Epoll_ctl failed in write done\n");
-            return -1;
-        }
+        return connection->close(connection);
+    }
+
+    connection_reset(connection);
+
+    if (epoll_control_mod(connection, EPOLLIN) == -1) {
+        log_error("Epoll error: Epoll_ctl failed in write done\n");
+        return -1;
     }
 
     return 0;
