@@ -4,6 +4,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include "../protocols/protocolmanager.h"
 #include "../mimetype/mimetype.h"
 #include "http1response.h"
     #include <stdio.h>
@@ -17,7 +18,6 @@ int http1response_headern_add(http1response_t*, const char*, size_t, const char*
 const char* http1response_status_string(int);
 size_t http1response_status_length(int);
 size_t http1response_size(http1response_t*, size_t);
-int http1response_data_append(char*, size_t*, const char*, size_t);
 int http1response_prepare(http1response_t*, const char*, size_t);
 int http1response_header_add_content_length(http1response_t*, size_t);
 int http1response_header_add_content_type(http1response_t*, const char*, size_t);
@@ -25,6 +25,7 @@ const char* http1response_get_mimetype(const char*);
 const char* http1response_get_extention(const char*, size_t);
 void http1response_reset(http1response_t*);
 int http1response_keepalive_enabled(http1response_t*);
+void http1response_switch_to_websockets(http1response_t*);
 
 
 void http1response_header_free(http1_header_t* header) {
@@ -76,6 +77,7 @@ http1response_t* http1response_create(connection_t* connection) {
     response->headern_remove = NULL;
     response->file = http1response_file;
     response->filen = http1response_filen;
+    response->switch_to_websockets = http1response_switch_to_websockets;
     response->base.reset = (void(*)(void*))http1response_reset;
     response->base.free = (void(*)(void*))http1response_free;
 
@@ -177,7 +179,7 @@ void http1response_datan(http1response_t* response, const char* data, size_t len
 
     response->body.size = http1response_size(response, length);
 
-    if (http1response_prepare(response, data, length) == -1) return;
+    http1response_prepare(response, data, length);
 
     // printf("body: %s, %ld\n", response->body.data, response->body.size);
 }
@@ -270,6 +272,10 @@ int http1response_headern_add(http1response_t* response, const char* key, size_t
 }
 
 int http1response_header_add_content_length(http1response_t* response, size_t length) {
+    if (length == 0) {
+        return response->headern_add(response, "Content-Length", 14, "0", 1);
+    }
+
     size_t value = length;
     size_t content_length = 0;
 
@@ -479,4 +485,17 @@ void http1response_default_response(http1response_t* response, int status_code) 
 
 int http1response_keepalive_enabled(http1response_t* response) {
     return response->connection->keepalive_enabled;
+}
+
+void http1response_switch_to_websockets(http1response_t* response) {
+    response->connection->switch_to_protocol = protmgr_set_websockets;
+
+    if (response->header_add(response, "Connection", http1response_keepalive_enabled(response) ? "Keep-Alive" : "Close") == -1) return;
+    if (response->header_add(response, "Cache-Control", "no-store, no-cache") == -1) return;
+
+    response->body.size = http1response_size(response, 0);
+
+    http1response_prepare(response, NULL, 0);
+
+    // printf("body: %s, %ld\n", response->body.data, response->body.size);
 }

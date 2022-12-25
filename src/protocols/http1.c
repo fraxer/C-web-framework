@@ -146,7 +146,8 @@ int http1_get_resource(connection_t* connection) {
         if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {
             connection->handle = route->method[request->method];
             connection->queue_push(connection);
-            // route->method[request->method]((char*)request->path);
+            // route->method[request->method](connection->request, connection->response);
+            // connection->after_read_request(connection);
             return 0;
         }
 
@@ -172,7 +173,8 @@ int http1_get_resource(connection_t* connection) {
             connection->handle = route->method[request->method];
             connection->queue_push(connection);
 
-            // route->method[request->method]((char*)request->path);
+            // route->method[request->method](connection->request, connection->response);
+            // connection->after_read_request(connection);
 
             return 0;
         }

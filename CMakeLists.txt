@@ -68,10 +68,17 @@ add_library(threadhandler STATIC src/thread/threadhandler.c)
 
 add_library(threadworker STATIC src/thread/threadworker.c)
 
+add_library(base64 STATIC src/base64/base64.c)
+
 # Pages
 add_library(indexpage SHARED src/handlers/index.c)
 
 
+
+target_link_libraries(
+	indexpage
+	base64
+)
 
 target_link_libraries(
 	config
@@ -95,6 +102,7 @@ target_link_libraries(
 	mimetype
 	threadhandler
 	threadworker
+	base64
 	domain
 	server
 	epoll

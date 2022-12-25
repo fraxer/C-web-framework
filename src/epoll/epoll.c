@@ -251,6 +251,11 @@ int epoll_after_write_request(connection_t* connection) {
 
     connection_reset(connection);
 
+    if (connection->switch_to_protocol != NULL) {
+        connection->switch_to_protocol(connection);
+        connection->switch_to_protocol = NULL;
+    }
+
     if (epoll_control_mod(connection, EPOLLIN) == -1) {
         log_error("Epoll error: Epoll_ctl failed in write done\n");
         return -1;

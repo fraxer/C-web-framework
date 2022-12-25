@@ -1,9 +1,13 @@
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 #include "http1request.h"
     #include <stdio.h>
 
 void http1request_reset(http1request_t*);
+http1_header_t* http1request_header(http1request_t*, const char*);
+http1_header_t* http1request_headern(http1request_t*, const char*, size_t);
 
 http1request_t* http1request_alloc() {
     return (http1request_t*)malloc(sizeof(http1request_t));
@@ -55,9 +59,11 @@ http1request_t* http1request_create(connection_t* connection) {
     request->payload = NULL;
     request->query = NULL;
     request->last_query = NULL;
-    request->header = NULL;
+    request->header_ = NULL;
     request->last_header = NULL;
     request->connection = connection;
+    request->header = http1request_header;
+    request->headern = http1request_headern;
     request->base.reset = (void(*)(void*))http1request_reset;
     request->base.free = (void(*)(void*))http1request_free;
 
@@ -87,7 +93,29 @@ void http1request_reset(http1request_t* request) {
     request->query = NULL;
     request->last_query = NULL;
 
-    http1request_header_free(request->header);
-    request->header = NULL;
+    http1request_header_free(request->header_);
+    request->header_ = NULL;
     request->last_header = NULL;
+}
+
+http1_header_t* http1request_header(http1request_t* request, const char* key) {
+    return http1request_headern(request, key, strlen(key));
+}
+
+http1_header_t* http1request_headern(http1request_t* request, const char* key, size_t key_length) {
+    http1_header_t* header = request->header_;
+
+    while (header) {
+        for (int i = 0, j = 0; i < header->key_length && j < key_length; i++, j++) {
+            if (tolower(header->key[i]) != tolower(key[j])) goto next;
+        }
+
+        return header;
+
+        next:
+
+        header = header->next;
+    }
+
+    return NULL;
 }

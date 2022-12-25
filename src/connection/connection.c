@@ -74,6 +74,7 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->after_write_request = NULL;
     connection->queue_push = NULL;
     connection->queue_pop = NULL;
+    connection->switch_to_protocol = NULL;
 
     pthread_mutex_init(&connection->mutex, NULL);
 

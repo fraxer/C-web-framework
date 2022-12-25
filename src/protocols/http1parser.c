@@ -570,8 +570,8 @@ int http1_parser_set_header(http1request_t* request, const char* key, size_t key
     header->value = value;
     header->value_length = value_length;
 
-    if (request->header == NULL) {
-        request->header = header;
+    if (request->header_ == NULL) {
+        request->header_ = header;
     }
 
     if (request->last_header) {

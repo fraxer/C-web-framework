@@ -25,10 +25,13 @@ typedef struct http1request {
 
     http1_query_t* query;
     http1_query_t* last_query;
-    http1_header_t* header;
+    http1_header_t* header_;
     http1_header_t* last_header;
 
     connection_t* connection;
+
+    http1_header_t*(*header)(struct http1request*, const char*);
+    http1_header_t*(*headern)(struct http1request*, const char*, size_t);
 } http1request_t;
 
 http1request_t* http1request_create(connection_t*);

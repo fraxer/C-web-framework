@@ -31,6 +31,7 @@ typedef struct connection {
     int(*after_write_request)(struct connection*);
     int(*queue_push)(struct connection*);
     int(*queue_pop)(struct connection*);
+    void(*switch_to_protocol)(struct connection*);
 } connection_t;
 
 connection_t* connection_create(int, int);

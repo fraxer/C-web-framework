@@ -28,10 +28,13 @@ typedef struct http1response {
     int(*headern_remove)(struct http1response*, const char*, size_t);
     int(*file)(struct http1response*, const char*);
     int(*filen)(struct http1response*, const char*, size_t);
+    void(*switch_to_websockets)(struct http1response*);
 } http1response_t;
 
 http1response_t* http1response_create(connection_t*);
 
 void http1response_default_response(http1response_t*, int);
+
+int http1response_data_append(char*, size_t*, const char*, size_t);
 
 #endif
