@@ -31,7 +31,6 @@ void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
         switch (bytes_readed) {
         case -1:
             http1_handle(connection);
-            // connection->after_read_request(connection);
             return;
         case 0:
             connection->keepalive_enabled = 0;

@@ -450,7 +450,7 @@ int http1_parser_string_append(http1_parser_t* parser) {
         parser->string = data;
 
         if (parser->string_len > len) {
-            memcpy(parser->string, &parser->buffer[parser->pos_start], string_len);
+            memcpy(&parser->string[len], &parser->buffer[parser->pos_start], string_len);
         }
     }
 
