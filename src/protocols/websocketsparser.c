@@ -21,14 +21,19 @@ void websocketsparser_init(websocketsparser_t* parser, connection_t* connection,
     parser->opcode = 0;
     parser->masked = 0;
     parser->payload_length = 0;
-    parser->mask = 0;
+    parser->decoded_index = 0;
+    parser->mask[0] = 0;
+    parser->mask[1] = 0;
+    parser->mask[2] = 0;
+    parser->mask[3] = 0;
+    parser->mask_index = 0;
 
     parser->bytes_readed = 0;
     parser->pos_start = 0;
     parser->pos = 0;
     parser->string_len = 0;
     parser->string = NULL;
-    parser->buffer = (unsigned char*)buffer;
+    parser->buffer = buffer;
     parser->connection = connection;
 }
 
@@ -42,100 +47,28 @@ int websocketsparser_run(websocketsparser_t* parser) {
     parser->pos_start = 0;
     parser->pos = 0;
 
-    switch (parser->stage) {
-    case FIRST_BYTE:
+    if (parser->stage == FIRST_BYTE) {
         result = websocketsparser_parse_first_byte(parser);
         if (result < 0) return result;
-    case SECOND_BYTE:
+    }
+    if (parser->stage == SECOND_BYTE) {
         result = websocketsparser_parse_second_byte(parser);
         if (result < 0) return result;
-    case PAYLOAD_LEN:
+    }
+    if (parser->stage == PAYLOAD_LEN) {
         result = websocketsparser_parse_payload_length(parser);
         if (result < 0) return result;
-    case MASK_KEY:
+    }
+    if (parser->stage == MASK_KEY) {
         result = websocketsparser_parse_mask(parser);
         if (result < 0) return result;
-    case DATA:
+    }
+    if (parser->stage == DATA) {
         result = websocketsparser_parse_payload(parser);
         if (result < 0) return result;
     }
 
     return result;
-
-    // unsigned char fin    = (buffer[0] >> 7) & 0x01;
-    // unsigned char opcode =  buffer[0] & 0x0F;
-    // unsigned char masked = (buffer[1] >> 7) & 0x01;
-
-    // unsigned long long payload_length = 0;
-    // int pos = 2;
-    // int length_field = buffer[1] & (~0x80);
-    // unsigned int mask = 0;
-
-    // if (length_field <= 125) {
-    //     payload_length = length_field;
-    // }
-    // else if (length_field == 126) {
-    //     payload_length = (
-    //         (buffer[2] << 8) | 
-    //         (buffer[3])
-    //     );
-    //     pos += 2;
-    // }
-    // else if (length_field == 127) {
-    //     int byteCount = 8;
-
-    //     while (--byteCount > 1) {
-    //         payload_length |= (buffer[byteCount + 1] & 0xFF) << (8 * byteCount);
-    //     }
-
-    //     payload_length |= buffer[9];
-
-    //     // payload_length = (
-    //     //     (buffer[2] << 56) | 
-    //     //     (buffer[3] << 48) | 
-    //     //     (buffer[4] << 40) | 
-    //     //     (buffer[5] << 32) | 
-    //     //     (buffer[6] << 24) | 
-    //     //     (buffer[7] << 16) | 
-    //     //     (buffer[8] << 8) | 
-    //     //     (buffer[9])
-    //     // );
-
-    //     pos += 8;
-    // }
-
-    // printf("payload_length: %lld\n", payload_length);
-
-    // if (masked) {
-    //     mask = *((unsigned int*)(buffer + pos));
-    //     pos += 4;
-
-    //     unsigned char* c = buffer + pos;
-
-    //     for (unsigned long long i = 0; i < payload_length; i++) {
-    //         c[i] = c[i] ^ ((unsigned char*)(&mask))[i % 4];
-    //     }
-    // }
-
-    // char* out_buffer = (char*)malloc(payload_length + 1);
-
-    // memcpy(out_buffer, buffer + pos, payload_length);
-
-    // out_buffer[payload_length] = 0;
-
-    // unsigned short num = ((unsigned char)(out_buffer[0]) | (unsigned char)(out_buffer[1]) << 8);
-
-    // // printf("%d\n", num);
-    // // printf("%s\n", out_buffer);
-    // // printf("%d, %d\n", (unsigned char)(out_buffer[0]), (unsigned char)(out_buffer[1]));
-
-    // printf("num %d\n", num);
-    // printf("Fin %d\n", fin);
-    // printf("Opcode %d\n", opcode);
-    // printf("Masked %d\n", masked);
-    // printf("%s\n", out_buffer);
-
-	return 0;
 }
 
 int websocketsparser_parse_first_byte(websocketsparser_t* parser) {
@@ -165,6 +98,8 @@ int websocketsparser_parse_first_byte(websocketsparser_t* parser) {
 int websocketsparser_parse_second_byte(websocketsparser_t* parser) {
     if (parser->pos_start > parser->bytes_readed) return -1;
 
+    parser->pos = parser->pos_start;
+
     unsigned char c = parser->buffer[parser->pos_start];
 
     parser->masked = (c >> 7) & 0x01;
@@ -173,14 +108,14 @@ int websocketsparser_parse_second_byte(websocketsparser_t* parser) {
     printf("masked: %d\n", parser->masked);
     printf("payload_length: %ld\n", parser->payload_length);
 
+    parser->pos_start = parser->pos + 1;
+
     if (parser->payload_length <= 125) {
-        parser->stage = MASK_KEY;
+        parser->stage = parser->masked ? MASK_KEY : DATA;
     }
     else {
         parser->stage = PAYLOAD_LEN;
     }
-
-    parser->pos_start = parser->pos + 1;
 
     if (parser->pos + 1 == parser->bytes_readed) return -2;
 
@@ -207,6 +142,36 @@ int websocketsparser_parse_payload_length(websocketsparser_t* parser) {
         if (websocketsparser_set_payload_length(parser, &parser->buffer[parser->pos_start], parser->pos - parser->pos_start) == -1) return -1;
     }
 
+    parser->pos_start = parser->pos;
+
+    if (parser->string) {
+        free(parser->string);
+        parser->string = NULL;
+    }
+
+    parser->string_len = 0;
+
+    parser->stage = parser->masked ? MASK_KEY : DATA;
+
+    if (parser->pos + 1 == parser->bytes_readed) return -2;
+
+    return 0;
+}
+
+int websocketsparser_parse_mask(websocketsparser_t* parser) {
+    for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
+        parser->mask[parser->mask_index] = parser->buffer[parser->pos];
+        parser->mask_index++;
+
+        if (parser->mask_index == 4) goto next;
+    }
+
+    return -2;
+
+    next:
+
+    printf("mask: %d %d %d %d\n", parser->mask[0], parser->mask[1], parser->mask[2], parser->mask[3]);
+
     parser->pos_start = parser->pos + 1;
 
     if (parser->string) {
@@ -216,18 +181,29 @@ int websocketsparser_parse_payload_length(websocketsparser_t* parser) {
 
     parser->string_len = 0;
 
-    parser->stage = MASK_KEY;
+    parser->stage = DATA;
 
     if (parser->pos + 1 == parser->bytes_readed) return -2;
 
     return 0;
 }
 
-int websocketsparser_parse_mask(websocketsparser_t*) {
-    return 0;
-}
+int websocketsparser_parse_payload(websocketsparser_t* parser) {
+    if (parser->payload_length == 0) return 0;
 
-int websocketsparser_parse_payload(websocketsparser_t*) {
+    for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++, parser->decoded_index++) {
+        parser->buffer[parser->pos] = (parser->buffer[parser->pos]) ^ parser->mask[parser->decoded_index % 4];
+    }
+
+    int res = websocketsparser_string_append(parser);
+
+    // printf("%s\n", parser->string);
+
+    if (parser->string_len < parser->payload_length) return res;
+
+    // parser->request->payload = parser->string
+    // parser->request->payload_length = parser->string_len;
+
     return 0;
 }
 
@@ -269,11 +245,10 @@ int websocketsparser_string_append(websocketsparser_t* parser) {
 }
 
 int websocketsparser_set_payload_length(websocketsparser_t* parser, const unsigned char* string, size_t length) {
-    ssize_t payload_length = 0;
     int byte_count = 0;
-
+    
     if (parser->payload_length == 126) {
-        // payload_length = (
+        // parser->payload_length = (
         //     (string[0] << 8) | 
         //     (string[1])
         // );
@@ -281,7 +256,7 @@ int websocketsparser_set_payload_length(websocketsparser_t* parser, const unsign
         byte_count = 2;
     }
     else if (parser->payload_length == 127) {
-        // payload_length = (
+        // parser->payload_length = (
         //     (string[0] << 56) |
         //     (string[1] << 48) |
         //     (string[2] << 40) |
@@ -300,9 +275,12 @@ int websocketsparser_set_payload_length(websocketsparser_t* parser, const unsign
 
     parser->payload_length = 0;
 
-    while (--byte_count >= 0) {
-        parser->payload_length |= ((unsigned char)string[byte_count] & 0xFF) << (8 * (8 - byte_count + 1));
-    }
+    int counter = byte_count;
+    int byte_left = 8;
+
+    do {
+        parser->payload_length |= (string[byte_count - counter]) << (byte_left * counter - byte_left);
+    } while (--counter > 0);
 
     printf("real payload_length: %ld\n", parser->payload_length);
 

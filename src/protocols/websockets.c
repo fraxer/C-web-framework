@@ -19,6 +19,8 @@ int websockets_get_file(connection_t*);
 void websockets_read(connection_t* connection, char* buffer, size_t buffer_size) {
     websocketsparser_t parser;
 
+    printf("parser init\n");
+
     websocketsparser_init(&parser, connection, buffer);
 
     while (1) {
@@ -26,6 +28,7 @@ void websockets_read(connection_t* connection, char* buffer, size_t buffer_size)
 
         switch (bytes_readed) {
         case -1:
+            // printf("%s\n", parser.string);
             websockets_handle(connection);
             return;
         case 0:
@@ -38,7 +41,8 @@ void websockets_read(connection_t* connection, char* buffer, size_t buffer_size)
             // printf("byte: %d\n", (unsigned char)buffer[0]);
 
             if (websocketsparser_run(&parser) == -1) {
-                websocketsresponse_default_response((websocketsresponse_t*)connection->response, 400);
+                printf("to response\n");
+                // websocketsresponse_default_response((websocketsresponse_t*)connection->response, 400);
                 connection->after_read_request(connection);
                 return;
             }
@@ -116,9 +120,9 @@ ssize_t websockets_write_internal(connection_t* connection, const char* response
 }
 
 void websockets_handle(connection_t* connection) {
-    if (websockets_get_resource(connection) == 0) return;
+    // if (websockets_get_resource(connection) == 0) return;
 
-    websockets_get_file(connection);
+    // websockets_get_file(connection);
 
     connection->after_read_request(connection);
 }

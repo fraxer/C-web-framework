@@ -21,14 +21,16 @@ typedef struct websocketsparser {
     unsigned int opcode;
     unsigned int masked;
     ssize_t payload_length;
-    unsigned int mask;
+    ssize_t decoded_index;
+    unsigned char mask[4];
+    int mask_index;
 
     size_t bytes_readed;
     size_t pos_start;
     size_t pos;
     size_t string_len;
 
-    unsigned char* string;
+    char* string;
     char* buffer;
     connection_t* connection;
 } websocketsparser_t;
