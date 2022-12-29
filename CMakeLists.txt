@@ -52,6 +52,8 @@ add_library(http1response STATIC src/response/http1response.c)
 
 add_library(websockets STATIC src/protocols/websockets.c)
 
+add_library(websocketscommon STATIC src/protocols/websocketscommon.c)
+
 add_library(websocketsparser STATIC src/protocols/websocketsparser.c)
 
 add_library(websocketsrequest STATIC src/request/websocketsrequest.c)
@@ -119,14 +121,15 @@ target_link_libraries(
 
 	http1
 	http1parser
-	http1common
 	http1request
 	http1response
+	http1common
 
 	websockets
 	websocketsparser
 	websocketsrequest
 	websocketsresponse
+	websocketscommon
 
 	tls
 

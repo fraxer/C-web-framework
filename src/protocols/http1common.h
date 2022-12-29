@@ -1,6 +1,8 @@
 #ifndef __HTTP1COMMON__
 #define __HTTP1COMMON__
 
+#include <stddef.h>
+
 typedef struct http1_header {
     const char* key;
     const char* value;

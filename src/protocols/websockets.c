@@ -12,6 +12,7 @@
     #include <stdio.h>
 
 void websockets_handle(connection_t*);
+int websockets_default_action(connection_t*);
 int websockets_get_resource(connection_t*);
 int websockets_get_file(connection_t*);
 
@@ -19,16 +20,13 @@ int websockets_get_file(connection_t*);
 void websockets_read(connection_t* connection, char* buffer, size_t buffer_size) {
     websocketsparser_t parser;
 
-    printf("parser init\n");
-
-    websocketsparser_init(&parser, connection, buffer);
+    websocketsparser_init(&parser, (websocketsrequest_t*)connection->request, buffer);
 
     while (1) {
         int bytes_readed = websockets_read_internal(connection, buffer, buffer_size);
 
         switch (bytes_readed) {
         case -1:
-            // printf("%s\n", parser.string);
             websockets_handle(connection);
             return;
         case 0:
@@ -41,7 +39,6 @@ void websockets_read(connection_t* connection, char* buffer, size_t buffer_size)
             // printf("byte: %d\n", (unsigned char)buffer[0]);
 
             if (websocketsparser_run(&parser) == -1) {
-                printf("to response\n");
                 // websocketsresponse_default_response((websocketsresponse_t*)connection->response, 400);
                 connection->after_read_request(connection);
                 return;
@@ -54,7 +51,6 @@ void websockets_write(connection_t* connection, char*, size_t) {
     const char* response = "HTTP/1.1 200 OK\r\nServer: TEST\r\nContent-Length: 8\r\nContent-Type: text/html\r\nConnection: Closed\r\n\r\nResponse";
 
     int size = strlen(response);
-
 
     // int max_fragment_size = 14;
     // unsigned char* buffer = (unsigned char*)malloc(size + max_fragment_size);
@@ -120,11 +116,58 @@ ssize_t websockets_write_internal(connection_t* connection, const char* response
 }
 
 void websockets_handle(connection_t* connection) {
+    websocketsrequest_t* request = (websocketsrequest_t*)connection->request;
+    websocketsresponse_t* response = (websocketsresponse_t*)connection->response;
+
+    if (request->frame_opcode == -1) equest->frame_opcode = request->frame.opcode;
+
+    printf("fin: %d\n", request->frame.fin);
+    printf("rsv1: %d\n", request->frame.rsv1);
+    printf("rsv2: %d\n", request->frame.rsv2);
+    printf("rsv3: %d\n", request->frame.rsv3);
+    printf("opcode: %d\n", request->frame.opcode);
+    printf("masked: %d\n", request->frame.masked);
+    printf("payload_length: %ld\n", request->frame.payload_length);
+    printf("mask: %d %d %d %d\n", request->frame.mask[0], request->frame.mask[1], request->frame.mask[2], request->frame.mask[3]);
+
+    int result = websockets_default_action(connection);
+
+    if (result == 0) {
+        connection->after_read_request(connection);
+        return;
+    }
+    else if (result == -1) {
+        connection->keepalive_enabled = 0;
+        connection->after_read_request(connection);
+        return;
+    }
+    else if (result == 1) return;
+
     // if (websockets_get_resource(connection) == 0) return;
 
     // websockets_get_file(connection);
 
     connection->after_read_request(connection);
+}
+
+int websockets_default_action(connection_t* connection) {
+    websocketsrequest_t* request = (websocketsrequest_t*)connection->request;
+    websocketsresponse_t* response = (websocketsresponse_t*)connection->response;
+
+    if (request->frame.fin == 1 && request->frame.opcode == 10) {
+        return response->pong(response, request);
+    }
+
+    if (request->frame.fin == 0 && request->frame.opcode == 1) {
+        return 1;
+        // return response->continuation(response, request);
+    }
+
+    if (request->frame.fin == 1 && request->frame.opcode == 8) {
+        return response->close(response, request);
+    }
+
+    return -1;
 }
 
 int websockets_get_resource(connection_t* connection) {
@@ -173,8 +216,6 @@ int websockets_get_file(connection_t* connection) {
 
     return response->filen(response, request->path, request->path_length);
 }
-
-
 
 void websockets_parse(connection_t* connection, unsigned char* buffer, size_t buffer_size) {
     // // pong

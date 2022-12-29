@@ -57,20 +57,20 @@ websocketsresponse_t* websocketsresponse_create(connection_t* connection) {
 }
 
 void websocketsresponse_reset(websocketsresponse_t* response) {
-    response->body.pos = 0;
-    response->body.size = 0;
+    // response->body.pos = 0;
+    // response->body.size = 0;
 
-    if (response->file_.fd > 0) {
-        lseek(response->file_.fd, 0, SEEK_SET);
-        close(response->file_.fd);
-    }
+    // if (response->file_.fd > 0) {
+    //     lseek(response->file_.fd, 0, SEEK_SET);
+    //     close(response->file_.fd);
+    // }
 
-    response->file_.fd = 0;
-    response->file_.pos = 0;
-    response->file_.size = 0;
+    // response->file_.fd = 0;
+    // response->file_.pos = 0;
+    // response->file_.size = 0;
 
-    if (response->body.data) free(response->body.data);
-    response->body.data = NULL;
+    // if (response->body.data) free(response->body.data);
+    // response->body.data = NULL;
 }
 
 size_t websocketsresponse_size(websocketsresponse_t* response, size_t body_length) {
