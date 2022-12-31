@@ -16,6 +16,8 @@ typedef enum websockets_request_stage {
 typedef struct websocketsparser {
     websockets_request_stage_e stage;
 
+    websockets_frame_t frame;
+
     int mask_index;
 
     size_t bytes_readed;
@@ -27,7 +29,6 @@ typedef struct websocketsparser {
     char* string;
     char* buffer;
     websocketsrequest_t* request;
-    websockets_frame_t* frame;
 } websocketsparser_t;
 
 void websocketsparser_init(websocketsparser_t*, websocketsrequest_t*, char*);

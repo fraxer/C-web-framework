@@ -18,7 +18,7 @@ const char* websocketsresponse_get_mimetype(const char*);
 const char* websocketsresponse_get_extention(const char*, size_t);
 void websocketsresponse_reset(websocketsresponse_t*);
 int websocketsresponse_keepalive_enabled(websocketsresponse_t*);
-
+int websocketsresponse_set_payload_length(char*, size_t*, size_t);
 
 websocketsresponse_t* websocketsresponse_alloc() {
     return (websocketsresponse_t*)malloc(sizeof(websocketsresponse_t));
@@ -39,6 +39,7 @@ websocketsresponse_t* websocketsresponse_create(connection_t* connection) {
 
     if (response == NULL) return NULL;
 
+    response->frame_code = 0;
     response->body.data = NULL;
     response->body.pos = 0;
     response->body.size = 0;
@@ -57,24 +58,38 @@ websocketsresponse_t* websocketsresponse_create(connection_t* connection) {
 }
 
 void websocketsresponse_reset(websocketsresponse_t* response) {
-    // response->body.pos = 0;
-    // response->body.size = 0;
+    response->frame_code = 0;
+    response->body.pos = 0;
+    response->body.size = 0;
 
-    // if (response->file_.fd > 0) {
-    //     lseek(response->file_.fd, 0, SEEK_SET);
-    //     close(response->file_.fd);
-    // }
+    if (response->file_.fd > 0) {
+        lseek(response->file_.fd, 0, SEEK_SET);
+        close(response->file_.fd);
+    }
 
-    // response->file_.fd = 0;
-    // response->file_.pos = 0;
-    // response->file_.size = 0;
+    response->file_.fd = 0;
+    response->file_.pos = 0;
+    response->file_.size = 0;
 
-    // if (response->body.data) free(response->body.data);
-    // response->body.data = NULL;
+    if (response->body.data) free(response->body.data);
+    response->body.data = NULL;
 }
 
 size_t websocketsresponse_size(websocketsresponse_t* response, size_t body_length) {
     size_t size = 0;
+
+    size += 1; // fin, opcode
+
+    // mask, payload length
+    if (body_length <= 125) {
+        size += 1;
+    }
+    else if (body_length <= 65535) {
+        size += 3;
+    }
+    else {
+        size += 9;
+    }
 
     size += body_length; // body length
 
@@ -94,9 +109,39 @@ int websocketsresponse_prepare(websocketsresponse_t* response, const char* body,
 
     size_t pos = 0;
 
+    if (websocketsresponse_data_append(data, &pos, &response->frame_code, 1) == -1) return -1;
+
+    if (websocketsresponse_set_payload_length(data, &pos, length) == -1) return -1;
+
     if (body != NULL && websocketsresponse_data_append(data, &pos, body, length) == -1) return -1;
 
     response->body.data = data;
+
+    return 0;
+}
+
+int websocketsresponse_set_payload_length(char* data, size_t* pos, size_t payload_length) {
+    if (payload_length <= 125) {
+        data[(*pos)++] = payload_length;
+    }
+    else if (payload_length <= 65535) {
+        data[(*pos)++] = 126; // 16 bit length follows
+        data[(*pos)++] = (payload_length >> 8) & 0xFF; // leftmost first
+        data[(*pos)++] = payload_length & 0xFF;
+    }
+    else { // >2^16-1 (65535)
+        data[(*pos)++] = 127; // 64 bit length follows
+
+        // since msg_length is int it can be no longer than 4 bytes = 2^32-1
+        // padd zeroes for the first 4 bytes
+        for (int i = 3; i >= 0; i--) {
+            data[(*pos)++] = 0;
+        }
+        // write the actual 32bit msg_length in the next 4 bytes
+        for (int i = 3; i >= 0; i--) {
+            data[(*pos)++] = ((payload_length >> 8*i) & 0xFF);
+        }
+    }
 
     return 0;
 }
@@ -227,4 +272,20 @@ void websocketsresponse_default_response(websocketsresponse_t* response, int sta
 
 int websocketsresponse_keepalive_enabled(websocketsresponse_t* response) {
     return response->connection->keepalive_enabled;
+}
+
+void websocketsresponse_pong(websocketsresponse_t* response, const char* data, size_t length) {
+    websocketsresponse_reset(response);
+
+    response->frame_code = 0x8A;
+
+    websocketsresponse_datan(response, data, length);
+}
+
+void websocketsresponse_close(websocketsresponse_t* response, const char* data, size_t length) {
+    websocketsresponse_reset(response);
+
+    response->frame_code = 0x88;
+
+    websocketsresponse_datan(response, data, length);
 }

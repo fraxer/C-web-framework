@@ -11,8 +11,7 @@
 #include "websockets.h"
     #include <stdio.h>
 
-void websockets_handle(connection_t*);
-int websockets_default_action(connection_t*);
+void websockets_handle(connection_t*, websocketsparser_t*);
 int websockets_get_resource(connection_t*);
 int websockets_get_file(connection_t*);
 
@@ -27,7 +26,21 @@ void websockets_read(connection_t* connection, char* buffer, size_t buffer_size)
 
         switch (bytes_readed) {
         case -1:
-            websockets_handle(connection);
+
+            // printf("fin: %d\n", parser.frame.fin);
+            // printf("rsv1: %d\n", parser.frame.rsv1);
+            // printf("rsv2: %d\n", parser.frame.rsv2);
+            // printf("rsv3: %d\n", parser.frame.rsv3);
+            // printf("opcode: %d\n", parser.frame.opcode);
+            // printf("masked: %d\n", parser.frame.masked);
+            // printf("payload_length: %ld\n", parser.frame.payload_length);
+            // printf("mask: %d %d %d %d\n", parser.frame.mask[0], parser.frame.mask[1], parser.frame.mask[2], parser.frame.mask[3]);
+
+            websockets_handle(connection, &parser);
+
+            // websocketsparser_free(&parser);
+            if (parser.string) free(parser.string);
+
             return;
         case 0:
             connection->keepalive_enabled = 0;
@@ -47,10 +60,75 @@ void websockets_read(connection_t* connection, char* buffer, size_t buffer_size)
     }
 }
 
-void websockets_write(connection_t* connection, char*, size_t) {
-    const char* response = "HTTP/1.1 200 OK\r\nServer: TEST\r\nContent-Length: 8\r\nContent-Type: text/html\r\nConnection: Closed\r\n\r\nResponse";
+void websockets_write(connection_t* connection, char* buffer, size_t buffer_size) {
+    websocketsresponse_t* response = (websocketsresponse_t*)connection->response;
 
-    int size = strlen(response);
+    if (response->body.data == NULL) {
+        connection->after_write_request(connection);
+        return;
+    }
+
+    // body
+    if (response->body.pos < response->body.size) {
+        size_t size = response->body.size - response->body.pos;
+
+        if (size > buffer_size) {
+            size = buffer_size;
+        }
+
+        size_t writed = websockets_write_internal(connection, &response->body.data[response->body.pos], size);
+
+        // printf("writed %s\n", response->body.data);
+
+        // unsigned char c = response->body.data[1];
+
+        // printf("%d %d %d %d %d %d %d %d\n"
+        // , (c >> 7) & 0x01
+        // , (c >> 6) & 0x01
+        // , (c >> 5) & 0x01
+        // , (c >> 4) & 0x01
+        // , (c >> 3) & 0x01
+        // , (c >> 2) & 0x01
+        // , (c >> 1) & 0x01
+        // , (c >> 0) & 0x01);
+
+        if (writed == -1) return;
+
+        response->body.pos += writed;
+
+        if (writed == buffer_size) return;
+    }
+
+    // file
+    // if (response->file_.fd > 0 && response->file_.pos < response->file_.size) {
+    //     lseek(response->file_.fd, response->file_.pos, SEEK_SET);
+
+    //     size_t size = response->file_.size - response->file_.pos;
+
+    //     if (size > buffer_size) {
+    //         size = buffer_size;
+    //     }
+
+    //     size_t readed = read(response->file_.fd, buffer, size);
+
+    //     size_t writed = websockets_write_internal(connection, buffer, readed);
+
+    //     if (writed == -1) return;
+
+    //     response->file_.pos += writed;
+
+    //     if (response->file_.pos < response->file_.size) return;
+    // }
+
+    connection->after_write_request(connection);
+
+
+
+
+
+    // const char* response = "HTTP/1.1 200 OK\r\nServer: TEST\r\nContent-Length: 8\r\nContent-Type: text/html\r\nConnection: Closed\r\n\r\nResponse";
+
+    // int size = strlen(response);
 
     // int max_fragment_size = 14;
     // unsigned char* buffer = (unsigned char*)malloc(size + max_fragment_size);
@@ -90,9 +168,9 @@ void websockets_write(connection_t* connection, char*, size_t) {
     // printf("%d\n", size + pos);
 
 
-    size_t writed = websockets_write_internal(connection, response, size);
+    // size_t writed = websockets_write_internal(connection, response, size);
 
-    connection->after_write_request(connection);
+    // connection->after_write_request(connection);
 }
 
 ssize_t websockets_read_internal(connection_t* connection, char* buffer, size_t size) {
@@ -115,63 +193,53 @@ ssize_t websockets_write_internal(connection_t* connection, const char* response
     return write(connection->fd, response, size);
 }
 
-void websockets_handle(connection_t* connection) {
+void websockets_handle(connection_t* connection, websocketsparser_t* parser) {
     websocketsrequest_t* request = (websocketsrequest_t*)connection->request;
     websocketsresponse_t* response = (websocketsresponse_t*)connection->response;
 
-    if (request->frame_opcode == -1) equest->frame_opcode = request->frame.opcode;
-
-    printf("fin: %d\n", request->frame.fin);
-    printf("rsv1: %d\n", request->frame.rsv1);
-    printf("rsv2: %d\n", request->frame.rsv2);
-    printf("rsv3: %d\n", request->frame.rsv3);
-    printf("opcode: %d\n", request->frame.opcode);
-    printf("masked: %d\n", request->frame.masked);
-    printf("payload_length: %ld\n", request->frame.payload_length);
-    printf("mask: %d %d %d %d\n", request->frame.mask[0], request->frame.mask[1], request->frame.mask[2], request->frame.mask[3]);
-
-    int result = websockets_default_action(connection);
-
-    if (result == 0) {
+    if (parser->frame.fin == 1 && parser->frame.opcode == 10) {
+        websocketsresponse_pong(response, parser->string, parser->string_len);
         connection->after_read_request(connection);
         return;
     }
-    else if (result == -1) {
+
+    if (parser->frame.fin == 1 && parser->frame.opcode == 8) {
+        websocketsresponse_close(response, parser->string, parser->string_len);
         connection->keepalive_enabled = 0;
         connection->after_read_request(connection);
         return;
     }
-    else if (result == 1) return;
 
-    // if (websockets_get_resource(connection) == 0) return;
+    if (websocketsrequest_save_payload(request, parser->string, parser->string_len) == -1) {
+        connection->keepalive_enabled = 0;
+        connection->after_read_request(connection);
+        return;
+    }
+
+    parser->string = NULL;
+
+    if (parser->frame.fin == 0) return;
+
+    if (websockets_get_resource(connection) == 0) return;
 
     // websockets_get_file(connection);
 
     connection->after_read_request(connection);
 }
 
-int websockets_default_action(connection_t* connection) {
+int websockets_get_resource(connection_t* connection) {
     websocketsrequest_t* request = (websocketsrequest_t*)connection->request;
     websocketsresponse_t* response = (websocketsresponse_t*)connection->response;
 
-    if (request->frame.fin == 1 && request->frame.opcode == 10) {
-        return response->pong(response, request);
-    }
+    // printf("resource %s %d\n", request->payload, request->payload_length);
 
-    if (request->frame.fin == 0 && request->frame.opcode == 1) {
-        return 1;
-        // return response->continuation(response, request);
-    }
+    response->frame_code = request->type;
 
-    if (request->frame.fin == 1 && request->frame.opcode == 8) {
-        return response->close(response, request);
-    }
+    response->datan(response, request->payload, request->payload_length);
 
-    return -1;
-}
+    connection->after_read_request(connection);
 
-int websockets_get_resource(connection_t* connection) {
-    websocketsrequest_t* request = (websocketsrequest_t*)connection->request;
+    return 0;
 
     // websockets_get_redirect(connection);
 

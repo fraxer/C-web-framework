@@ -8,6 +8,8 @@
 typedef struct websocketsresponse {
     response_t base;
 
+    unsigned char frame_code;
+
     websockets_body_t body;
     websockets_file_t file_;
 
@@ -24,5 +26,9 @@ websocketsresponse_t* websocketsresponse_create(connection_t*);
 void websocketsresponse_default_response(websocketsresponse_t*, int);
 
 int websocketsresponse_data_append(char*, size_t*, const char*, size_t);
+
+void websocketsresponse_pong(websocketsresponse_t*, const char*, size_t);
+
+void websocketsresponse_close(websocketsresponse_t*, const char*, size_t);
 
 #endif

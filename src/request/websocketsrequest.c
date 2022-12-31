@@ -36,9 +36,7 @@ websocketsrequest_t* websocketsrequest_create(connection_t* connection) {
 
     if (request == NULL) return NULL;
 
-    // request->method = ROUTE_NONE;
-    // request->version = HTTP1_VER_NONE;
-    request->frame_opcode = -1;
+    request->type = WEBSOCKETS_NONE;
     request->uri_length = 0;
     request->path_length = 0;
     request->ext_length = 0;
@@ -53,35 +51,54 @@ websocketsrequest_t* websocketsrequest_create(connection_t* connection) {
     request->base.reset = (void(*)(void*))websocketsrequest_reset;
     request->base.free = (void(*)(void*))websocketsrequest_free;
 
-    websockets_frame_init(&request->frame);
-
     return request;
 }
 
 void websocketsrequest_reset(websocketsrequest_t* request) {
-    // request->method = ROUTE_NONE;
-    // request->version = HTTP1_VER_NONE;
+    request->type = WEBSOCKETS_NONE;
+    request->uri_length = 0;
+    request->path_length = 0;
+    request->ext_length = 0;
+    request->payload_length = 0;
 
+    if (request->uri) free((void*)request->uri);
+    request->uri = NULL;
 
+    if (request->path) free((void*)request->path);
+    request->path = NULL;
 
-    // request->uri_length = 0;
-    // request->path_length = 0;
-    // request->ext_length = 0;
-    // request->payload_length = 0;
+    if (request->ext) free((void*)request->ext);
+    request->ext = NULL;
 
-    // if (request->uri) free((void*)request->uri);
-    // request->uri = NULL;
+    if (request->payload) free(request->payload);
+    request->payload = NULL;
 
-    // if (request->path) free((void*)request->path);
-    // request->path = NULL;
+    websocketsrequest_query_free(request->query);
+    request->query = NULL;
+    request->last_query = NULL;
+}
 
-    // if (request->ext) free((void*)request->ext);
-    // request->ext = NULL;
+int websocketsrequest_save_payload(websocketsrequest_t* request, const char* string, size_t length) {
+    if (request->payload == NULL) {
+        request->payload = (char*)string;
+        request->payload_length = length;
+    }
+    else {
+        size_t len = request->payload_length + length;
 
-    // if (request->payload) free(request->payload);
-    // request->payload = NULL;
+        char* data = (char*)realloc(request->payload, len);
 
-    // websocketsrequest_query_free(request->query);
-    // request->query = NULL;
-    // request->last_query = NULL;
+        if (data == NULL) {
+            free(request->payload);
+            request->payload = NULL;
+            return -1;
+        }
+
+        memcpy(&data[request->payload_length], string, length);
+
+        request->payload = data;
+        request->payload_length = len;
+    }
+
+    return 0;
 }
