@@ -37,4 +37,10 @@ void websocketsparser_set_bytes_readed(websocketsparser_t*, size_t);
 
 int websocketsparser_run(websocketsparser_t*);
 
+void websocketsparser_reset_string(websocketsparser_t*);
+
+int websocketsparser_save_payload(websocketsparser_t*, websocketsrequest_t*);
+
+int websocketsparser_save_uri(websocketsparser_t*, websocketsrequest_t*);
+
 #endif

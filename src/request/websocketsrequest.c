@@ -77,28 +77,3 @@ void websocketsrequest_reset(websocketsrequest_t* request) {
     request->query = NULL;
     request->last_query = NULL;
 }
-
-int websocketsrequest_save_payload(websocketsrequest_t* request, const char* string, size_t length) {
-    if (request->payload == NULL) {
-        request->payload = (char*)string;
-        request->payload_length = length;
-    }
-    else {
-        size_t len = request->payload_length + length;
-
-        char* data = (char*)realloc(request->payload, len);
-
-        if (data == NULL) {
-            free(request->payload);
-            request->payload = NULL;
-            return -1;
-        }
-
-        memcpy(&data[request->payload_length], string, length);
-
-        request->payload = data;
-        request->payload_length = len;
-    }
-
-    return 0;
-}

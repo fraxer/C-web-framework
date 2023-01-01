@@ -14,10 +14,9 @@ void websocketsresponse_binary(websocketsresponse_t*, const char*);
 void websocketsresponse_binaryn(websocketsresponse_t*, const char*, size_t);
 int websocketsresponse_file(websocketsresponse_t*, const char*);
 int websocketsresponse_filen(websocketsresponse_t*, const char*, size_t);
-size_t websocketsresponse_size(websocketsresponse_t*, size_t);
+size_t websocketsresponse_data_size(websocketsresponse_t*, size_t);
+size_t websocketsresponse_file_size(websocketsresponse_t*, size_t);
 int websocketsresponse_prepare(websocketsresponse_t*, const char*, size_t);
-const char* websocketsresponse_get_mimetype(const char*);
-const char* websocketsresponse_get_extention(const char*, size_t);
 void websocketsresponse_reset(websocketsresponse_t*);
 int websocketsresponse_set_payload_length(char*, size_t*, size_t);
 
@@ -78,23 +77,42 @@ void websocketsresponse_reset(websocketsresponse_t* response) {
     response->body.data = NULL;
 }
 
-size_t websocketsresponse_size(websocketsresponse_t* response, size_t body_length) {
+size_t websocketsresponse_data_size(websocketsresponse_t* response, size_t length) {
     size_t size = 0;
 
     size += 1; // fin, opcode
 
     // mask, payload length
-    if (body_length <= 125) {
+    if (length <= 125) {
         size += 1;
     }
-    else if (body_length <= 65535) {
+    else if (length <= 65535) {
         size += 3;
     }
     else {
         size += 9;
     }
 
-    size += body_length; // body length
+    size += length;
+
+    return size;
+}
+
+size_t websocketsresponse_file_size(websocketsresponse_t* response, size_t length) {
+    size_t size = 0;
+
+    size += 1; // fin, opcode
+
+    // mask, payload length
+    if (length <= 125) {
+        size += 1;
+    }
+    else if (length <= 65535) {
+        size += 3;
+    }
+    else {
+        size += 9;
+    }
 
     return size;
 }
@@ -156,7 +174,7 @@ void websocketsresponse_text(websocketsresponse_t* response, const char* data) {
 void websocketsresponse_textn(websocketsresponse_t* response, const char* data, size_t length) {
     response->frame_code = 0x81;
 
-    response->body.size = websocketsresponse_size(response, length);
+    response->body.size = websocketsresponse_data_size(response, length);
 
     websocketsresponse_prepare(response, data, length);
 
@@ -170,7 +188,7 @@ void websocketsresponse_binary(websocketsresponse_t* response, const char* data)
 void websocketsresponse_binaryn(websocketsresponse_t* response, const char* data, size_t length) {
     response->frame_code = 0x82;
 
-    response->body.size = websocketsresponse_size(response, length);
+    response->body.size = websocketsresponse_data_size(response, length);
 
     websocketsresponse_prepare(response, data, length);
 
@@ -223,38 +241,15 @@ int websocketsresponse_filen(websocketsresponse_t* response, const char* path, s
 
     lseek(response->file_.fd, 0, SEEK_SET);
 
-    const char* ext = websocketsresponse_get_extention(path, length);
+    response->frame_code = 0x82;
 
-    const char* mimetype = websocketsresponse_get_mimetype(ext);
+    response->body.size = websocketsresponse_file_size(response, response->file_.size);
 
-    response->body.size = websocketsresponse_size(response, 0);
-
-    if (websocketsresponse_prepare(response, NULL, 0) == -1) return -1;
+    if (websocketsresponse_prepare(response, NULL, response->file_.size) == -1) return -1;
 
     // printf("body: %s, %ld\n", response->body.data, response->body.size);
 
     return 0;
-}
-
-const char* websocketsresponse_get_mimetype(const char* extension) {
-    const char* mimetype = mimetype_find_type(extension);
-
-    if (mimetype == NULL) return "text/plain";
-
-    return mimetype;
-}
-
-const char* websocketsresponse_get_extention(const char* path, size_t length) {
-    for (size_t i = length - 1; i >= 0; i--) {
-        switch (path[i]) {
-        case '.':
-            return &path[i + 1];
-        case '/':
-            return NULL;
-        }
-    }
-
-    return NULL;
 }
 
 void websocketsresponse_default_response(websocketsresponse_t* response, const char* text) {

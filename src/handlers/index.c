@@ -3,6 +3,8 @@
 #include "../base64/base64.h"
 #include "../request/http1request.h"
 #include "../response/http1response.h"
+#include "../request/websocketsrequest.h"
+#include "../response/websocketsresponse.h"
     #include <stdio.h>
 
 void view(http1request_t* request, http1response_t* response) {
@@ -93,4 +95,24 @@ void websocket(http1request_t* request, http1response_t* response) {
     response->connection->keepalive_enabled = 1;
 
     response->switch_to_websockets(response);
+}
+
+void ws_index(websocketsrequest_t* request, websocketsresponse_t* response) {
+    // printf("run view handler\n");
+
+    char* data = "";
+
+    if (request->payload_length > request->uri_length + 1) {
+        data = &request->payload[request->uri_length + 1];
+    }
+
+    size_t length = strlen(data);
+
+    // printf("%ld %s\n", length, data);
+
+    response->textn(response, data, length);
+
+    // response->textn(response, data, length);
+
+    // response->file(response, "/darek-zabrocki-mg-tree-town1-003-final-darekzabrocki.jpg"); // path
 }

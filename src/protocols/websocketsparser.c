@@ -259,3 +259,109 @@ int websocketsparser_set_payload_length(websocketsparser_t* parser, const unsign
 
     return 0;
 }
+
+int websocketsparser_save_payload(websocketsparser_t* parser, websocketsrequest_t* request) {
+    if (request->payload == NULL) {
+        request->payload = (char*)parser->string;
+        request->payload_length = parser->string_len;
+    }
+    else {
+        size_t length = request->payload_length + parser->string_len;
+
+        char* data = (char*)realloc(request->payload, length);
+
+        if (data == NULL) {
+            free(request->payload);
+            request->payload = NULL;
+            return -1;
+        }
+
+        memcpy(&data[request->payload_length], parser->string, parser->string_len);
+
+        request->payload = data;
+        request->payload_length = length;
+    }
+
+    return 0;
+}
+
+void websocketsparser_reset_string(websocketsparser_t* parser) {
+    parser->string = NULL;
+}
+
+int websocketsparser_save_uri(websocketsparser_t* parser, websocketsrequest_t* request) {
+    char prev_c = 0;
+    size_t uri_point_end = 0;
+    size_t path_point_end = 0;
+    size_t ext_point_start = 0;
+
+    for (int i = 0; i < parser->string_len; i++) {
+        char c = parser->string[i];
+
+        if (c == '?' && path_point_end == 0) {
+            path_point_end = i;
+        }
+
+        if (c == '.') {
+            ext_point_start = i + 1;
+
+            if (i + 2 < parser->string_len && parser->string[i + 1] == '.' && parser->string[i + 2] == '/') return -1;
+        }
+
+        if (c == ' ') {
+            uri_point_end = i;
+            break;
+        }
+
+        prev_c = c;
+    }
+
+    if (uri_point_end == 0) uri_point_end = parser->string_len;
+
+    if (path_point_end == 0) path_point_end = uri_point_end;
+
+
+
+    request->uri = (char*)malloc(uri_point_end + 1);
+
+    if (request->uri == NULL) return -1;
+
+    memcpy(request->uri, parser->string, uri_point_end);
+
+    request->uri[uri_point_end] = 0;
+
+    request->uri_length = uri_point_end;
+
+
+
+    request->path = (char*)malloc(path_point_end + 1);
+
+    if (request->path == NULL) return -1;
+
+    memcpy(request->path, parser->string, path_point_end);
+
+    request->path[path_point_end] = 0;
+
+    request->path_length = path_point_end;
+
+
+    if (ext_point_start == 0) ext_point_start = path_point_end;
+
+    size_t ext_length = path_point_end - ext_point_start;
+
+    request->ext = (char*)malloc(ext_length + 1);
+
+    if (request->ext == NULL) return -1;
+
+    memcpy(request->ext, &parser->string[ext_point_start], ext_length);
+
+    request->ext[ext_length] = 0;
+
+    request->ext_length = ext_length;
+
+    printf("uri %s\n", request->uri);
+    printf("path %s\n", request->path);
+    printf("ext %s\n", request->ext);
+
+    return 0;
+}

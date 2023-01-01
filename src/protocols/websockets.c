@@ -100,25 +100,25 @@ void websockets_write(connection_t* connection, char* buffer, size_t buffer_size
     }
 
     // file
-    // if (response->file_.fd > 0 && response->file_.pos < response->file_.size) {
-    //     lseek(response->file_.fd, response->file_.pos, SEEK_SET);
+    if (response->file_.fd > 0 && response->file_.pos < response->file_.size) {
+        lseek(response->file_.fd, response->file_.pos, SEEK_SET);
 
-    //     size_t size = response->file_.size - response->file_.pos;
+        size_t size = response->file_.size - response->file_.pos;
 
-    //     if (size > buffer_size) {
-    //         size = buffer_size;
-    //     }
+        if (size > buffer_size) {
+            size = buffer_size;
+        }
 
-    //     size_t readed = read(response->file_.fd, buffer, size);
+        size_t readed = read(response->file_.fd, buffer, size);
 
-    //     size_t writed = websockets_write_internal(connection, buffer, readed);
+        size_t writed = websockets_write_internal(connection, buffer, readed);
 
-    //     if (writed == -1) return;
+        if (writed == -1) return;
 
-    //     response->file_.pos += writed;
+        response->file_.pos += writed;
 
-    //     if (response->file_.pos < response->file_.size) return;
-    // }
+        if (response->file_.pos < response->file_.size) return;
+    }
 
     connection->after_write_request(connection);
 
@@ -210,19 +210,27 @@ void websockets_handle(connection_t* connection, websocketsparser_t* parser) {
         return;
     }
 
-    if (websocketsrequest_save_payload(request, parser->string, parser->string_len) == -1) {
+    if (websocketsparser_save_payload(parser, request) == -1) {
         connection->keepalive_enabled = 0;
         connection->after_read_request(connection);
         return;
     }
 
-    parser->string = NULL;
+    if (websocketsparser_save_uri(parser, request) == -1) {
+        connection->keepalive_enabled = 0;
+        connection->after_read_request(connection);
+        return;
+    }
+
+    websocketsparser_reset_string(parser);
 
     if (parser->frame.fin == 0) return;
 
     if (websockets_get_resource(connection) == 0) return;
 
-    // websockets_get_file(connection);
+    if (websockets_get_file(connection) == -1) {
+        websocketsresponse_default_response(response, "resource not found");
+    }
 
     connection->after_read_request(connection);
 }
@@ -230,18 +238,6 @@ void websockets_handle(connection_t* connection, websocketsparser_t* parser) {
 int websockets_get_resource(connection_t* connection) {
     websocketsrequest_t* request = (websocketsrequest_t*)connection->request;
     websocketsresponse_t* response = (websocketsresponse_t*)connection->response;
-
-    // printf("resource %s %d\n", request->payload, request->payload_length);
-
-    response->frame_code = request->type;
-
-    response->textn(response, request->payload, request->payload_length);
-
-    connection->after_read_request(connection);
-
-    return 0;
-
-    // websockets_get_redirect(connection);
 
     for (route_t* route = connection->server->websockets_route; route; route = route->next) {
         if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {

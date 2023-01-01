@@ -22,9 +22,9 @@ typedef struct websocketsrequest {
     size_t ext_length;
     size_t payload_length;
 
-    const char* uri;
-    const char* path;
-    const char* ext;
+    char* uri;
+    char* path;
+    char* ext;
 
     char* payload;
 
@@ -37,7 +37,5 @@ typedef struct websocketsrequest {
 } websocketsrequest_t;
 
 websocketsrequest_t* websocketsrequest_create(connection_t*);
-
-int websocketsrequest_save_payload(websocketsrequest_t*, const char*, size_t);
 
 #endif
