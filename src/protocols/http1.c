@@ -141,11 +141,11 @@ int http1_get_resource(connection_t* connection) {
 
     http1_get_redirect(connection);
 
-    for (route_t* route = connection->server->route; route; route = route->next) {
+    for (route_t* route = connection->server->http_route; route; route = route->next) {
         if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {
-            connection->handle = route->method[request->method];
+            connection->handle = route->http[request->method];
             connection->queue_push(connection);
-            // route->method[request->method](connection->request, connection->response);
+            // route->http[request->method](connection->request, connection->response);
             // connection->after_read_request(connection);
             return 0;
         }
@@ -169,10 +169,10 @@ int http1_get_resource(connection_t* connection) {
                 http1_parser_append_query(request, query);
             }
 
-            connection->handle = route->method[request->method];
+            connection->handle = route->http[request->method];
             connection->queue_push(connection);
 
-            // route->method[request->method](connection->request, connection->response);
+            // route->http[request->method](connection->request, connection->response);
             // connection->after_read_request(connection);
 
             return 0;

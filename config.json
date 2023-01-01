@@ -36,10 +36,18 @@
             },
             "index": "index.html",
             "routes": {
-                "/": {
-                    "GET": ["./libindexpage.so", "view"],
-                    "PUT": ["./libindexpage.so", "view"],
-                    "DELETE": ["./libindexpage.so", "view"]
+                "http": {
+                    "/": {
+                        "GET": ["./libindexpage.so", "view"],
+                        "PUT": ["./libindexpage.so", "view"],
+                        "DELETE": ["./libindexpage.so", "view"]
+                    },
+                    "/wss": {
+                        "GET": ["./libindexpage.so", "websocket"]
+                    }
+                },
+                "websockets": {
+                    "/": ["./libindexpage.so", "view"]
                 }
             },
             "database": {
@@ -72,10 +80,18 @@
             },
             "index": "index.html",
             "routes": {
-                "/": {
-                    "GET": ["./libindexpage.so", "view"],
-                    "PUT": ["./libindexpage.so", "view"],
-                    "DELETE": ["./libindexpage.so", "view"]
+                "http": {
+                    "/": {
+                        "GET": ["./libindexpage.so", "view"],
+                        "PUT": ["./libindexpage.so", "view"],
+                        "DELETE": ["./libindexpage.so", "view"]
+                    },
+                    "/wss": {
+                        "GET": ["./libindexpage.so", "websocket"]
+                    }
+                },
+                "websockets": {
+                    "/": ["./libindexpage.so", "view"]
                 }
             },
             "database": {

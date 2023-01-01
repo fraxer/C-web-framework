@@ -36,7 +36,8 @@ typedef struct server {
     char* root;
     index_t* index;
     redirect_t* redirect;
-    route_t* route;
+    route_t* http_route;
+    route_t* websockets_route;
     database_t* database;
     openssl_t* openssl;
     server_info_t* info;

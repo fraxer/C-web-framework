@@ -34,6 +34,10 @@ int module_loader_reload_is_hard();
 
 int module_loader_mimetype_load();
 
+int module_loader_set_http_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsmntok_t*);
+
+int module_loader_set_websockets_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsmntok_t*);
+
 server_info_t* module_loader_server_info_load();
 
 
@@ -119,72 +123,41 @@ int module_loader_reload_is_hard() {
     return -1;
 }
 
-route_t* module_loader_routes_load(routeloader_lib_t** first_lib, const jsmntok_t* token_object) {
+route_t* module_loader_routes_load(routeloader_lib_t** first_lib, const jsmntok_t* token_object, const char* target_protocol, int(*cb)(routeloader_lib_t**, routeloader_lib_t**, route_t*, const jsmntok_t*)) {
     route_t* result = NULL;
     route_t* first_route = NULL;
     route_t* last_route = NULL;
     routeloader_lib_t* last_lib = routeloader_get_last(*first_lib);
 
-    for (jsmntok_t* token_path = token_object->child; token_path; token_path = token_path->sibling) {
-        const char* route_path = jsmn_get_value(token_path);
+    if (token_object->type != JSMN_OBJECT) goto failed;
 
-        route_t* route = route_create(route_path);
+    for (jsmntok_t* token_protocol = token_object->child; token_protocol; token_protocol = token_protocol->sibling) {
+        const char* protocol = jsmn_get_value(token_protocol);
 
-        if (route == NULL) goto failed;
+        if (strcmp(protocol, target_protocol) != 0) continue;
 
-        if (first_route == NULL) {
-            first_route = route;
-        }
+        const jsmntok_t* protocol_routes = token_protocol->child;
 
-        if (last_route) {
-            last_route->next = route;
-        }
+        if (protocol_routes->type != JSMN_OBJECT) goto failed;
 
-        last_route = route;
+        for (jsmntok_t* token_path = protocol_routes->child; token_path; token_path = token_path->sibling) {
+            const char* route_path = jsmn_get_value(token_path);
 
-        for (jsmntok_t* token_method = token_path->child->child; token_method; token_method = token_method->sibling) {
-            const char* method = jsmn_get_value(token_method);
+            route_t* route = route_create(route_path);
 
-            jsmntok_t* token_array = token_method->child;
+            if (route == NULL) goto failed;
 
-            const char* lib_file = jsmn_get_array_value(token_array, 0);
-            const char* lib_handler = jsmn_get_array_value(token_array, 1);
-
-            routeloader_lib_t* routeloader_lib = NULL;
-
-            if (!routeloader_has_lib(*first_lib, lib_file)) {
-                routeloader_lib = routeloader_load_lib(lib_file);
-
-                if (routeloader_lib == NULL) goto failed;
-
-                if (*first_lib == NULL) {
-                    *first_lib = routeloader_lib;
-                }
-
-                if (last_lib) {
-                    last_lib->next = routeloader_lib;
-                }
-
-                last_lib = routeloader_lib;
+            if (first_route == NULL) {
+                first_route = route;
             }
 
-            void*(*function)(void*) = (void*(*)(void*))routeloader_get_handler(*first_lib, lib_file, lib_handler);
+            if (last_route) {
+                last_route->next = route;
+            }
 
-            if (function == NULL) goto failed;
+            last_route = route;
 
-            if (route_set_method_handler(route, method, function) == -1) goto failed;
-
-            // (*function)("Hello");
-
-            // --------------
-
-            // void*(*funion)(void*) = route->method[ROUTE_GET]->run;
-
-            // (*funion)("Hello");
-
-            // --------------
-
-            // route->method[ROUTE_GET]("HELLO");
+            if (cb(first_lib, &last_lib, route, token_path->child) == -1) goto failed;
         }
     }
 
@@ -193,11 +166,80 @@ route_t* module_loader_routes_load(routeloader_lib_t** first_lib, const jsmntok_
     failed:
 
     if (result == NULL) {
-        route_free(first_route);
-        routeloader_free(*first_lib);
+        if (first_route) route_free(first_route);
     }
 
     return result;
+}
+
+int module_loader_set_http_route(routeloader_lib_t** first_lib, routeloader_lib_t** last_lib, route_t* route, const jsmntok_t* token_object) {
+    for (jsmntok_t* token_method = token_object->child; token_method; token_method = token_method->sibling) {
+        const char* method = jsmn_get_value(token_method);
+
+        jsmntok_t* token_array = token_method->child;
+
+        const char* lib_file = jsmn_get_array_value(token_array, 0);
+        const char* lib_handler = jsmn_get_array_value(token_array, 1);
+
+        routeloader_lib_t* routeloader_lib = NULL;
+
+        if (!routeloader_has_lib(*first_lib, lib_file)) {
+            routeloader_lib = routeloader_load_lib(lib_file);
+
+            if (routeloader_lib == NULL) return -1;
+
+            if (*first_lib == NULL) {
+                *first_lib = routeloader_lib;
+            }
+
+            if (*last_lib) {
+                (*last_lib)->next = routeloader_lib;
+            }
+
+            *last_lib = routeloader_lib;
+        }
+
+        void*(*function)(void*) = (void*(*)(void*))routeloader_get_handler(*first_lib, lib_file, lib_handler);
+
+        if (function == NULL) return -1;
+
+        if (route_set_http_handler(route, method, function) == -1) return -1;
+    }
+
+    return 0;
+}
+
+int module_loader_set_websockets_route(routeloader_lib_t** first_lib, routeloader_lib_t** last_lib, route_t* route, const jsmntok_t* token_array) {
+    if (token_array->type != JSMN_ARRAY) return -1;
+
+    const char* lib_file = jsmn_get_array_value(token_array, 0);
+    const char* lib_handler = jsmn_get_array_value(token_array, 1);
+
+    routeloader_lib_t* routeloader_lib = NULL;
+
+    if (!routeloader_has_lib(*first_lib, lib_file)) {
+        routeloader_lib = routeloader_load_lib(lib_file);
+
+        if (routeloader_lib == NULL) return -1;
+
+        if (*first_lib == NULL) {
+            *first_lib = routeloader_lib;
+        }
+
+        if (*last_lib) {
+            (*last_lib)->next = routeloader_lib;
+        }
+
+        *last_lib = routeloader_lib;
+    }
+
+    void*(*function)(void*) = (void*(*)(void*))routeloader_get_handler(*first_lib, lib_file, lib_handler);
+
+    if (function == NULL) return -1;
+
+    if (route_set_websockets_handler(route, function) == -1) return -1;
+
+    return 0;
 }
 
 domain_t* module_loader_domains_load(const jsmntok_t* token_array) {
@@ -601,9 +643,10 @@ int module_loader_servers_load(int reload_is_hard) {
 
                 if (token_key->child->type != JSMN_OBJECT) goto failed;
 
-                server->route = module_loader_routes_load(&first_lib, token_key->child);
+                server->http_route = module_loader_routes_load(&first_lib, token_key->child, "http", module_loader_set_http_route);
+                server->websockets_route = module_loader_routes_load(&first_lib, token_key->child, "websockets", module_loader_set_websockets_route);
 
-                if (server->route == NULL) {
+                if (server->http_route == NULL && server->websockets_route == NULL) {
                     log_error("Error: Can't load routes\n");
                     goto failed;
                 }

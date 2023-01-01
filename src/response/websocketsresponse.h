@@ -15,15 +15,17 @@ typedef struct websocketsresponse {
 
     connection_t* connection;
 
-    void(*data)(struct websocketsresponse*, const char*);
-    void(*datan)(struct websocketsresponse*, const char*, size_t);
+    void(*text)(struct websocketsresponse*, const char*);
+    void(*textn)(struct websocketsresponse*, const char*, size_t);
+    void(*binary)(struct websocketsresponse*, const char*);
+    void(*binaryn)(struct websocketsresponse*, const char*, size_t);
     int(*file)(struct websocketsresponse*, const char*);
     int(*filen)(struct websocketsresponse*, const char*, size_t);
 } websocketsresponse_t;
 
 websocketsresponse_t* websocketsresponse_create(connection_t*);
 
-void websocketsresponse_default_response(websocketsresponse_t*, int);
+void websocketsresponse_default_response(websocketsresponse_t*, const char*);
 
 int websocketsresponse_data_append(char*, size_t*, const char*, size_t);
 

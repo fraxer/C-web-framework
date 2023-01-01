@@ -235,7 +235,7 @@ int websockets_get_resource(connection_t* connection) {
 
     response->frame_code = request->type;
 
-    response->datan(response, request->payload, request->payload_length);
+    response->textn(response, request->payload, request->payload_length);
 
     connection->after_read_request(connection);
 
@@ -243,37 +243,37 @@ int websockets_get_resource(connection_t* connection) {
 
     // websockets_get_redirect(connection);
 
-    // for (route_t* route = connection->server->route; route; route = route->next) {
-    //     if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {
-    //         connection->handle = route->method[request->method];
-    //         connection->queue_push(connection);
-    //         return 0;
-    //     }
+    for (route_t* route = connection->server->websockets_route; route; route = route->next) {
+        if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {
+            connection->handle = route->websockets;
+            connection->queue_push(connection);
+            return 0;
+        }
 
-    //     int vector_size = route->params_count * 6;
-    //     int vector[vector_size];
+        int vector_size = route->params_count * 6;
+        int vector[vector_size];
 
-    //     // find resource by template
-    //     int matches_count = pcre_exec(route->location, NULL, request->path, request->path_length, 0, 0, vector, vector_size);
+        // find resource by template
+        int matches_count = pcre_exec(route->location, NULL, request->path, request->path_length, 0, 0, vector, vector_size);
 
-    //     if (matches_count > 1) {
-    //         int i = 1; // escape full string match
+        if (matches_count > 1) {
+            int i = 1; // escape full string match
 
-    //         for (route_param_t* param = route->param; param; param = param->next, i++) {
-    //             size_t substring_length = vector[i * 2 + 1] - vector[i * 2];
+            // for (route_param_t* param = route->param; param; param = param->next, i++) {
+            //     size_t substring_length = vector[i * 2 + 1] - vector[i * 2];
 
-    //             websockets_query_t* query = websockets_query_create(param->string, param->string_len, &request->path[vector[i * 2]], substring_length);
+            //     websockets_query_t* query = websockets_query_create(param->string, param->string_len, &request->path[vector[i * 2]], substring_length);
 
-    //             if (query == NULL || query->key == NULL || query->value == NULL) return -1;
+            //     if (query == NULL || query->key == NULL || query->value == NULL) return -1;
 
-    //             websockets_parser_append_query(request, query);
-    //         }
+            //     websockets_parser_append_query(request, query);
+            // }
 
-    //         connection->handle = route->method[request->method];
-    //         connection->queue_push(connection);
-    //         return 0;
-    //     }
-    // }
+            connection->handle = route->websockets;
+            connection->queue_push(connection);
+            return 0;
+        }
+    }
 
     return -1;
 }
@@ -283,91 +283,4 @@ int websockets_get_file(connection_t* connection) {
     websocketsresponse_t* response = (websocketsresponse_t*)connection->response;
 
     return response->filen(response, request->path, request->path_length);
-}
-
-void websockets_parse(connection_t* connection, unsigned char* buffer, size_t buffer_size) {
-    // // pong
-    // if (fin == 1 && opcode == 10) {
-    //     return;
-    // }
-
-    // // continuation frame
-    // // if (fin == 0 && opcode == 1) {
-    // //     return;
-    // // }
-
-    // {
-    //     pos = 0;
-    //     unsigned char frame_code = (unsigned char)0x81; // text frame
-
-    //     char* msg = (char*)malloc(7);
-
-    //     strcpy(msg, "Hello!");
-
-    //     int size = strlen(msg);
-
-    //     {
-    //         char* p = (char*)realloc(msg, payload_length + 1);
-
-    //         if (!p) {
-    //             if (msg) free(msg);
-    //             return;
-    //         }
-
-    //         msg = p;
-
-    //         memcpy(msg, out_buffer + 2, payload_length - 2);
-
-    //         if (num == 2) {
-    //             frame_code = (unsigned char)0x82;
-    //         }
-
-    //         size = payload_length - 2;
-
-    //         // if (rand() % 2 == 0) {
-    //         //     sleep(1);
-    //         // }
-    //     }
-
-    //     // close connection
-    //     if (fin == 1 && opcode == 8) {
-    //         frame_code = (unsigned char)0x88;
-
-    //         connection->keepalive_enabled = 0;
-
-    //         char* p = (char*)realloc(msg, payload_length + 1);
-
-    //         if (!p) {
-    //             if (msg) free(msg);
-    //             return;
-    //         }
-
-    //         msg = p;
-
-    //         memcpy(msg, out_buffer, payload_length);
-
-    //         size = strlen(msg);
-    //     }
-
-    //     // ping
-    //     if (fin == 1 && opcode == 9) {
-    //         frame_code = (unsigned char)0x8A;
-
-    //         char* p = (char*)realloc(msg, payload_length + 1);
-
-    //         if (!p) {
-    //             if (msg) free(msg);
-    //             return;
-    //         }
-
-    //         msg = p;
-
-    //         memcpy(msg, out_buffer, payload_length);
-
-    //         size = strlen(msg);
-    //     }
-
-    //     // last frame in queue
-    //     if (fin == 1 && opcode == 0) {}
-    // }
 }

@@ -8,8 +8,10 @@
 #include "websocketsresponse.h"
     #include <stdio.h>
 
-void websocketsresponse_data(websocketsresponse_t*, const char*);
-void websocketsresponse_datan(websocketsresponse_t*, const char*, size_t);
+void websocketsresponse_text(websocketsresponse_t*, const char*);
+void websocketsresponse_textn(websocketsresponse_t*, const char*, size_t);
+void websocketsresponse_binary(websocketsresponse_t*, const char*);
+void websocketsresponse_binaryn(websocketsresponse_t*, const char*, size_t);
 int websocketsresponse_file(websocketsresponse_t*, const char*);
 int websocketsresponse_filen(websocketsresponse_t*, const char*, size_t);
 size_t websocketsresponse_size(websocketsresponse_t*, size_t);
@@ -17,7 +19,6 @@ int websocketsresponse_prepare(websocketsresponse_t*, const char*, size_t);
 const char* websocketsresponse_get_mimetype(const char*);
 const char* websocketsresponse_get_extention(const char*, size_t);
 void websocketsresponse_reset(websocketsresponse_t*);
-int websocketsresponse_keepalive_enabled(websocketsresponse_t*);
 int websocketsresponse_set_payload_length(char*, size_t*, size_t);
 
 websocketsresponse_t* websocketsresponse_alloc() {
@@ -47,8 +48,10 @@ websocketsresponse_t* websocketsresponse_create(connection_t* connection) {
     response->file_.pos = 0;
     response->file_.size = 0;
     response->connection = connection;
-    response->data = websocketsresponse_data;
-    response->datan = websocketsresponse_datan;
+    response->text = websocketsresponse_text;
+    response->textn = websocketsresponse_textn;
+    response->binary = websocketsresponse_binary;
+    response->binaryn = websocketsresponse_binaryn;
     response->file = websocketsresponse_file;
     response->filen = websocketsresponse_filen;
     response->base.reset = (void(*)(void*))websocketsresponse_reset;
@@ -146,11 +149,27 @@ int websocketsresponse_set_payload_length(char* data, size_t* pos, size_t payloa
     return 0;
 }
 
-void websocketsresponse_data(websocketsresponse_t* response, const char* data) {
-    websocketsresponse_datan(response, data, strlen(data));
+void websocketsresponse_text(websocketsresponse_t* response, const char* data) {
+    websocketsresponse_textn(response, data, strlen(data));
 }
 
-void websocketsresponse_datan(websocketsresponse_t* response, const char* data, size_t length) {
+void websocketsresponse_textn(websocketsresponse_t* response, const char* data, size_t length) {
+    response->frame_code = 0x81;
+
+    response->body.size = websocketsresponse_size(response, length);
+
+    websocketsresponse_prepare(response, data, length);
+
+    // printf("body: %s, %ld\n", response->body.data, response->body.size);
+}
+
+void websocketsresponse_binary(websocketsresponse_t* response, const char* data) {
+    websocketsresponse_binaryn(response, data, strlen(data));
+}
+
+void websocketsresponse_binaryn(websocketsresponse_t* response, const char* data, size_t length) {
+    response->frame_code = 0x82;
+
     response->body.size = websocketsresponse_size(response, length);
 
     websocketsresponse_prepare(response, data, length);
@@ -186,12 +205,12 @@ int websocketsresponse_filen(websocketsresponse_t* response, const char* path, s
         stat(fullpath, &stat_obj);
 
         if (S_ISDIR(stat_obj.st_mode)) {
-            websocketsresponse_default_response(response, 403);
+            websocketsresponse_default_response(response, "resource forbidden");
             return -1;
         }
 
         if (!S_ISREG(stat_obj.st_mode)) {
-            websocketsresponse_default_response(response, 404);
+            websocketsresponse_default_response(response, "resource not found");
             return -1;
         }
 
@@ -238,40 +257,9 @@ const char* websocketsresponse_get_extention(const char* path, size_t length) {
     return NULL;
 }
 
-void websocketsresponse_default_response(websocketsresponse_t* response, int status_code) {
+void websocketsresponse_default_response(websocketsresponse_t* response, const char* text) {
     websocketsresponse_reset(response);
-
-    const char* str1 = "<html><head></head><body><h1 style=\"text-align:center;margin:20px\">";
-    size_t str1_length = strlen(str1);
-
-    const char* str2 = "</h1></body></html>";
-    size_t str2_length = strlen(str2);
-
-    size_t value = status_code;
-    size_t content_length = 0;
-
-    while (value) { content_length++; value /= 10; }
-
-    char content_string[content_length + 1];
-
-    sprintf(content_string, "%d", status_code);
-
-    size_t data_length = str1_length + str2_length + content_length;
-    size_t pos = 0;
-
-    char data[data_length + 1];
-
-    memcpy(data, str1, str1_length); pos += str1_length;
-    memcpy(&data[pos], content_string, content_length); pos += content_length;
-    memcpy(&data[pos], str2, str2_length);
-
-    data[data_length] = 0;
-
-    websocketsresponse_datan(response, data, data_length);
-}
-
-int websocketsresponse_keepalive_enabled(websocketsresponse_t* response) {
-    return response->connection->keepalive_enabled;
+    websocketsresponse_text(response, text);
 }
 
 void websocketsresponse_pong(websocketsresponse_t* response, const char* data, size_t length) {
@@ -279,7 +267,7 @@ void websocketsresponse_pong(websocketsresponse_t* response, const char* data, s
 
     response->frame_code = 0x8A;
 
-    websocketsresponse_datan(response, data, length);
+    websocketsresponse_textn(response, data, length);
 }
 
 void websocketsresponse_close(websocketsresponse_t* response, const char* data, size_t length) {
@@ -287,5 +275,5 @@ void websocketsresponse_close(websocketsresponse_t* response, const char* data, 
 
     response->frame_code = 0x88;
 
-    websocketsresponse_datan(response, data, length);
+    websocketsresponse_textn(response, data, length);
 }

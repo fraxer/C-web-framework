@@ -436,7 +436,7 @@ void jsmn_free(jsmn_parser_t *parser) {
   parser->tokens = NULL;
 }
 
-jsmntok_t* jsmn_get_root_token(jsmn_parser_t* parser) {
+jsmntok_t* jsmn_get_root_token(const jsmn_parser_t* parser) {
   if (parser->tokens) {
     return &parser->tokens[0];
   }
@@ -453,11 +453,11 @@ int jsmn_field_string(jsmntok_t* token, const char *str) {
   return 0;
 }
 
-int jsmn_is_object(jsmntok_t* token) {
+int jsmn_is_object(const jsmntok_t* token) {
   return token && token->type == JSMN_OBJECT;
 }
 
-jsmntok_t* jsmn_object_get_field(jsmntok_t* token, const char* field) {
+jsmntok_t* jsmn_object_get_field(const jsmntok_t* token, const char* field) {
   if (token) {
 
     jsmntok_t* token_it = token->child;
@@ -480,7 +480,7 @@ jsmntok_t* jsmn_object_get_field(jsmntok_t* token, const char* field) {
   return NULL;
 }
 
-const char* jsmn_get_value(jsmntok_t* token) {
+const char* jsmn_get_value(const jsmntok_t* token) {
   if (token && (token->type == JSMN_STRING || token->type == JSMN_PRIMITIVE)) {
     return token->string;
   }
@@ -488,7 +488,7 @@ const char* jsmn_get_value(jsmntok_t* token) {
   return NULL;
 }
 
-const char* jsmn_get_array_value(jsmntok_t* token, int index) {
+const char* jsmn_get_array_value(const jsmntok_t* token, int index) {
   if (token && token->type == JSMN_ARRAY && index >= 0 && index < token->size) {
     int i = 0;
 

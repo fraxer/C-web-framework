@@ -80,14 +80,14 @@ int jsmn_parse(jsmn_parser_t* parser);
 
 void jsmn_set_child_or_sibling(jsmn_parser_t* parser, jsmntok_t* token);
 
-jsmntok_t* jsmn_get_root_token(jsmn_parser_t* parser);
+jsmntok_t* jsmn_get_root_token(const jsmn_parser_t* parser);
 
-int jsmn_is_object(jsmntok_t* token);
+int jsmn_is_object(const jsmntok_t* token);
 
-jsmntok_t* jsmn_object_get_field(jsmntok_t* token, const char* field);
+jsmntok_t* jsmn_object_get_field(const jsmntok_t* token, const char* field);
 
-const char* jsmn_get_value(jsmntok_t* token);
+const char* jsmn_get_value(const jsmntok_t* token);
 
-const char* jsmn_get_array_value(jsmntok_t* token, int index);
+const char* jsmn_get_array_value(const jsmntok_t* token, int index);
 
 #endif

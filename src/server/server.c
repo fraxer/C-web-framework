@@ -41,7 +41,8 @@ server_t* server_create() {
     server->root = NULL;
     server->index = NULL;
     server->redirect = NULL;
-    server->route = NULL;
+    server->http_route = NULL;
+    server->websockets_route = NULL;
     server->database = NULL;
     server->openssl = NULL;
     server->info = NULL;
@@ -96,8 +97,11 @@ void server_free(server_t* server) {
         // if (server->redirect) redirect_free(server->redirect);
         server->redirect = NULL;
 
-        if (server->route) route_free(server->route);
-        server->route = NULL;
+        if (server->http_route) route_free(server->http_route);
+        server->http_route = NULL;
+
+        if (server->websockets_route) route_free(server->websockets_route);
+        server->websockets_route = NULL;
 
         if (server->database) database_free(server->database);
         server->database = NULL;
