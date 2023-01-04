@@ -14,7 +14,7 @@ typedef enum websockets_datatype {
 
 typedef struct websocketsrequest {
     request_t base;
-
+    route_methods_e method;
     websockets_datatype_e type;
 
     size_t uri_length;

@@ -26,21 +26,7 @@ void websockets_read(connection_t* connection, char* buffer, size_t buffer_size)
 
         switch (bytes_readed) {
         case -1:
-
-            // printf("fin: %d\n", parser.frame.fin);
-            // printf("rsv1: %d\n", parser.frame.rsv1);
-            // printf("rsv2: %d\n", parser.frame.rsv2);
-            // printf("rsv3: %d\n", parser.frame.rsv3);
-            // printf("opcode: %d\n", parser.frame.opcode);
-            // printf("masked: %d\n", parser.frame.masked);
-            // printf("payload_length: %ld\n", parser.frame.payload_length);
-            // printf("mask: %d %d %d %d\n", parser.frame.mask[0], parser.frame.mask[1], parser.frame.mask[2], parser.frame.mask[3]);
-
             websockets_handle(connection, &parser);
-
-            // websocketsparser_free(&parser);
-            if (parser.string) free(parser.string);
-
             return;
         case 0:
             connection->keepalive_enabled = 0;
@@ -49,10 +35,8 @@ void websockets_read(connection_t* connection, char* buffer, size_t buffer_size)
         default:
             websocketsparser_set_bytes_readed(&parser, bytes_readed);
 
-            // printf("byte: %d\n", (unsigned char)buffer[0]);
-
             if (websocketsparser_run(&parser) == -1) {
-                // websocketsresponse_default_response((websocketsresponse_t*)connection->response, 400);
+                websocketsresponse_default_response((websocketsresponse_t*)connection->response, "bad request");
                 connection->after_read_request(connection);
                 return;
             }
@@ -77,20 +61,6 @@ void websockets_write(connection_t* connection, char* buffer, size_t buffer_size
         }
 
         size_t writed = websockets_write_internal(connection, &response->body.data[response->body.pos], size);
-
-        // printf("writed %s\n", response->body.data);
-
-        // unsigned char c = response->body.data[1];
-
-        // printf("%d %d %d %d %d %d %d %d\n"
-        // , (c >> 7) & 0x01
-        // , (c >> 6) & 0x01
-        // , (c >> 5) & 0x01
-        // , (c >> 4) & 0x01
-        // , (c >> 3) & 0x01
-        // , (c >> 2) & 0x01
-        // , (c >> 1) & 0x01
-        // , (c >> 0) & 0x01);
 
         if (writed == -1) return;
 
@@ -121,56 +91,6 @@ void websockets_write(connection_t* connection, char* buffer, size_t buffer_size
     }
 
     connection->after_write_request(connection);
-
-
-
-
-
-    // const char* response = "HTTP/1.1 200 OK\r\nServer: TEST\r\nContent-Length: 8\r\nContent-Type: text/html\r\nConnection: Closed\r\n\r\nResponse";
-
-    // int size = strlen(response);
-
-    // int max_fragment_size = 14;
-    // unsigned char* buffer = (unsigned char*)malloc(size + max_fragment_size);
-    
-    // buffer[pos++] = frame_code;
-
-    // if (size <= 125) {
-    //     buffer[pos++] = size;
-    // }
-    // else if (size <= 65535) {
-    //     buffer[pos++] = 126; //16 bit length follows
-        
-    //     buffer[pos++] = (size >> 8) & 0xFF; // leftmost first
-    //     buffer[pos++] = size & 0xFF;
-    // }
-    // else { // >2^16-1 (65535)
-    //     buffer[pos++] = 127; //64 bit length follows
-        
-    //     // write 8 bytes length (significant first)
-        
-    //     // since msg_length is int it can be no longer than 4 bytes = 2^32-1
-    //     // padd zeroes for the first 4 bytes
-    //     for(int i=3; i>=0; i--) {
-    //         buffer[pos++] = 0;
-    //     }
-    //     // write the actual 32bit msg_length in the next 4 bytes
-    //     for(int i=3; i>=0; i--) {
-    //         buffer[pos++] = ((size >> 8*i) & 0xFF);
-    //     }
-    // }
-
-    // memcpy(buffer + pos, msg, size);
-
-    // printf("%s\n", buffer);
-    // printf("%d\n", pos);
-    // printf("%d\n", size);
-    // printf("%d\n", size + pos);
-
-
-    // size_t writed = websockets_write_internal(connection, response, size);
-
-    // connection->after_write_request(connection);
 }
 
 ssize_t websockets_read_internal(connection_t* connection, char* buffer, size_t size) {
@@ -211,18 +131,10 @@ void websockets_handle(connection_t* connection, websocketsparser_t* parser) {
     }
 
     if (websocketsparser_save_payload(parser, request) == -1) {
-        connection->keepalive_enabled = 0;
+        websocketsresponse_default_response(response, "bad request");
         connection->after_read_request(connection);
         return;
     }
-
-    if (websocketsparser_save_uri(parser, request) == -1) {
-        connection->keepalive_enabled = 0;
-        connection->after_read_request(connection);
-        return;
-    }
-
-    websocketsparser_reset_string(parser);
 
     if (parser->frame.fin == 0) return;
 
@@ -239,9 +151,12 @@ int websockets_get_resource(connection_t* connection) {
     websocketsrequest_t* request = (websocketsrequest_t*)connection->request;
     websocketsresponse_t* response = (websocketsresponse_t*)connection->response;
 
-    for (route_t* route = connection->server->websockets_route; route; route = route->next) {
+    if (request->method == ROUTE_NONE) return -1;
+    if (request->path == NULL) return -1;
+
+    for (route_t* route = connection->server->websockets.route; route; route = route->next) {
         if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {
-            connection->handle = route->websockets;
+            connection->handle = route->handler[request->method];
             connection->queue_push(connection);
             return 0;
         }
@@ -265,7 +180,7 @@ int websockets_get_resource(connection_t* connection) {
             //     websockets_parser_append_query(request, query);
             // }
 
-            connection->handle = route->websockets;
+            connection->handle = route->handler[request->method];
             connection->queue_push(connection);
             return 0;
         }
@@ -277,6 +192,10 @@ int websockets_get_resource(connection_t* connection) {
 int websockets_get_file(connection_t* connection) {
     websocketsrequest_t* request = (websocketsrequest_t*)connection->request;
     websocketsresponse_t* response = (websocketsresponse_t*)connection->response;
+
+    if (request->method == ROUTE_NONE) return -1;
+    if (request->path == NULL) return -1;
+    if (request->ext == NULL) return -1;
 
     return response->filen(response, request->path, request->path_length);
 }

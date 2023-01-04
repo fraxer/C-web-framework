@@ -102,8 +102,8 @@ void ws_index(websocketsrequest_t* request, websocketsresponse_t* response) {
 
     char* data = "";
 
-    if (request->payload_length > request->uri_length + 1) {
-        data = &request->payload[request->uri_length + 1];
+    if (request->payload) {
+        data = request->payload;
     }
 
     size_t length = strlen(data);

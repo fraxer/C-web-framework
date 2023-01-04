@@ -3,7 +3,6 @@
 #include <string.h>
 #include <ctype.h>
 #include "websocketsrequest.h"
-    #include <stdio.h>
 
 void websocketsrequest_reset(websocketsrequest_t*);
 
@@ -36,6 +35,7 @@ websocketsrequest_t* websocketsrequest_create(connection_t* connection) {
 
     if (request == NULL) return NULL;
 
+    request->method = ROUTE_NONE;
     request->type = WEBSOCKETS_NONE;
     request->uri_length = 0;
     request->path_length = 0;
@@ -55,6 +55,7 @@ websocketsrequest_t* websocketsrequest_create(connection_t* connection) {
 }
 
 void websocketsrequest_reset(websocketsrequest_t* request) {
+    request->method = ROUTE_NONE;
     request->type = WEBSOCKETS_NONE;
     request->uri_length = 0;
     request->path_length = 0;

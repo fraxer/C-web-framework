@@ -29,14 +29,9 @@
             "ip": "127.0.0.1",
             "port": 4443,
             "root": "/var/www/webroot/",
-            "redirects": {
-                ".*": "https://domain.com",
-                "/user": "/persons",
-                "/user(.*)/(\\d)": "/person_%1_/_%2"
-            },
             "index": "index.html",
-            "routes": {
-                "http": {
+            "http": {
+                "routes": {
                     "/": {
                         "GET": ["./libindexpage.so", "view"],
                         "PUT": ["./libindexpage.so", "view"],
@@ -46,8 +41,19 @@
                         "GET": ["./libindexpage.so", "websocket"]
                     }
                 },
-                "websockets": {
-                    "/": ["./libindexpage.so", "view"]
+                "redirects": {
+                    ".*": "https://domain.com",
+                    "/user": "/persons",
+                    "/user(.*)/(\\d)": "/person_%1_/_%2"
+                }
+            },
+            "websockets": {
+                "routes": {
+                    "/": {
+                        "GET": ["./libindexpage.so", "ws_index"],
+                        "PATCH": ["./libindexpage.so", "ws_index"],
+                        "DELETE": ["./libindexpage.so", "ws_index"]
+                    }
                 }
             },
             "database": {
@@ -79,8 +85,8 @@
                 "/user(.*)/(\\d)": "/person_%1_/_%2"
             },
             "index": "index.html",
-            "routes": {
-                "http": {
+            "http": {
+                "routes": {
                     "/": {
                         "GET": ["./libindexpage.so", "view"],
                         "PUT": ["./libindexpage.so", "view"],
@@ -90,8 +96,10 @@
                         "GET": ["./libindexpage.so", "websocket"]
                     }
                 },
-                "websockets": {
-                    "/": ["./libindexpage.so", "view"]
+                "redirects": {
+                    ".*": "https://domain.com",
+                    "/user": "/persons",
+                    "/user(.*)/(\\d)": "/person_%1_/_%2"
                 }
             },
             "database": {

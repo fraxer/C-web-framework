@@ -14,7 +14,7 @@ typedef enum http1_request_stage {
     PAYLOAD
 } http1_request_stage_e;
 
-typedef struct http1_parser {
+typedef struct http1parser {
     http1_request_stage_e stage;
     int carriage_return;
     size_t bytes_readed;
@@ -24,11 +24,16 @@ typedef struct http1_parser {
     char* string;
     char* buffer;
     connection_t* connection;
-} http1_parser_t;
+} http1parser_t;
 
-void http1_parser_init(http1_parser_t*, connection_t*, char*);
-int http1_parser_run(http1_parser_t*);
-int http1_parser_set_bytes_readed(http1_parser_t*, int);
-void http1_parser_append_query(http1request_t*, http1_query_t*);
+void http1parser_init(http1parser_t*, connection_t*, char*);
+
+void http1parser_free(http1parser_t*);
+
+int http1parser_run(http1parser_t*);
+
+int http1parser_set_bytes_readed(http1parser_t*, int);
+
+void http1parser_append_query(http1request_t*, http1_query_t*);
 
 #endif

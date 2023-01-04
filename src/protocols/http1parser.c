@@ -6,27 +6,27 @@
 #include "http1common.h"
 #include "http1parser.h"
 
-int http1_parser_parse_method(http1_parser_t*);
-int http1_parser_parse_uri(http1_parser_t*);
-int http1_parser_parse_protocol(http1_parser_t*);
-int http1_parser_parse_headers_key(http1_parser_t*);
-int http1_parser_parse_headers_value(http1_parser_t*);
-int http1_parser_parse_header_key(http1_parser_t*);
-int http1_parser_parse_header_value(http1_parser_t*);
-int http1_parser_parse_endhead(http1_parser_t*);
-int http1_parser_parse_payload(http1_parser_t*);
-int http1_parser_string_append(http1_parser_t*);
-int http1_parser_set_method(http1request_t*, const char*, size_t);
-int http1_parser_set_uri(http1request_t*, const char*, size_t);
-int http1_parser_set_protocol(http1request_t*, const char*);
-int http1_parser_set_header(http1request_t*, const char*, size_t, const char*, size_t);
-int http1_parser_set_path(http1request_t*, const char*, size_t);
-int http1_parser_set_ext(http1request_t*, const char*, size_t);
-int http1_parser_set_query(http1request_t*, const char*, size_t, size_t);
-void http1_parser_set_state(http1_parser_t*);
-int http1_parser_set_keepalive(http1_parser_t*);
+int http1parser_parse_method(http1parser_t*);
+int http1parser_parse_uri(http1parser_t*);
+int http1parser_parse_protocol(http1parser_t*);
+int http1parser_parse_headers_key(http1parser_t*);
+int http1parser_parse_headers_value(http1parser_t*);
+int http1parser_parse_header_key(http1parser_t*);
+int http1parser_parse_header_value(http1parser_t*);
+int http1parser_parse_endhead(http1parser_t*);
+int http1parser_parse_payload(http1parser_t*);
+int http1parser_string_append(http1parser_t*);
+int http1parser_set_method(http1request_t*, const char*, size_t);
+int http1parser_set_uri(http1request_t*, const char*, size_t);
+int http1parser_set_protocol(http1request_t*, const char*);
+int http1parser_set_header(http1request_t*, const char*, size_t, const char*, size_t);
+int http1parser_set_path(http1request_t*, const char*, size_t);
+int http1parser_set_ext(http1request_t*, const char*, size_t);
+int http1parser_set_query(http1request_t*, const char*, size_t, size_t);
+void http1parser_set_state(http1parser_t*);
+int http1parser_set_keepalive(http1parser_t*);
 
-void http1_parser_init(http1_parser_t* parser, connection_t* connection, char* buffer) {
+void http1parser_init(http1parser_t* parser, connection_t* connection, char* buffer) {
     parser->stage = METHOD;
     parser->carriage_return = 0;
     parser->bytes_readed = 0;
@@ -38,7 +38,12 @@ void http1_parser_init(http1_parser_t* parser, connection_t* connection, char* b
     parser->connection = connection;
 }
 
-int http1_parser_run(http1_parser_t* parser) {
+void http1parser_free(http1parser_t* parser) {
+    if (parser->string) free(parser->string);
+    parser->string = NULL;
+}
+
+int http1parser_run(http1parser_t* parser) {
     int result = 0;
 
     parser->pos_start = 0;
@@ -46,33 +51,33 @@ int http1_parser_run(http1_parser_t* parser) {
 
     switch (parser->stage) {
     case METHOD:
-        result = http1_parser_parse_method(parser);
+        result = http1parser_parse_method(parser);
         if (result < 0) return result;
     case URI:
-        result = http1_parser_parse_uri(parser);
+        result = http1parser_parse_uri(parser);
         if (result < 0) return result;
     case PROTOCOL:
-        result = http1_parser_parse_protocol(parser);
+        result = http1parser_parse_protocol(parser);
         if (result < 0) return result;
     case HEADER_KEY:
-        result = http1_parser_parse_headers_key(parser);
+        result = http1parser_parse_headers_key(parser);
         if (result < 0) return result;
     case HEADER_VALUE:
-        result = http1_parser_parse_headers_value(parser);
+        result = http1parser_parse_headers_value(parser);
         if (result < 0) return result;
     case PAYLOAD:
-        result = http1_parser_parse_payload(parser);
+        result = http1parser_parse_payload(parser);
         if (result < 0) return result;
     }
 
     return result;
 }
 
-int http1_parser_set_bytes_readed(struct http1_parser* parser, int readed) {
+int http1parser_set_bytes_readed(struct http1parser* parser, int readed) {
     parser->bytes_readed = readed;
 }
 
-int http1_parser_parse_method(http1_parser_t* parser) {
+int http1parser_parse_method(http1parser_t* parser) {
     int method_max_length = 7;
 
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
@@ -89,18 +94,18 @@ int http1_parser_parse_method(http1_parser_t* parser) {
         }
     }
 
-    return http1_parser_string_append(parser);
+    return http1parser_string_append(parser);
 
     next:
 
-    if (parser->string && http1_parser_string_append(parser) == -1) return -1;
+    if (parser->string && http1parser_string_append(parser) == -1) return -1;
 
     http1request_t* request = (http1request_t*)parser->connection->request;
 
     if (parser->string) {
-        if (http1_parser_set_method(request, parser->string, parser->string_len) == -1) return -1;
+        if (http1parser_set_method(request, parser->string, parser->string_len) == -1) return -1;
     } else {
-        if (http1_parser_set_method(request, &parser->buffer[parser->pos_start], parser->pos - parser->pos_start) == -1) return -1;
+        if (http1parser_set_method(request, &parser->buffer[parser->pos_start], parser->pos - parser->pos_start) == -1) return -1;
     }
 
     parser->pos_start = parser->pos + 1;
@@ -119,7 +124,7 @@ int http1_parser_parse_method(http1_parser_t* parser) {
     return 0;
 }
 
-int http1_parser_parse_uri(http1_parser_t* parser) {
+int http1parser_parse_uri(http1parser_t* parser) {
     // int uri_max_length = 8192;
 
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
@@ -136,16 +141,16 @@ int http1_parser_parse_uri(http1_parser_t* parser) {
         // }
     }
 
-    return http1_parser_string_append(parser);
+    return http1parser_string_append(parser);
 
     next:
 
-    if (parser->string && http1_parser_string_append(parser) == -1) return -1;
+    if (parser->string && http1parser_string_append(parser) == -1) return -1;
 
     http1request_t* request = (http1request_t*)parser->connection->request;
 
     if (parser->string) {
-        if (http1_parser_set_uri(request, parser->string, parser->string_len) == -1) return -1;
+        if (http1parser_set_uri(request, parser->string, parser->string_len) == -1) return -1;
     } else {
         parser->string_len = parser->pos  - parser->pos_start;
 
@@ -157,7 +162,7 @@ int http1_parser_parse_uri(http1_parser_t* parser) {
 
         parser->string[parser->string_len] = 0;
 
-        if (http1_parser_set_uri(request, parser->string, parser->string_len) == -1) return -1;
+        if (http1parser_set_uri(request, parser->string, parser->string_len) == -1) return -1;
     }
 
     parser->pos_start = parser->pos + 1;
@@ -173,7 +178,7 @@ int http1_parser_parse_uri(http1_parser_t* parser) {
     return 0;
 }
 
-int http1_parser_parse_protocol(http1_parser_t* parser) {
+int http1parser_parse_protocol(http1parser_t* parser) {
     int protocol_max_length = 8;
 
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
@@ -200,18 +205,18 @@ int http1_parser_parse_protocol(http1_parser_t* parser) {
         }
     }
 
-    return http1_parser_string_append(parser);
+    return http1parser_string_append(parser);
 
     next:
 
-    if (parser->string && http1_parser_string_append(parser) == -1) return -1;
+    if (parser->string && http1parser_string_append(parser) == -1) return -1;
 
     http1request_t* request = (http1request_t*)parser->connection->request;
 
     if (parser->string) {
-        if (http1_parser_set_protocol(request, parser->string) == -1) return -1;
+        if (http1parser_set_protocol(request, parser->string) == -1) return -1;
     } else {
-        if (http1_parser_set_protocol(request, &parser->buffer[parser->pos_start]) == -1) return -1;
+        if (http1parser_set_protocol(request, &parser->buffer[parser->pos_start]) == -1) return -1;
     }
 
     parser->pos_start = parser->pos + 1;
@@ -232,35 +237,35 @@ int http1_parser_parse_protocol(http1_parser_t* parser) {
     return 0;
 }
 
-int http1_parser_parse_headers_key(http1_parser_t* parser) {
+int http1parser_parse_headers_key(http1parser_t* parser) {
     int result = 0;
 
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed;) {
-        result = http1_parser_parse_header_key(parser);
+        result = http1parser_parse_header_key(parser);
         if (result < 0) return result;
 
-        result = http1_parser_parse_header_value(parser);
+        result = http1parser_parse_header_value(parser);
         if (result < 0) return result;
     }
 
     return 0;
 }
 
-int http1_parser_parse_headers_value(http1_parser_t* parser) {
+int http1parser_parse_headers_value(http1parser_t* parser) {
     int result = 0;
 
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed;) {
-        result = http1_parser_parse_header_value(parser);
+        result = http1parser_parse_header_value(parser);
         if (result < 0) return result;
 
-        result = http1_parser_parse_header_key(parser);
+        result = http1parser_parse_header_key(parser);
         if (result < 0) return result;
     }
 
     return 0;
 }
 
-int http1_parser_parse_header_key(http1_parser_t* parser) {
+int http1parser_parse_header_key(http1parser_t* parser) {
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
         // printf("hkch %d\n", parser->buffer[parser->pos], parser->buffer[parser->pos]);
 
@@ -279,28 +284,28 @@ int http1_parser_parse_header_key(http1_parser_t* parser) {
             goto next;
         }
         else if (ch == '\n') {
-            int result = http1_parser_parse_endhead(parser);
+            int result = http1parser_parse_endhead(parser);
 
             if (result == 0) {
-                return http1_parser_parse_payload(parser);
+                return http1parser_parse_payload(parser);
             }
 
             return result;
         }
     }
 
-    return http1_parser_string_append(parser);
+    return http1parser_string_append(parser);
 
     next:
 
-    if (parser->string && http1_parser_string_append(parser) == -1) return -1;
+    if (parser->string && http1parser_string_append(parser) == -1) return -1;
 
     http1request_t* request = (http1request_t*)parser->connection->request;
 
     const char* header_value = NULL;
 
     if (parser->string) {
-        if (http1_parser_set_header(request, parser->string, parser->string_len, header_value, 0) == -1) return -1;
+        if (http1parser_set_header(request, parser->string, parser->string_len, header_value, 0) == -1) return -1;
     } else {
         parser->string_len = (parser->pos - parser->carriage_return) - parser->pos_start;
 
@@ -312,7 +317,7 @@ int http1_parser_parse_header_key(http1_parser_t* parser) {
 
         parser->string[parser->string_len] = 0;
 
-        if (http1_parser_set_header(request, parser->string, parser->string_len, header_value, 0) == -1) return -1;
+        if (http1parser_set_header(request, parser->string, parser->string_len, header_value, 0) == -1) return -1;
     }
 
     // printf("KK %s\n", parser->string);
@@ -332,7 +337,7 @@ int http1_parser_parse_header_key(http1_parser_t* parser) {
     return 0;
 }
 
-int http1_parser_parse_header_value(http1_parser_t* parser) {
+int http1parser_parse_header_value(http1parser_t* parser) {
     // printf("hvch %c %d\n", parser->buffer[parser->pos_start], parser->buffer[parser->pos_start]);
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
         char ch = parser->buffer[parser->pos];
@@ -350,11 +355,11 @@ int http1_parser_parse_header_value(http1_parser_t* parser) {
         }
     }
 
-    return http1_parser_string_append(parser);
+    return http1parser_string_append(parser);
 
     next:
 
-    if (parser->string && http1_parser_string_append(parser) == -1) return -1;
+    if (parser->string && http1parser_string_append(parser) == -1) return -1;
 
     http1request_t* request = (http1request_t*)parser->connection->request;
 
@@ -376,7 +381,7 @@ int http1_parser_parse_header_value(http1_parser_t* parser) {
         request->last_header->value_length = parser->string_len;
     }
 
-    http1_parser_set_state(parser);
+    http1parser_set_state(parser);
 
     // printf("VV %s\n", parser->string);
 
@@ -395,7 +400,7 @@ int http1_parser_parse_header_value(http1_parser_t* parser) {
     return 0;
 }
 
-int http1_parser_parse_endhead(http1_parser_t* parser) {
+int http1parser_parse_endhead(http1parser_t* parser) {
     parser->pos_start = parser->pos + 1;
 
     if (parser->string) {
@@ -414,7 +419,7 @@ int http1_parser_parse_endhead(http1_parser_t* parser) {
     return 0;
 }
 
-int http1_parser_parse_payload(http1_parser_t* parser) {
+int http1parser_parse_payload(http1parser_t* parser) {
     // printf("payload\n");
 
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
@@ -424,7 +429,7 @@ int http1_parser_parse_payload(http1_parser_t* parser) {
     return -2;
 }
 
-int http1_parser_string_append(http1_parser_t* parser) {
+int http1parser_string_append(http1parser_t* parser) {
     size_t string_len = (parser->pos - parser->carriage_return) - parser->pos_start;
 
     if (parser->string == NULL) {
@@ -459,45 +464,31 @@ int http1_parser_string_append(http1_parser_t* parser) {
     return -2;
 }
 
-int http1_parser_set_method(http1request_t* request, const char* string, size_t length) {
-    switch (length) {
-    case 3:
-        if (string[0] == 'G' && string[1] == 'E' && string[2] == 'T') {
-            request->method = ROUTE_GET;
-        }
-        else if (string[0] == 'P' && string[1] == 'U' && string[2] == 'T') {
-            request->method = ROUTE_PUT;
-        }
-        break;
-    case 4:
-        if (string[0] == 'P' && string[1] == 'O' && string[2] == 'S' && string[3] == 'T') {
-            request->method = ROUTE_POST;
-        }
-        break;
-    case 5:
-        if (string[0] == 'P' && string[1] == 'A' && string[2] == 'T' && string[3] == 'C' && string[4] == 'H') {
-            request->method = ROUTE_PATCH;
-        }
-        break;
-    case 6:
-        if (string[0] == 'D' && string[1] == 'E' && string[2] == 'L' && string[3] == 'E' && string[4] == 'T' && string[5] == 'E') {
-            request->method = ROUTE_DELETE;
-        }
-        break;
-    case 7:
-        if (string[0] == 'O' && string[1] == 'P' && string[2] == 'T' && string[3] == 'I' && string[4] == 'O' && string[5] == 'N' && string[6] == 'S') {
-            request->method = ROUTE_OPTIONS;
-        }
-        break;
-    default:
-        log_error("HTTP error: method error\n");
-        return -1;
+int http1parser_set_method(http1request_t* request, const char* string, size_t length) {
+    if (length == 3 && string[0] == 'G' && string[1] == 'E' && string[2] == 'T') {
+        request->method = ROUTE_GET;
     }
+    else if (length == 3 && string[0] == 'P' && string[1] == 'U' && string[2] == 'T') {
+        request->method = ROUTE_PUT;
+    }
+    else if (length == 4 && string[0] == 'P' && string[1] == 'O' && string[2] == 'S' && string[3] == 'T') {
+        request->method = ROUTE_POST;
+    }
+    else if (length == 5 && string[0] == 'P' && string[1] == 'A' && string[2] == 'T' && string[3] == 'C' && string[4] == 'H') {
+        request->method = ROUTE_PATCH;
+    }
+    else if (length == 6 && string[0] == 'D' && string[1] == 'E' && string[2] == 'L' && string[3] == 'E' && string[4] == 'T' && string[5] == 'E') {
+        request->method = ROUTE_DELETE;
+    }
+    else if (length == 7 && string[0] == 'O' && string[1] == 'P' && string[2] == 'T' && string[3] == 'I' && string[4] == 'O' && string[5] == 'N' && string[6] == 'S') {
+        request->method = ROUTE_OPTIONS;
+    }
+    else return -1;
 
     return 0;
 }
 
-int http1_parser_set_uri(http1request_t* request, const char* string, size_t length) {
+int http1parser_set_uri(http1request_t* request, const char* string, size_t length) {
     if (string[0] != '/') return -1;
 
     request->uri = string;
@@ -511,7 +502,7 @@ int http1_parser_set_uri(http1request_t* request, const char* string, size_t len
         case '?':
             if (path_point_end == 0) path_point_end = pos;
 
-            int result = http1_parser_set_query(request, string, length, pos);
+            int result = http1parser_set_query(request, string, length, pos);
 
             if (result == 0) goto next;
             if (result < 0) return result;
@@ -533,16 +524,16 @@ int http1_parser_set_uri(http1request_t* request, const char* string, size_t len
 
     if (path_point_end == 0) path_point_end = length;
 
-    if (http1_parser_set_path(request, string, path_point_end) == -1) return -1;
+    if (http1parser_set_path(request, string, path_point_end) == -1) return -1;
 
     if (ext_point_start == 0) ext_point_start = path_point_end;
 
-    if (http1_parser_set_ext(request, &string[ext_point_start], path_point_end - ext_point_start) == -1) return -1;
+    if (http1parser_set_ext(request, &string[ext_point_start], path_point_end - ext_point_start) == -1) return -1;
 
     return 0;
 }
 
-int http1_parser_set_protocol(http1request_t* request, const char* string) {
+int http1parser_set_protocol(http1request_t* request, const char* string) {
     if (string[0] == 'H' && string[1] == 'T' && string[2] == 'T' && string[3] == 'P' && string[4] == '/'  && string[5] == '1' && string[6] == '.' && string[7] == '1') {
         request->version = HTTP1_VER_1_1;
         return 0;
@@ -557,7 +548,7 @@ int http1_parser_set_protocol(http1request_t* request, const char* string) {
     return -1;
 }
 
-int http1_parser_set_header(http1request_t* request, const char* key, size_t key_length, const char* value, size_t value_length) {
+int http1parser_set_header(http1request_t* request, const char* key, size_t key_length, const char* value, size_t value_length) {
     http1_header_t* header = http1_header_create(NULL, 0, NULL, 0);
 
     if (header == NULL) {
@@ -583,7 +574,7 @@ int http1_parser_set_header(http1request_t* request, const char* key, size_t key
     return 0;
 }
 
-int http1_parser_set_path(http1request_t* request, const char* string, size_t length) {
+int http1parser_set_path(http1request_t* request, const char* string, size_t length) {
     char* path = (char*)malloc(length + 1);
 
     if (path == NULL) return -1;
@@ -598,7 +589,7 @@ int http1_parser_set_path(http1request_t* request, const char* string, size_t le
     return 0;
 }
 
-int http1_parser_set_ext(http1request_t* request, const char* string, size_t length) {
+int http1parser_set_ext(http1request_t* request, const char* string, size_t length) {
     char* ext = (char*)malloc(length + 1);
 
     if (ext == NULL) return -1;
@@ -613,7 +604,7 @@ int http1_parser_set_ext(http1request_t* request, const char* string, size_t len
     return 0;
 }
 
-int http1_parser_set_query(http1request_t* request, const char* string, size_t length, size_t pos) {
+int http1parser_set_query(http1request_t* request, const char* string, size_t length, size_t pos) {
     size_t point_start = pos + 1;
 
     enum { KEY, VALUE } stage = KEY;
@@ -649,7 +640,7 @@ int http1_parser_set_query(http1request_t* request, const char* string, size_t l
 
             if (query_new == NULL) return -1;
 
-            http1_parser_append_query(request, query_new);
+            http1parser_append_query(request, query_new);
 
             query = query_new;
 
@@ -684,7 +675,7 @@ int http1_parser_set_query(http1request_t* request, const char* string, size_t l
     return 0;
 }
 
-void http1_parser_append_query(http1request_t* request, http1_query_t* query) {
+void http1parser_append_query(http1request_t* request, http1_query_t* query) {
     if (request->last_query) {
         request->last_query->next = query;
     }
@@ -692,11 +683,11 @@ void http1_parser_append_query(http1request_t* request, http1_query_t* query) {
     request->last_query = query;
 }
 
-void http1_parser_set_state(http1_parser_t* parser) {
-    if (http1_parser_set_keepalive(parser) == 0) return;
+void http1parser_set_state(http1parser_t* parser) {
+    if (http1parser_set_keepalive(parser) == 0) return;
 }
 
-int http1_parser_set_keepalive(http1_parser_t* parser) {
+int http1parser_set_keepalive(http1parser_t* parser) {
     http1request_t* request = (http1request_t*)parser->connection->request;
 
     http1_header_t* header = request->last_header;

@@ -19,11 +19,9 @@ char* http1_get_fullpath(connection_t*);
 
 
 void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
-    http1_parser_t parser;
+    http1parser_t parser;
 
-    http1_parser_init(&parser, connection, buffer);
-
-    // set default handler
+    http1parser_init(&parser, connection, buffer);
 
     while (1) {
         int bytes_readed = http1_read_internal(connection, buffer, buffer_size);
@@ -31,15 +29,16 @@ void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
         switch (bytes_readed) {
         case -1:
             http1_handle(connection);
+            http1parser_free(&parser);
             return;
         case 0:
             connection->keepalive_enabled = 0;
             connection->after_read_request(connection);
             return;
         default:
-            http1_parser_set_bytes_readed(&parser, bytes_readed);
+            http1parser_set_bytes_readed(&parser, bytes_readed);
 
-            if (http1_parser_run(&parser) == -1) {
+            if (http1parser_run(&parser) == -1) {
                 http1response_default_response((http1response_t*)connection->response, 400);
                 connection->after_read_request(connection);
                 return;
@@ -139,13 +138,15 @@ void http1_handle(connection_t* connection) {
 int http1_get_resource(connection_t* connection) {
     http1request_t* request = (http1request_t*)connection->request;
 
+    if (request->method == ROUTE_NONE) return -1;
+
     http1_get_redirect(connection);
 
-    for (route_t* route = connection->server->http_route; route; route = route->next) {
+    for (route_t* route = connection->server->http.route; route; route = route->next) {
         if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {
-            connection->handle = route->http[request->method];
+            connection->handle = route->handler[request->method];
             connection->queue_push(connection);
-            // route->http[request->method](connection->request, connection->response);
+            // route->handler[request->method](connection->request, connection->response);
             // connection->after_read_request(connection);
             return 0;
         }
@@ -166,13 +167,13 @@ int http1_get_resource(connection_t* connection) {
 
                 if (query == NULL || query->key == NULL || query->value == NULL) return -1;
 
-                http1_parser_append_query(request, query);
+                http1parser_append_query(request, query);
             }
 
-            connection->handle = route->http[request->method];
+            connection->handle = route->handler[request->method];
             connection->queue_push(connection);
 
-            // route->http[request->method](connection->request, connection->response);
+            // route->handler[request->method](connection->request, connection->response);
             // connection->after_read_request(connection);
 
             return 0;
@@ -192,7 +193,7 @@ int http1_get_file(connection_t* connection) {
 void http1_get_redirect(connection_t* connection) {
     http1request_t* request = (http1request_t*)connection->request;
 
-    redirect_t* redirect = connection->server->redirect;
+    redirect_t* redirect = connection->server->http.redirect;
 
     for (; redirect; redirect = redirect->next) {
         

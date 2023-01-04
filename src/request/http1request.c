@@ -3,7 +3,6 @@
 #include <string.h>
 #include <ctype.h>
 #include "http1request.h"
-    #include <stdio.h>
 
 void http1request_reset(http1request_t*);
 http1_header_t* http1request_header(http1request_t*, const char*);

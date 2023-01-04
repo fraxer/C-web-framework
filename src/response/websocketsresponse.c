@@ -262,7 +262,9 @@ void websocketsresponse_pong(websocketsresponse_t* response, const char* data, s
 
     response->frame_code = 0x8A;
 
-    websocketsresponse_textn(response, data, length);
+    response->body.size = websocketsresponse_data_size(response, length);
+
+    websocketsresponse_prepare(response, data, length);
 }
 
 void websocketsresponse_close(websocketsresponse_t* response, const char* data, size_t length) {
@@ -270,5 +272,7 @@ void websocketsresponse_close(websocketsresponse_t* response, const char* data, 
 
     response->frame_code = 0x88;
 
-    websocketsresponse_textn(response, data, length);
+    response->body.size = websocketsresponse_data_size(response, length);
+
+    websocketsresponse_prepare(response, data, length);
 }

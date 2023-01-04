@@ -27,17 +27,26 @@ typedef struct server_info {
     char* tmp_dir;
 } server_info_t;
 
+typedef struct server_http {
+    route_t* route;
+    redirect_t* redirect;
+} server_http_t;
+
+typedef struct server_websockets {
+    route_t* route;
+} server_websockets_t;
+
 typedef struct server {
     unsigned short int port;
     size_t root_length;
+    in_addr_t ip;
+    server_http_t http;
+    server_websockets_t websockets;
+
+    char* root;
     domain_t* domain;
     struct hsearch_data* domain_hashes;
-    in_addr_t ip;
-    char* root;
     index_t* index;
-    redirect_t* redirect;
-    route_t* http_route;
-    route_t* websockets_route;
     database_t* database;
     openssl_t* openssl;
     server_info_t* info;

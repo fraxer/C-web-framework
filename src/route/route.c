@@ -92,13 +92,12 @@ route_t* route_init_route() {
     route->path_length = 0;
     route->location_error = NULL;
 
-    route->http[ROUTE_GET] = NULL;
-    route->http[ROUTE_POST] = NULL;
-    route->http[ROUTE_PUT] = NULL;
-    route->http[ROUTE_DELETE] = NULL;
-    route->http[ROUTE_OPTIONS] = NULL;
-    route->http[ROUTE_PATCH] = NULL;
-    route->websockets = NULL;
+    route->handler[ROUTE_GET] = NULL;
+    route->handler[ROUTE_POST] = NULL;
+    route->handler[ROUTE_PUT] = NULL;
+    route->handler[ROUTE_DELETE] = NULL;
+    route->handler[ROUTE_OPTIONS] = NULL;
+    route->handler[ROUTE_PATCH] = NULL;
 
     route->location_erroffset = 0;
     route->location = NULL;
@@ -345,15 +344,34 @@ int route_set_http_handler(route_t* route, const char* method, void* function) {
 
     if (m == ROUTE_NONE) return -1;
 
-    if (route->http[m]) return 0;
+    if (route->handler[m]) return 0;
 
-    route->http[m] = (void(*)(request_t*, response_t*))function;
+    route->handler[m] = (void(*)(request_t*, response_t*))function;
 
     return 0;
 }
 
-int route_set_websockets_handler(route_t* route, void* function) {
-    route->websockets = (void(*)(request_t*, response_t*))function;
+int route_set_websockets_handler(route_t* route, const char* method, void* function) {
+    int m = ROUTE_NONE;
+
+    if (method[0] == 'G' && method[1] == 'E' && method[2] == 'T') {
+        m = ROUTE_GET;
+    }
+    else if (method[0] == 'P' && method[1] == 'O' && method[2] == 'S' && method[3] == 'T') {
+        m = ROUTE_POST;
+    }
+    else if (method[0] == 'D' && method[1] == 'E' && method[2] == 'L' && method[3] == 'E' && method[4] == 'T' && method[5] == 'E') {
+        m = ROUTE_DELETE;
+    }
+    else if (method[0] == 'P' && method[1] == 'A' && method[2] == 'T' && method[3] == 'C' && method[4] == 'H') {
+        m = ROUTE_PATCH;
+    }
+
+    if (m == ROUTE_NONE) return -1;
+
+    if (route->handler[m]) return 0;
+
+    route->handler[m] = (void(*)(request_t*, response_t*))function;
 
     return 0;
 }

@@ -10,6 +10,8 @@ typedef enum websockets_request_stage {
     SECOND_BYTE,
     PAYLOAD_LEN,
     MASK_KEY,
+    METHOD,
+    LOCATION,
     DATA
 } websockets_request_stage_e;
 
@@ -33,14 +35,12 @@ typedef struct websocketsparser {
 
 void websocketsparser_init(websocketsparser_t*, websocketsrequest_t*, char*);
 
+// void websocketsparser_free(websocketsparser_t*);
+
 void websocketsparser_set_bytes_readed(websocketsparser_t*, size_t);
 
 int websocketsparser_run(websocketsparser_t*);
 
-void websocketsparser_reset_string(websocketsparser_t*);
-
 int websocketsparser_save_payload(websocketsparser_t*, websocketsrequest_t*);
-
-int websocketsparser_save_uri(websocketsparser_t*, websocketsrequest_t*);
 
 #endif
