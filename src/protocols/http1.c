@@ -29,7 +29,6 @@ void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
         switch (bytes_readed) {
         case -1:
             http1_handle(connection);
-            http1parser_free(&parser);
             return;
         case 0:
             connection->keepalive_enabled = 0;
@@ -39,6 +38,7 @@ void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
             http1parser_set_bytes_readed(&parser, bytes_readed);
 
             if (http1parser_run(&parser) == -1) {
+                http1parser_free(&parser);
                 http1response_default_response((http1response_t*)connection->response, 400);
                 connection->after_read_request(connection);
                 return;

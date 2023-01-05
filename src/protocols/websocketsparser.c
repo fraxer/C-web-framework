@@ -17,7 +17,9 @@ int websocketsparser_set_location(websocketsrequest_t*, const char*, size_t);
 int websocketsparser_set_uri(websocketsrequest_t*, const char*, size_t);
 int websocketsparser_set_path(websocketsrequest_t*, const char*, size_t);
 int websocketsparser_set_ext(websocketsrequest_t*, const char*, size_t);
+int websocketsparser_set_query(websocketsrequest_t*, const char*, size_t);
 int websocketsparser_set_payload(websocketsparser_t*, const char*, size_t);
+void websocketsparser_append_query(websocketsrequest_t* request, websockets_query_t* query);
 
 
 void websocketsparser_init(websocketsparser_t* parser, websocketsrequest_t* request, char* buffer) {
@@ -35,10 +37,10 @@ void websocketsparser_init(websocketsparser_t* parser, websocketsrequest_t* requ
     websockets_frame_init(&parser->frame);
 }
 
-// void websocketsparser_free(websocketsparser_t* parser) {
-//     if (parser->string) free(parser->string);
-//     parser->string = NULL;
-// }
+void websocketsparser_free(websocketsparser_t* parser) {
+    if (parser->string) free(parser->string);
+    parser->string = NULL;
+}
 
 void websocketsparser_set_bytes_readed(websocketsparser_t* parser, size_t bytes_readed) {
 	parser->bytes_readed = bytes_readed;
@@ -459,6 +461,11 @@ int websocketsparser_set_location(websocketsrequest_t* request, const char* stri
 
         if (c == '?' && path_point_end == 0) {
             path_point_end = i;
+
+            int result = websocketsparser_set_query(request, &string[i + 1], length);
+
+            if (result == 0) goto next;
+            if (result < 0) return result;
         }
 
         if (c == '.') {
@@ -474,6 +481,8 @@ int websocketsparser_set_location(websocketsrequest_t* request, const char* stri
 
         prev_c = c;
     }
+
+    next:
 
     if (uri_point_end == 0) uri_point_end = length;
 
@@ -538,6 +547,86 @@ int websocketsparser_set_ext(websocketsrequest_t* request, const char* string, s
     request->ext_length = length;
 
     return 0;
+}
+
+int websocketsparser_set_query(websocketsrequest_t* request, const char* string, size_t length) {
+    size_t pos = 0;
+    size_t point_start = 0;
+
+    enum { KEY, VALUE } stage = KEY;
+
+    websockets_query_t* query = websockets_query_create(NULL, 0, NULL, 0);
+
+    if (query == NULL) return -1;
+
+    request->query = query;
+    request->last_query = query;
+
+    for (; pos < length; pos++) {
+        switch (string[pos]) {
+        case '=':
+            if (string[pos - 1] == '=') continue;
+
+            stage = VALUE;
+
+            query->key = websockets_set_field(&string[point_start], pos - point_start);
+
+            if (query->key == NULL) return -1;
+
+            point_start = pos + 1;
+            break;
+        case '&':
+            stage = KEY;
+
+            query->value = websockets_set_field(&string[point_start], pos - point_start);
+
+            if (query->value == NULL) return -1;
+
+            websockets_query_t* query_new = websockets_query_create(NULL, 0, NULL, 0);
+
+            if (query_new == NULL) return -1;
+
+            websocketsparser_append_query(request, query_new);
+
+            query = query_new;
+
+            point_start = pos + 1;
+            break;
+        case '#':
+            if (stage == KEY) {
+                query->key = websockets_set_field(&string[point_start], pos - point_start);
+                if (query->key == NULL) return -1;
+            }
+            else if (stage == VALUE) {
+                query->value = websockets_set_field(&string[point_start], pos - point_start);
+                if (query->value == NULL) return -1;
+            }
+
+            return 0;
+        }
+    }
+
+    if (stage == KEY) {
+        query->key = websockets_set_field(&string[point_start], pos - point_start);
+        if (query->key == NULL) return -1;
+
+        query->value = websockets_set_field("", 0);
+        if (query->value == NULL) return -1;
+    }
+    else if (stage == VALUE) {
+        query->value = websockets_set_field(&string[point_start], pos - point_start);
+        if (query->value == NULL) return -1;
+    }
+
+    return 0;
+}
+
+void websocketsparser_append_query(websocketsrequest_t* request, websockets_query_t* query) {
+    if (request->last_query) {
+        request->last_query->next = query;
+    }
+
+    request->last_query = query;
 }
 
 int websocketsparser_set_payload(websocketsparser_t* parser, const char* string, size_t length) {

@@ -14,7 +14,7 @@ void websocketsrequest_query_free(websockets_query_t* query) {
     while (query != NULL) {
         websockets_query_t* next = query->next;
 
-        // websockets_query_free(query);
+        websockets_query_free(query);
 
         query = next;
     }

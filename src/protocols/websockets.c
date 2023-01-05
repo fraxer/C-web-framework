@@ -36,6 +36,7 @@ void websockets_read(connection_t* connection, char* buffer, size_t buffer_size)
             websocketsparser_set_bytes_readed(&parser, bytes_readed);
 
             if (websocketsparser_run(&parser) == -1) {
+                websocketsparser_free(&parser);
                 websocketsresponse_default_response((websocketsresponse_t*)connection->response, "bad request");
                 connection->after_read_request(connection);
                 return;
@@ -134,6 +135,14 @@ void websockets_handle(connection_t* connection, websocketsparser_t* parser) {
         websocketsresponse_default_response(response, "bad request");
         connection->after_read_request(connection);
         return;
+    }
+
+    websockets_query_t* query = request->query;
+
+    while (query) {
+        printf("%s -> %s\n", query->key, query->value);
+
+        query = query->next;
     }
 
     if (parser->frame.fin == 0) return;

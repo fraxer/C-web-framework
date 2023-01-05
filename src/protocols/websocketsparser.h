@@ -35,7 +35,7 @@ typedef struct websocketsparser {
 
 void websocketsparser_init(websocketsparser_t*, websocketsrequest_t*, char*);
 
-// void websocketsparser_free(websocketsparser_t*);
+void websocketsparser_free(websocketsparser_t*);
 
 void websocketsparser_set_bytes_readed(websocketsparser_t*, size_t);
 
