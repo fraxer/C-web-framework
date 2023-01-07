@@ -196,6 +196,14 @@ void http1_get_redirect(connection_t* connection) {
     redirect_t* redirect = connection->server->http.redirect;
 
     for (; redirect; redirect = redirect->next) {
-        
+        int vector_size = 30;
+        int vector[vector_size];
+
+        // find resource by template
+        int matches_count = pcre_exec(redirect->location, NULL, request->path, request->path_length, 0, 0, vector, vector_size);
+
+        if (matches_count > 1) {
+            printf("finded: %s\n", request->path);
+        }
     }
 }

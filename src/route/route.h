@@ -36,8 +36,6 @@ typedef struct route {
     void(*handler[6])(request_t*, response_t*);
 } route_t;
 
-void* route_init();
-
 route_t* route_create(const char*);
 
 int route_set_http_handler(route_t*, const char*, void*);

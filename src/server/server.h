@@ -3,6 +3,7 @@
 
 #include <arpa/inet.h>
 #include <search.h>
+#include "../redirect/redirect.h"
 #include "../route/route.h"
 #include "../route/routeloader.h"
 #include "../domain/domain.h"
@@ -13,12 +14,6 @@ typedef struct index {
     char* value;
     int length;
 } index_t;
-
-typedef struct redirect {
-    char* template;
-    char* target;
-    struct redirect* next;
-} redirect_t;
 
 typedef struct server_info {
     int read_buffer;

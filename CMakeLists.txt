@@ -26,6 +26,8 @@ add_library(helpers STATIC src/helpers/helpers.c)
 
 add_library(signal STATIC src/signal/signal.c)
 
+add_library(redirect STATIC src/redirect/redirect.c)
+
 add_library(route STATIC src/route/route.c)
 
 add_library(routeloader STATIC src/route/routeloader.c)
@@ -103,6 +105,7 @@ target_link_libraries(
 target_link_libraries(
 	moduleloader
 	config
+	redirect
 	route
 	routeloader
 	database

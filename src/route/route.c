@@ -27,24 +27,14 @@ typedef struct route_parser {
 } route_parser_t;
 
 route_t* route_init_route();
-
 int route_init_parser(route_parser_t* parser, const char* dirty_location);
-
 int route_parse_location(route_parser_t* parser, const char* dirty_location);
-
 int route_parse_token(route_parser_t* parser);
-
 void route_insert_symbol(route_parser_t* parser);
-
 int route_alloc_param(route_parser_t* parser);
-
 int route_fill_param(route_parser_t* parser);
-
 void route_parser_free(route_parser_t* parser);
 
-void* route_init() {
-    return 0;
-}
 
 route_t* route_create(const char* dirty_location) {
     int result = -1;
