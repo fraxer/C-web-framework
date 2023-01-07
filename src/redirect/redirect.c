@@ -45,10 +45,9 @@ redirect_t* redirect_create(const char* location, const char* destination) {
 
     redirect->location = pcre_compile(location, 0, &redirect->location_error, &redirect->location_erroffset, NULL);
 
+    if (redirect->location == NULL) goto failed;
     if (redirect->location_error != NULL) goto failed;
 
-    // redirect->template = parser.source;
-    // redirect->template_length = strlen(parser.source);
     redirect->param = parser.first_param;
 
     // if (redirect_check_params(redirect) == -1) goto failed;
@@ -71,7 +70,7 @@ redirect_t* redirect_init(const char* template) {
     }
 
     redirect->template = (char*)malloc(strlen(template) + 1);
-    redirect->template_length = 0;
+    redirect->template_length = strlen(template);
     redirect->location_error = NULL;
 
     redirect->location_erroffset = 0;
@@ -83,6 +82,8 @@ redirect_t* redirect_init(const char* template) {
         log_error(REDIRECT_OUT_OF_MEMORY);
         return NULL;
     }
+
+    strcpy(redirect->template, template);
 
     return redirect;
 }
