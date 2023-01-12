@@ -4,8 +4,6 @@
 #include <ctype.h>
 #include "websocketsrequest.h"
 
-void websocketsrequest_reset(websocketsrequest_t*);
-
 websocketsrequest_t* websocketsrequest_alloc() {
     return (websocketsrequest_t*)malloc(sizeof(websocketsrequest_t));
 }
@@ -37,14 +35,17 @@ websocketsrequest_t* websocketsrequest_create(connection_t* connection) {
 
     request->method = ROUTE_NONE;
     request->type = WEBSOCKETS_NONE;
+    request->control_type = WEBSOCKETS_NONE;
     request->uri_length = 0;
     request->path_length = 0;
     request->ext_length = 0;
     request->payload_length = 0;
+    request->control_payload_length = 0;
     request->uri = NULL;
     request->path = NULL;
     request->ext = NULL;
     request->payload = NULL;
+    request->control_payload = NULL;
     request->query = NULL;
     request->last_query = NULL;
     request->connection = connection;
@@ -55,26 +56,35 @@ websocketsrequest_t* websocketsrequest_create(connection_t* connection) {
 }
 
 void websocketsrequest_reset(websocketsrequest_t* request) {
-    request->method = ROUTE_NONE;
-    request->type = WEBSOCKETS_NONE;
-    request->uri_length = 0;
-    request->path_length = 0;
-    request->ext_length = 0;
-    request->payload_length = 0;
+    if (request->control_type == WEBSOCKETS_NONE) {
+        request->type = WEBSOCKETS_NONE;
+        request->method = ROUTE_NONE;
+        request->uri_length = 0;
+        request->path_length = 0;
+        request->ext_length = 0;
+        request->payload_length = 0;
 
-    if (request->uri) free((void*)request->uri);
-    request->uri = NULL;
+        if (request->uri) free((void*)request->uri);
+        request->uri = NULL;
 
-    if (request->path) free((void*)request->path);
-    request->path = NULL;
+        if (request->path) free((void*)request->path);
+        request->path = NULL;
 
-    if (request->ext) free((void*)request->ext);
-    request->ext = NULL;
+        if (request->ext) free((void*)request->ext);
+        request->ext = NULL;
 
-    if (request->payload) free(request->payload);
-    request->payload = NULL;
+        if (request->payload) free(request->payload);
+        request->payload = NULL;
 
-    websocketsrequest_query_free(request->query);
-    request->query = NULL;
-    request->last_query = NULL;
+        websocketsrequest_query_free(request->query);
+        request->query = NULL;
+        request->last_query = NULL;
+    }
+
+    request->control_payload_length = 0;
+
+    if (request->control_payload) free(request->control_payload);
+    request->control_payload = NULL;
+
+    request->control_type = WEBSOCKETS_NONE;
 }

@@ -118,34 +118,31 @@ void websockets_handle(connection_t* connection, websocketsparser_t* parser) {
     websocketsrequest_t* request = (websocketsrequest_t*)connection->request;
     websocketsresponse_t* response = (websocketsresponse_t*)connection->response;
 
-    if (parser->frame.fin == 1 && parser->frame.opcode == 10) {
-        websocketsresponse_pong(response, parser->string, parser->string_len);
-        connection->after_read_request(connection);
-        return;
-    }
+    // printf("%d %d\n", parser->frame.fin, parser->frame.opcode);
+    // printf("%d %ld\n", request->type, request->payload_length);
 
-    if (parser->frame.fin == 1 && parser->frame.opcode == 8) {
-        websocketsresponse_close(response, parser->string, parser->string_len);
-        connection->keepalive_enabled = 0;
-        connection->after_read_request(connection);
-        return;
-    }
-
-    if (websocketsparser_save_payload(parser, request) == -1) {
-        websocketsresponse_default_response(response, "bad request");
-        connection->after_read_request(connection);
-        return;
-    }
-
-    websockets_query_t* query = request->query;
-
-    while (query) {
-        printf("%s -> %s\n", query->key, query->value);
-
-        query = query->next;
-    }
+    // printf("%ld\n", request->payload_length);
+    // printf("%s\n", request->payload);
 
     if (parser->frame.fin == 0) return;
+
+    if (parser->frame.fin == 1) {
+        if (parser->frame.opcode == 9) {
+            websocketsresponse_pong(response, request->control_payload, request->control_payload_length);
+            connection->after_read_request(connection);
+            return;
+        }
+        else if (parser->frame.opcode == 10) {
+            websocketsrequest_reset(request);
+            return;
+        }
+        else if (parser->frame.opcode == 8) {
+            websocketsresponse_close(response, request->control_payload, request->control_payload_length);
+            connection->keepalive_enabled = 0;
+            connection->after_read_request(connection);
+            return;
+        }
+    }
 
     if (websockets_get_resource(connection) == 0) return;
 
@@ -179,15 +176,23 @@ int websockets_get_resource(connection_t* connection) {
         if (matches_count > 1) {
             int i = 1; // escape full string match
 
-            // for (route_param_t* param = route->param; param; param = param->next, i++) {
-            //     size_t substring_length = vector[i * 2 + 1] - vector[i * 2];
+            for (route_param_t* param = route->param; param; param = param->next, i++) {
+                size_t substring_length = vector[i * 2 + 1] - vector[i * 2];
 
-            //     websockets_query_t* query = websockets_query_create(param->string, param->string_len, &request->path[vector[i * 2]], substring_length);
+                websockets_query_t* query = websockets_query_create(param->string, param->string_len, &request->path[vector[i * 2]], substring_length);
 
-            //     if (query == NULL || query->key == NULL || query->value == NULL) return -1;
+                if (query == NULL || query->key == NULL || query->value == NULL) return -1;
 
-            //     websockets_parser_append_query(request, query);
-            // }
+                websocketsparser_append_query(request, query);
+            }
+
+            websockets_query_t* query = request->query;
+
+            while (query) {
+                printf("%s -> %s\n", query->key, query->value);
+
+                query = query->next;
+            }
 
             connection->handle = route->handler[request->method];
             connection->queue_push(connection);
