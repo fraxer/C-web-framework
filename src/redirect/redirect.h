@@ -3,7 +3,16 @@
 
 #include "pcre.h"
 
+enum redirect_status {
+    REDIRECT_OUT_OF_MEMORY,
+    REDIRECT_LOOP_CYCLE,
+    REDIRECT_FOUND,
+    REDIRECT_NOT_FOUND,
+    REDIRECT_ALIAS
+};
+
 typedef struct redirect_param {
+    int number;
     size_t start;
     size_t end;
     struct redirect_param* next;
@@ -11,6 +20,7 @@ typedef struct redirect_param {
 
 typedef struct redirect {
     int location_erroffset;
+    int params_count;
     char* template;
     size_t template_length;
     const char* location_error;
@@ -21,8 +31,8 @@ typedef struct redirect {
 
 redirect_t* redirect_create(const char*, const char*);
 
-int redirect_set_http_handler(redirect_t*, const char*, void*);
-
 void redirect_free(redirect_t*);
+
+char* redirect_get_uri(redirect_t*, const char*, size_t, int*);
 
 #endif

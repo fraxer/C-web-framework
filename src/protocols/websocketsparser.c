@@ -427,6 +427,30 @@ int websocketsparser_set_payload_length(websocketsparser_t* parser, const unsign
     return 0;
 }
 
+int websocketsparser_save_location(websocketsparser_t* parser, websocketsrequest_t* request) {
+    if (parser->frame.payload_length == 0) return 0;
+
+    int result = 0;
+
+    if (parser->string) {
+        if (!is_custom_payload_parser) {
+            if (parser->stage == METHOD) {
+                result = websocketsparser_set_method(parser->request, parser->string, parser->string_len);
+            }
+            if (parser->stage == LOCATION) {
+                result = websocketsparser_set_location(parser->request, parser->string, parser->string_len);
+            }
+        }
+
+        free(parser->string);
+        parser->string = NULL;
+    }
+
+    parser->string_len = 0;
+
+    return result;
+}
+
 int websocketsparser_set_method(websocketsrequest_t* request, const char* string, size_t length) {
     if (length == 3 && string[0] == 'G' && string[1] == 'E' && string[2] == 'T') {
         request->method = ROUTE_GET;
@@ -468,6 +492,7 @@ int websocketsparser_set_location(websocketsrequest_t* request, const char* stri
         if (c == '.') {
             ext_point_start = i + 1;
 
+            if (i + 1 < length && string[i] == '.' && string[i + 1] == '/') return -1;
             if (i + 2 < length && string[i + 1] == '.' && string[i + 2] == '/') return -1;
         }
 

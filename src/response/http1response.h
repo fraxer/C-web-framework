@@ -35,6 +35,8 @@ http1response_t* http1response_create(connection_t*);
 
 void http1response_default_response(http1response_t*, int);
 
+void http1response_redirect(http1response_t*, const char*, int);
+
 int http1response_data_append(char*, size_t*, const char*, size_t);
 
 #endif

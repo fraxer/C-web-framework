@@ -499,3 +499,16 @@ void http1response_switch_to_websockets(http1response_t* response) {
 
     // printf("body: %s, %ld\n", response->body.data, response->body.size);
 }
+
+void http1response_redirect(http1response_t* response, const char* path, int status_code) {
+    http1response_reset(response);
+
+    response->status_code = status_code;
+
+    if (response->header_add(response, "Location", path) == -1) return;
+    if (http1response_header_add_content_length(response, 0) == -1) return;
+
+    response->body.size = http1response_size(response, 0);
+
+    http1response_prepare(response, NULL, 0);
+}

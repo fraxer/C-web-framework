@@ -34,6 +34,8 @@ int http1parser_run(http1parser_t*);
 
 int http1parser_set_bytes_readed(http1parser_t*, int);
 
+int http1parser_set_uri(http1request_t*, const char*, size_t);
+
 void http1parser_append_query(http1request_t*, http1_query_t*);
 
 #endif

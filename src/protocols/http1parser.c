@@ -17,7 +17,6 @@ int http1parser_parse_endhead(http1parser_t*);
 int http1parser_parse_payload(http1parser_t*);
 int http1parser_string_append(http1parser_t*);
 int http1parser_set_method(http1request_t*, const char*, size_t);
-int http1parser_set_uri(http1request_t*, const char*, size_t);
 int http1parser_set_protocol(http1request_t*, const char*);
 int http1parser_set_header(http1request_t*, const char*, size_t, const char*, size_t);
 int http1parser_set_path(http1request_t*, const char*, size_t);
@@ -515,6 +514,7 @@ int http1parser_set_uri(http1request_t* request, const char* string, size_t leng
         case '.':
             ext_point_start = pos + 1;
 
+            if (pos + 1 < length && string[pos] == '.' && string[pos + 1] == '/') return -1;
             if (pos + 2 < length && string[pos + 1] == '.' && string[pos + 2] == '/') return -1;
             break;
         }

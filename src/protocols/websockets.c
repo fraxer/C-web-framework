@@ -118,28 +118,28 @@ void websockets_handle(connection_t* connection, websocketsparser_t* parser) {
     websocketsrequest_t* request = (websocketsrequest_t*)connection->request;
     websocketsresponse_t* response = (websocketsresponse_t*)connection->response;
 
-    // printf("%d %d\n", parser->frame.fin, parser->frame.opcode);
-    // printf("%d %ld\n", request->type, request->payload_length);
-
-    // printf("%ld\n", request->payload_length);
-    // printf("%s\n", request->payload);
-
     if (parser->frame.fin == 0) return;
 
     if (parser->frame.fin == 1) {
-        if (parser->frame.opcode == 9) {
+        if (websocketsparser_save_location(parser, request) == -1) {
+            websocketsresponse_default_response(response, "bad request");
+            connection->after_read_request(connection);
+            return;
+        }
+
+        if (parser->frame.opcode == 8) {
+            websocketsresponse_close(response, request->control_payload, request->control_payload_length);
+            connection->keepalive_enabled = 0;
+            connection->after_read_request(connection);
+            return;
+        }
+        else if (parser->frame.opcode == 9) {
             websocketsresponse_pong(response, request->control_payload, request->control_payload_length);
             connection->after_read_request(connection);
             return;
         }
         else if (parser->frame.opcode == 10) {
             websocketsrequest_reset(request);
-            return;
-        }
-        else if (parser->frame.opcode == 8) {
-            websocketsresponse_close(response, request->control_payload, request->control_payload_length);
-            connection->keepalive_enabled = 0;
-            connection->after_read_request(connection);
             return;
         }
     }
