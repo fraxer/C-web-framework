@@ -8,6 +8,7 @@
 #define REDIRECT_OUT_OF_MEMORY "Redirect error: Out of memory\n"
 #define REDIRECT_BIG_VALUE_PARAM "Redirect error: Big number in param \"%s\"\n"
 #define REDIRECT_ERROR_VALUE_PARAM "Redirect error: param is not number \"%s\"\n"
+#define REDIRECT_ERROR_CHECK_PARAM "Redirect error: params count is not equal substrings count in location \"%s\"\n"
 
 typedef struct redirect_parser {
     int params_count;
@@ -21,6 +22,7 @@ typedef struct redirect_parser {
 redirect_t* redirect_init();
 int redirect_init_parser(redirect_parser_t*, const char*);
 int redirect_parse_destination(redirect_parser_t*);
+int redirect_check_params(redirect_t*);
 int redirect_parse_token(redirect_parser_t*);
 int redirect_alloc_param(redirect_parser_t*, size_t, size_t, int);
 int redirect_fill_param(redirect_parser_t*);
@@ -49,11 +51,15 @@ redirect_t* redirect_create(const char* location, const char* destination) {
     redirect->params_count = parser.params_count;
     redirect->param = parser.first_param;
 
-    // if (redirect_check_params(redirect) == -1) goto failed;
+    if (redirect_check_params(redirect) == -1) goto failed;
 
     result = redirect;
 
     failed:
+
+    if (result == NULL) {
+        redirect_free(redirect);
+    }
 
     redirect_parser_free(&parser);
 
@@ -108,6 +114,19 @@ int redirect_parse_destination(redirect_parser_t* parser) {
             if (redirect_parse_token(parser) == -1) return -1;
             break;
         }
+    }
+
+    return 0;
+}
+
+int redirect_check_params(redirect_t* redirect) {
+    int where = 0;
+
+    if (pcre_fullinfo(redirect->location, NULL, PCRE_INFO_CAPTURECOUNT, &where) != 0) return -1;
+
+    if (where != redirect->params_count) {
+        log_error(REDIRECT_ERROR_CHECK_PARAM, redirect->template);
+        return -1;
     }
 
     return 0;
@@ -182,7 +201,7 @@ int redirect_fill_param(redirect_parser_t* parser) {
 
     int number = atoi(string_number);
 
-    if (number == 0) {
+    if (number < 0) {
         log_error(REDIRECT_ERROR_VALUE_PARAM, &parser->string[start]);
         return -1;
     }
