@@ -15,23 +15,11 @@ server_t* server_alloc();
 server_chain_t* server_chain_alloc();
 
 
-struct hsearch_data* server_domain_hash_table_alloc() {
-    struct hsearch_data* table = (struct hsearch_data*)malloc(sizeof(struct hsearch_data));
-
-    if (table == NULL) return NULL;
-
-    memset(table, 0, sizeof(struct hsearch_data));
-}
-
 server_t* server_create() {
     server_t* result = NULL;
     server_t* server = server_alloc();
 
     if (server == NULL) return NULL;
-
-    server->domain_hashes = server_domain_hash_table_alloc();
-
-    if (server->domain_hashes == NULL) goto failed;
 
     server->port = 0;
     server->root_length = 0;
@@ -72,13 +60,6 @@ void server_free(server_t* server) {
 
         if (server->domain) domain_free(server->domain);
         server->domain = NULL;
-
-        if (server->domain_hashes) {
-            hdestroy_r(server->domain_hashes);
-            free(server->domain_hashes);
-        }
-
-        server->domain_hashes = NULL;
 
         server->ip = 0;
 

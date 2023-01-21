@@ -10,6 +10,7 @@ typedef struct domain_parser {
     char* prepared_template;
     size_t pos;
     size_t pcre_pos;
+    size_t prepared_pos;
     int brackets_count;
 } domain_parser_t;
 
@@ -84,10 +85,6 @@ domain_t* domain_alloc(const char* value) {
 
     if (domain->prepared_template == NULL) goto failed;
 
-    strcpy(domain->prepared_template, value);
-
-
-    domain->is_primitive = 0;
     domain->pcre_template = NULL;
     domain->next = NULL;
 
@@ -110,27 +107,24 @@ int domain_parse(domain_t* domain) {
 
     int length = strlen(domain->template);
 
-    domain->is_primitive = 1;
+    if (domain->template[0] != '^' && domain->template[length - 1] != '$') {
+        parser.prepared_pos = 1;
+    }
 
     for (; parser.pos < length; parser.pos++) {
         switch (domain->template[parser.pos]) {
         case '(':
         case '[':
             parser.brackets_count++;
-            domain->is_primitive = 0;
-
             domain_parser_insert_symbol(&parser);
             break;
         case ')':
         case ']':
             if (parser.brackets_count == 0) return -1;
             parser.brackets_count--;
-            domain->is_primitive = 0;
             domain_parser_insert_symbol(&parser);
             break;
         case '*':
-            domain->is_primitive = 0;
-
             if (parser.brackets_count > 0) {
                 domain_parser_insert_symbol(&parser);
                 break;
@@ -164,6 +158,13 @@ int domain_parse(domain_t* domain) {
     }
 
     if (parser.brackets_count != 0) return -1;
+
+    if (domain->template[0] != '^' && domain->template[length - 1] != '$') {
+        domain->prepared_template[0] = '^';
+        domain->prepared_template[parser.prepared_pos] = '$';
+
+        parser.prepared_pos++;
+    }
 
     domain_parser_insert_custom_symbol(&parser, 0);
 
@@ -220,6 +221,10 @@ int domain_estimate_length(const char* domain) {
 
     if (brackets_count != 0) return -1;
 
+    if (domain[0] != '^' && domain[length - 1] != '$') {
+        pcre_length += 2;
+    }
+
     return pcre_length;
 }
 
@@ -228,6 +233,7 @@ void domain_parser_alloc(domain_parser_t* parser, domain_t* domain) {
     parser->prepared_template = domain->prepared_template;
     parser->pos = 0;
     parser->pcre_pos = 0;
+    parser->prepared_pos = 0;
     parser->brackets_count = 0;
 }
 
@@ -236,8 +242,9 @@ void domain_parser_insert_symbol(domain_parser_t* parser) {
 }
 
 void domain_parser_insert_custom_symbol(domain_parser_t* parser, char ch) {
-    parser->prepared_template[parser->pcre_pos] = ch;
+    parser->prepared_template[parser->prepared_pos] = ch;
     parser->pcre_pos++;
+    parser->prepared_pos++;
 }
 
 int domain_count(domain_t* domain) {

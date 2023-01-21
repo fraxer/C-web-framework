@@ -4,6 +4,15 @@
 #include "../connection/connection.h"
 #include "../request/http1request.h"
 
+enum http1parser_status {
+    HTTP1PARSER_ERROR = 0,
+    HTTP1PARSER_SUCCESS,
+    HTTP1PARSER_CONTINUE,
+    HTTP1PARSER_OUT_OF_MEMORY,
+    HTTP1PARSER_BAD_REQUEST,
+    HTTP1PARSER_HOST_NOT_FOUND
+};
+
 typedef enum http1_request_stage {
     SPACE = 0,
     METHOD,
@@ -16,6 +25,7 @@ typedef enum http1_request_stage {
 
 typedef struct http1parser {
     http1_request_stage_e stage;
+    int host_found;
     int carriage_return;
     size_t bytes_readed;
     size_t pos_start;
@@ -32,7 +42,7 @@ void http1parser_free(http1parser_t*);
 
 int http1parser_run(http1parser_t*);
 
-int http1parser_set_bytes_readed(http1parser_t*, int);
+void http1parser_set_bytes_readed(http1parser_t*, int);
 
 int http1parser_set_uri(http1request_t*, const char*, size_t);
 

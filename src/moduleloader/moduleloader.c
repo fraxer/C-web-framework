@@ -5,7 +5,6 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include <search.h>
 #include "../config/config.h"
 #include "../log/log.h"
 #include "../jsmn/jsmn.h"
@@ -525,34 +524,6 @@ openssl_t* module_loader_openssl_load(const jsmntok_t* token_object) {
     return result;
 }
 
-int module_loader_domains_hash_create(server_t* server) {
-    if (hcreate_r(domain_count(server->domain) * 2, server->domain_hashes) == 0) {
-        log_error("Error: Can't create domain hashes\n");
-        return -1;
-    }
-
-    domain_t* current = server->domain;
-
-    while (current) {
-        domain_t* next = current->next;
-
-        ENTRY entry;
-        ENTRY* entry_result;
-
-        entry.key = current->template;
-        entry.data = (void*)current->template;
-
-        if (hsearch_r(entry, ENTER, &entry_result, server->domain_hashes) == 0) {
-            log_error("Error: hash table entry failed\n");
-            return -1;
-        }
-
-        current = next;
-    }
-
-    return 0;
-}
-
 int module_loader_check_unique_domains(server_t* first_server) {
     for (server_t* current_server = first_server; current_server; current_server = current_server->next) {
         for (domain_t* current_domain = current_server->domain; current_domain; current_domain = current_domain->next) {
@@ -628,10 +599,6 @@ int module_loader_servers_load(int reload_is_hard) {
 
                 if (server->domain == NULL) {
                     log_error("Error: Can't load domains\n");
-                    goto failed;
-                }
-
-                if (module_loader_domains_hash_create(server) == -1) {
                     goto failed;
                 }
             }

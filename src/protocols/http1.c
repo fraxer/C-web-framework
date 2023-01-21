@@ -37,11 +37,26 @@ void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
         default:
             http1parser_set_bytes_readed(&parser, bytes_readed);
 
-            if (http1parser_run(&parser) == -1) {
+            switch (http1parser_run(&parser)) {
+            case HTTP1PARSER_ERROR:
+            case HTTP1PARSER_OUT_OF_MEMORY:
+                http1parser_free(&parser);
+                http1response_default_response((http1response_t*)connection->response, 500);
+                connection->after_read_request(connection);
+                return;
+            case HTTP1PARSER_BAD_REQUEST:
                 http1parser_free(&parser);
                 http1response_default_response((http1response_t*)connection->response, 400);
                 connection->after_read_request(connection);
                 return;
+            case HTTP1PARSER_HOST_NOT_FOUND:
+                http1parser_free(&parser);
+                http1response_default_response((http1response_t*)connection->response, 404);
+                connection->after_read_request(connection);
+                return;
+            case HTTP1PARSER_SUCCESS:
+            case HTTP1PARSER_CONTINUE:
+                break;
             }
         }
     }

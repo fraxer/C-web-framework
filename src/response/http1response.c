@@ -454,28 +454,21 @@ const char* http1response_get_extention(const char* path, size_t length) {
 void http1response_default_response(http1response_t* response, int status_code) {
     http1response_reset(response);
 
-    const char* str1 = "<html><head></head><body><h1 style=\"text-align:center;margin:20px\">";
+    const char* str1 = "<html><head></head><body style=\"text-align:center;margin:20px\"><h1>";
     size_t str1_length = strlen(str1);
 
     const char* str2 = "</h1></body></html>";
     size_t str2_length = strlen(str2);
 
-    size_t value = status_code;
-    size_t content_length = 0;
-
-    while (value) { content_length++; value /= 10; }
-
-    char content_string[content_length + 1];
-
-    sprintf(content_string, "%d", status_code);
-
-    size_t data_length = str1_length + str2_length + content_length;
+    size_t status_code_length = http1response_status_length(status_code) - 2;
+    size_t data_length = str1_length + status_code_length + str2_length;
     size_t pos = 0;
 
     char data[data_length + 1];
+    const char* status_code_string = http1response_status_string(status_code);
 
     memcpy(data, str1, str1_length); pos += str1_length;
-    memcpy(&data[pos], content_string, content_length); pos += content_length;
+    memcpy(&data[pos], status_code_string, status_code_length); pos += status_code_length;
     memcpy(&data[pos], str2, str2_length);
 
     data[data_length] = 0;

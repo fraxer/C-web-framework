@@ -2,7 +2,6 @@
 #define __SERVER__
 
 #include <arpa/inet.h>
-#include <search.h>
 #include "../redirect/redirect.h"
 #include "../route/route.h"
 #include "../route/routeloader.h"
@@ -40,7 +39,6 @@ typedef struct server {
 
     char* root;
     domain_t* domain;
-    struct hsearch_data* domain_hashes;
     index_t* index;
     database_t* database;
     openssl_t* openssl;

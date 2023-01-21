@@ -4,8 +4,7 @@
 #include "pcre.h"
 
 typedef struct domain {
-    int is_primitive; // with out regex
-	int pcre_erroffset;
+    int pcre_erroffset;
     char* template;
     char* prepared_template;
     const char* pcre_error;
