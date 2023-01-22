@@ -711,6 +711,8 @@ void http1parser_append_query(http1request_t* request, http1_query_t* query) {
 }
 
 int http1parser_host_not_found(http1parser_t* parser) {
+    if (parser->host_found) return HTTP1PARSER_SUCCESS;
+
     http1request_t* request = (http1request_t*)parser->connection->request;
 
     http1_header_t* header = request->last_header;

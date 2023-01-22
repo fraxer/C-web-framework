@@ -109,11 +109,12 @@ index_t* server_create_index(const char* value) {
 
     size_t length = strlen(value);
 
-    char* string = (char*)malloc(length + 1);
+    index->value = (char*)malloc(length + 1);
 
-    if (string == NULL) goto failed;
+    if (index->value == NULL) goto failed;
 
-    index->value = string;
+    strcpy(index->value, value);
+
     index->length = length;
 
     result = index;

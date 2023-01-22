@@ -189,15 +189,30 @@ int http1response_file(http1response_t* response, const char* path) {
 }
 
 int http1response_filen(http1response_t* response, const char* path, size_t length) {
+    const char* root = response->connection->server->root;
+    size_t root_length = response->connection->server->root_length;
+    size_t fullpath_length = response->connection->server->root_length + length;
+
+    if (path[0] != '/') fullpath_length++;
+
+    char fullpath[fullpath_length + 1];
+
+    
+    index_t* index = response->connection->server->index;
+
+    size_t indexpath_length = fullpath_length;
+
+    if (index != NULL) indexpath_length += index->length;
+
+    if (path[length - 1] != '/') indexpath_length++;
+
+    char indexpath[indexpath_length + 1];
+
+    char* resultpath = fullpath;
+    size_t resultpath_length = fullpath_length;
+
     {
-        const char* root = response->connection->server->root;
-        size_t root_length = response->connection->server->root_length;
-        size_t fullpath_length = response->connection->server->root_length + length;
         size_t pos = 0;
-
-        if (path[0] != '/') fullpath_length++;
-
-        char fullpath[fullpath_length + 1];
 
         http1response_data_append(fullpath, &pos, root, root_length);
 
@@ -212,17 +227,40 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
         stat(fullpath, &stat_obj);
 
         if (S_ISDIR(stat_obj.st_mode)) {
-            http1response_default_response(response, 403);
-            return -1;
-        }
+            if (index == NULL) {
+                http1response_default_response(response, 403);
+                return -1;
+            }
 
-        if (!S_ISREG(stat_obj.st_mode)) {
+            size_t index_pos = 0;
+
+            http1response_data_append(indexpath, &index_pos, fullpath, fullpath_length);
+
+            if (fullpath[fullpath_length - 1] != '/') {
+                http1response_data_append(indexpath, &index_pos, "/", 1);
+            }
+
+            http1response_data_append(indexpath, &index_pos, index->value, index->length);
+
+            indexpath[indexpath_length] = 0;
+
+            stat(indexpath, &stat_obj);
+
+            if (!S_ISREG(stat_obj.st_mode)) {
+                http1response_default_response(response, 403);
+                return -1;
+            }
+
+            resultpath = indexpath;
+            resultpath_length = indexpath_length;
+        }
+        else if (!S_ISREG(stat_obj.st_mode)) {
             http1response_default_response(response, 404);
             return -1;
         }
-
-        response->file_.fd = open(fullpath, O_RDONLY);
     }
+
+    response->file_.fd = open(resultpath, O_RDONLY);
 
     if (response->file_.fd == -1) return -1;
 
@@ -230,7 +268,7 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
 
     lseek(response->file_.fd, 0, SEEK_SET);
 
-    const char* ext = http1response_get_extention(path, length);
+    const char* ext = http1response_get_extention(resultpath, resultpath_length);
 
     const char* mimetype = http1response_get_mimetype(ext);
 
@@ -241,8 +279,6 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
     response->body.size = http1response_size(response, 0);
 
     if (http1response_prepare(response, NULL, 0) == -1) return -1;
-
-    // printf("body: %s, %ld\n", response->body.data, response->body.size);
 
     return 0;
 }
