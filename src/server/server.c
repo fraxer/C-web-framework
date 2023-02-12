@@ -3,7 +3,6 @@
 #include <string.h>
 #include <pthread.h>
 #include "../log/log.h"
-#include "../route/route.h"
 #include "server.h"
     #include <stdio.h>
 

@@ -7,10 +7,7 @@
         "client_max_body_size": 110485760,
         "environment": "dev",
         "keepalive_timeout": 65,
-        "tmp": "/var/www/tmp/",
-        "route_hash_bucket_size": 4096,
-        "redirect_hash_bucket_size": 4096,
-        "mimetype_hash_bucket_size": 4096
+        "tmp": "/var/www/tmp/"
     },
     "log": {
         "file": "/var/log/server/server.log",
@@ -56,15 +53,50 @@
                     }
                 }
             },
-            "database": {
-                "host": "127.0.0.1",
-                "port": 5432,
-                "dbname": "database",
-                "user": "root",
-                "password": "",
-                "driver": "postgresql",
-                "connection_timeout": 3,
-                "connection_count": 3
+            "databases": {
+                "db1": {
+                    "hosts": [
+                        {
+                            "ip": "127.0.0.1",
+                            "port": 5432,
+                            "perms": "r"
+                        },
+                        {
+                            "ip": "127.0.0.1",
+                            "port": 1532,
+                            "perms": "wr"
+                        }
+                    ],
+                    "dbname": "database1",
+                    "user": "root",
+                    "password": "",
+                    "driver": "postgresql",
+                    "connection_timeout": 3,
+                    "charset": "utf8mb4",
+                    "collation": "utf8mb4_unicode_ci",
+                    "prefix": ""
+                },
+                "db2": {
+                    "hosts": [
+                        {
+                            "ip": "189.5.0.1",
+                            "port": 4432,
+                            "perms": "r"
+                        },
+                        {
+                            "ip": "189.5.1.1",
+                            "port": 4432,
+                            "perms": "w"
+                        }
+                    ],
+                    "dbname": "database2",
+                    "user": "root",
+                    "password": "",
+                    "driver": "postgresql",
+                    "connection_timeout": 3,
+                    "charset": "utf8mb4",
+                    "collation": "utf8mb4_unicode_ci"
+                }
             },
             "openssl": {
                 "fullchain": "/var/www/fullchain.pem",

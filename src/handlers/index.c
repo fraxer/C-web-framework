@@ -116,3 +116,32 @@ void ws_index(websocketsrequest_t* request, websocketsresponse_t* response) {
 
     // response->file(response, "/darek-zabrocki-mg-tree-town1-003-final-darekzabrocki.jpg"); // path
 }
+
+void db(http1request_t* request, http1response_t* response) {
+
+    // dbresult_t* result = db_query("select * from table");
+
+    // dbconfig_t* mysql_read_dbname1 = {
+    //     .driver = MYSQL,
+    //     .action = READ,
+    //     .dbindex = 0
+    // };
+
+    // dbconfig_t* mysql_read_dbname1 = db_get_config(MYSQL, READ, "dbname1");
+
+    // dbresult_t* result = db_cquery(mysql_read_dbname1, "select * from table");
+
+    // dbresult_t* result = db_cquery({ MYSQL, READ, 0 }, "select * from table");
+
+    // dbresult_t* result = db_сquery(
+    //     {
+    //         .driver = MYSQL,
+    //         .action = READ,
+    //         .dbindex = 0
+    //     },
+    //     "select * from table"
+    // );
+
+    // if (!result->ok) return response->data(response, "db error");
+}
+

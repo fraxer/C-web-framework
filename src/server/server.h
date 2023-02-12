@@ -5,8 +5,8 @@
 #include "../redirect/redirect.h"
 #include "../route/route.h"
 #include "../route/routeloader.h"
-#include "../domain/domain.h"
 #include "../database/database.h"
+#include "../domain/domain.h"
 #include "../openssl/openssl.h"
 
 typedef struct index {

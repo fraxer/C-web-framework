@@ -70,6 +70,8 @@ add_library(connection_queue STATIC src/connection/connection_queue.c)
 
 add_library(database STATIC src/database/database.c)
 
+add_library(postgresql STATIC src/database/postgresql.c)
+
 add_library(openssl STATIC src/openssl/openssl.c)
 
 add_library(mimetype STATIC src/mimetype/mimetype.c)
@@ -108,7 +110,6 @@ target_link_libraries(
 	redirect
 	route
 	routeloader
-	database
 	openssl
 	mimetype
 	threadhandler
@@ -116,6 +117,8 @@ target_link_libraries(
 	base64
 	domain
 	server
+	database
+	postgresql
 	epoll
 	connection
 	connection_queue
