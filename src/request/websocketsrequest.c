@@ -4,6 +4,8 @@
 #include <ctype.h>
 #include "websocketsrequest.h"
 
+db_t* websocketsrequest_database_list(websocketsrequest_t*);
+
 websocketsrequest_t* websocketsrequest_alloc() {
     return (websocketsrequest_t*)malloc(sizeof(websocketsrequest_t));
 }
@@ -49,6 +51,7 @@ websocketsrequest_t* websocketsrequest_create(connection_t* connection) {
     request->query = NULL;
     request->last_query = NULL;
     request->connection = connection;
+    request->database_list = websocketsrequest_database_list;
     request->base.reset = (void(*)(void*))websocketsrequest_reset;
     request->base.free = (void(*)(void*))websocketsrequest_free;
 
@@ -87,4 +90,8 @@ void websocketsrequest_reset(websocketsrequest_t* request) {
     request->control_payload = NULL;
 
     request->control_type = WEBSOCKETS_NONE;
+}
+
+db_t* websocketsrequest_database_list(websocketsrequest_t* request) {
+    return request->connection->server->database;
 }

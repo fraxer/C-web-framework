@@ -4,8 +4,8 @@
 #include "database.h"
 
 typedef struct postgresqlconfig {
-    databaseconfig_t base;
-    databasehost_t* host;
+    dbconfig_t base;
+    dbhost_t* host;
     char* dbname;
     char* user;
     char* password;
@@ -15,17 +15,16 @@ typedef struct postgresqlconfig {
 } postgresqlconfig_t;
 
 typedef struct postgresqlconnection {
-    databaseconnection_t base;
+    dbconnection_t base;
     void* connection;
     pthread_mutex_t mutex;
-    struct databaseconnection* next;
 } postgresqlconnection_t;
 
 postgresqlconfig_t* postgresql_config_create();
 
 void postgresql_config_free(void*);
 
-// databaseconnection_t* database_connection_create(postgresqlconfig_t*);
+dbconnection_t* postgresql_connection_create(dbconfig_t*);
 
 // int query(const char*);
 
@@ -39,6 +38,6 @@ void postgresql_config_free(void*);
 
 // void rollback();
 
-// void database_free(database_t*);
+// void db_free(db_t*);
 
 #endif

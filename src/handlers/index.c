@@ -5,6 +5,7 @@
 #include "../response/http1response.h"
 #include "../request/websocketsrequest.h"
 #include "../response/websocketsresponse.h"
+#include "../database/dbquery.h"
     #include <stdio.h>
 
 void view(http1request_t* request, http1response_t* response) {
@@ -118,30 +119,51 @@ void ws_index(websocketsrequest_t* request, websocketsresponse_t* response) {
 }
 
 void db(http1request_t* request, http1response_t* response) {
+    dbinstance_t dbinst = db_instance(request->database_list(request), READ, "db1");
 
-    // dbresult_t* result = db_query("select * from table");
+    if (!dbinst.ok) return response->data(response, "db not found");
 
-    // dbconfig_t* mysql_read_dbname1 = {
-    //     .driver = MYSQL,
-    //     .action = READ,
-    //     .dbindex = 0
-    // };
+    dbresult_t result = db_query(&dbinst, "select * from table");
 
-    // dbconfig_t* mysql_read_dbname1 = db_get_config(MYSQL, READ, "dbname1");
+    if (!result.ok) {
+        response->data(response, result.error_message);
+        db_result_free(&result);
+        return;
+    }
 
-    // dbresult_t* result = db_cquery(mysql_read_dbname1, "select * from table");
-
-    // dbresult_t* result = db_cquery({ MYSQL, READ, 0 }, "select * from table");
-
-    // dbresult_t* result = db_сquery(
-    //     {
-    //         .driver = MYSQL,
-    //         .action = READ,
-    //         .dbindex = 0
-    //     },
-    //     "select * from table"
-    // );
-
-    // if (!result->ok) return response->data(response, "db error");
+    response->data(response, result.data);
 }
 
+
+// {
+//     mysql: {
+//         dbname1: {
+//             read: [
+//                 [127.0.0.1, 4568],
+//                 [127.0.0.1, 4568],
+//                 [127.0.0.1, 4568],
+//                 [127.0.0.1, 4568]
+//             ],
+//             write: [
+//                 [127.0.0.1, 4568],
+//                 [127.0.0.1, 4568],
+//                 [127.0.0.1, 4568],
+//                 [127.0.0.1, 4568]
+//             ]
+//         },
+//         dbname2: {
+//             read: [
+//                 [127.0.0.1, 4568],
+//                 [127.0.0.1, 4568],
+//                 [127.0.0.1, 4568],
+//                 [127.0.0.1, 4568]
+//             ],
+//             write: [
+//                 [127.0.0.1, 4568],
+//                 [127.0.0.1, 4568],
+//                 [127.0.0.1, 4568],
+//                 [127.0.0.1, 4568]
+//             ]
+//         }
+//     }
+// }

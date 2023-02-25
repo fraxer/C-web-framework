@@ -40,7 +40,7 @@ typedef struct server {
     char* root;
     domain_t* domain;
     index_t* index;
-    database_t* database;
+    db_t* database;
     openssl_t* openssl;
     server_info_t* info;
     struct server* next;

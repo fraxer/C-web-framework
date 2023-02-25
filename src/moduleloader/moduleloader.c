@@ -32,8 +32,8 @@ int module_loader_mimetype_load();
 int module_loader_set_http_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsmntok_t*);
 int module_loader_set_websockets_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsmntok_t*);
 server_info_t* module_loader_server_info_load();
-database_t* module_loader_postgresql_load(const char*, const jsmntok_t* token_object);
-databasehost_t* module_loader_database_hosts_load(const jsmntok_t* token_array);
+db_t* module_loader_postgresql_load(const char*, const jsmntok_t* token_object);
+dbhost_t* module_loader_database_hosts_load(const jsmntok_t* token_array);
 
 
 int module_loader_init(int argc, char* argv[]) {
@@ -344,10 +344,10 @@ domain_t* module_loader_domains_load(const jsmntok_t* token_array) {
     return result;
 }
 
-database_t* module_loader_databases_load(const jsmntok_t* token_object) {
-    database_t* result = NULL;
-    database_t* database_first = NULL;
-    database_t* database_last = NULL;
+db_t* module_loader_databases_load(const jsmntok_t* token_object) {
+    db_t* result = NULL;
+    db_t* database_first = NULL;
+    db_t* database_last = NULL;
 
     for (jsmntok_t* token = token_object->child; token; token = token->sibling) {
         const char* database_id = jsmn_get_value(token);
@@ -371,7 +371,7 @@ database_t* module_loader_databases_load(const jsmntok_t* token_object) {
 
         // printf("driver - %s\n", driver);
 
-        database_t* database = NULL;
+        db_t* database = NULL;
 
         if (strcmp(driver, "postgresql") == 0) {
             database = module_loader_postgresql_load(database_id, token->child);
@@ -395,15 +395,15 @@ database_t* module_loader_databases_load(const jsmntok_t* token_object) {
     failed:
 
     if (result == NULL) {
-        database_free(database_first);
+        db_free(database_first);
     }
 
     return result;
 }
 
-database_t* module_loader_postgresql_load(const char* database_id, const jsmntok_t* token_object) {
-    database_t* result = NULL;
-    database_t* database = database_create(database_id);
+db_t* module_loader_postgresql_load(const char* database_id, const jsmntok_t* token_object) {
+    db_t* result = NULL;
+    db_t* database = db_create(database_id);
 
     if (database == NULL) goto failed;
 
@@ -496,7 +496,7 @@ database_t* module_loader_postgresql_load(const char* database_id, const jsmntok
         }
     }
 
-    database->config = (databaseconfig_t*)config;
+    database->config = (dbconfig_t*)config;
 
     // printf("dbname %s, user %s, pass %s, timeout %d, charset %s, collation %s\n", config->dbname, config->user, config->password, config->connection_timeout, config->charset, config->collation);
 
@@ -505,21 +505,21 @@ database_t* module_loader_postgresql_load(const char* database_id, const jsmntok
     failed:
 
     if (result == NULL) {
-        database_free(database);
+        db_free(database);
     }
 
     return result;
 }
 
-databasehost_t* module_loader_database_hosts_load(const jsmntok_t* token_array) {
-    databasehost_t* result = NULL;
-    databasehost_t* host_first = NULL;
-    databasehost_t* host_last = NULL;
+dbhost_t* module_loader_database_hosts_load(const jsmntok_t* token_array) {
+    dbhost_t* result = NULL;
+    dbhost_t* host_first = NULL;
+    dbhost_t* host_last = NULL;
 
     for (jsmntok_t* token_object = token_array->child; token_object; token_object = token_object->sibling) {
         if (token_object->type != JSMN_OBJECT) return NULL;
 
-        databasehost_t* host = database_host_create();
+        dbhost_t* host = db_host_create();
 
         // check available fields
 
@@ -612,7 +612,7 @@ databasehost_t* module_loader_database_hosts_load(const jsmntok_t* token_array) 
     failed:
 
     if (result == NULL) {
-        database_host_free(host_first);
+        db_host_free(host_first);
     }
 
     return result;

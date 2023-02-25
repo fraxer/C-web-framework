@@ -7,6 +7,7 @@
 void http1request_reset(http1request_t*);
 http1_header_t* http1request_header(http1request_t*, const char*);
 http1_header_t* http1request_headern(http1request_t*, const char*, size_t);
+db_t* http1request_database_list(http1request_t*);
 
 http1request_t* http1request_alloc() {
     return (http1request_t*)malloc(sizeof(http1request_t));
@@ -63,6 +64,7 @@ http1request_t* http1request_create(connection_t* connection) {
     request->connection = connection;
     request->header = http1request_header;
     request->headern = http1request_headern;
+    request->database_list = http1request_database_list;
     request->base.reset = (void(*)(void*))http1request_reset;
     request->base.free = (void(*)(void*))http1request_free;
 
@@ -117,4 +119,8 @@ http1_header_t* http1request_headern(http1request_t* request, const char* key, s
     }
 
     return NULL;
+}
+
+db_t* http1request_database_list(http1request_t* request) {
+    return request->connection->server->database;
 }

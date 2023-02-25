@@ -2,13 +2,12 @@ cmake_minimum_required(VERSION 2.8)
 
 project(server LANGUAGES C)
 
-#set(CMAKE_CXX_STANDARD 17)
-#set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-#find_package(RapidJSON REQUIRED)
+#add_compile_options(-Wall -Wextra -Wpedantic)
+
 find_package(PCRE REQUIRED)
-find_package(OpenSSL REQUIRED)
+find_package(OpenSSL)
 
 include(CTest)
 
@@ -70,6 +69,8 @@ add_library(connection_queue STATIC src/connection/connection_queue.c)
 
 add_library(database STATIC src/database/database.c)
 
+add_library(dbquery STATIC src/database/dbquery.c)
+
 add_library(postgresql STATIC src/database/postgresql.c)
 
 add_library(openssl STATIC src/openssl/openssl.c)
@@ -90,6 +91,7 @@ add_library(indexpage SHARED src/handlers/index.c)
 target_link_libraries(
 	indexpage
 	base64
+	dbquery
 )
 
 target_link_libraries(
@@ -117,6 +119,7 @@ target_link_libraries(
 	base64
 	domain
 	server
+	dbquery
 	database
 	postgresql
 	epoll

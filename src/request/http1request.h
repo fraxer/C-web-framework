@@ -32,6 +32,8 @@ typedef struct http1request {
 
     http1_header_t*(*header)(struct http1request*, const char*);
     http1_header_t*(*headern)(struct http1request*, const char*, size_t);
+
+    db_t*(*database_list)(struct http1request*);
 } http1request_t;
 
 http1request_t* http1request_create(connection_t*);

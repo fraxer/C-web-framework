@@ -1,11 +1,18 @@
 #ifndef __DATABASE__
 #define __DATABASE__
 
-typedef enum databasedriver {
+#include <stdatomic.h>
+
+typedef enum dbdriver {
     NONE = 0,
     POSTGRESQL,
     MYSQL
-} databasedriver_e;
+} dbdriver_e;
+
+typedef enum dbperms {
+    READ = 0,
+    WRITE
+} dbperms_e;
 
 typedef enum transaction_level {
     READ_UNCOMMITTED,
@@ -14,61 +21,76 @@ typedef enum transaction_level {
     SERIALIZABLE
 } transaction_level_e;
 
-typedef struct databaseresult {
-    // TODO
-} databaseresult_t;
-
-typedef struct databasehost {
+typedef struct dbhost {
     int read;
     int write;
     int port;
     char* ip;
-    struct databasehost* next;
-} databasehost_t;
+    struct dbhost* next;
+} dbhost_t;
 
-typedef struct databaseconnection {
+typedef struct db_table_cell {
+    int length;
+    char* value;
+} db_table_cell_t;
+
+typedef struct dbresult {
+    int ok;
+    int rows;
+    int cols;
+    const char* error_message;
+    char* data;
+
+    db_table_cell_t** fields; // ["", "", "", ...]
+    db_table_cell_t** table; // ["", "", "", ...]
+} dbresult_t;
+
+typedef struct dbconnection {
+    atomic_bool locked;
+    struct dbconnection* next;
     void(*free)(void*);
-} databaseconnection_t;
+    dbresult_t(*send_query)(struct dbconnection*, const char*);
+} dbconnection_t;
 
-typedef struct databaseconfig {
+typedef struct dbconfig {
     void(*free)(void*);
-} databaseconfig_t;
+    dbconnection_t*(*connection_create)(struct dbconfig*);
+} dbconfig_t;
 
-typedef struct database { // mysql, postgreqsl, ...
+typedef struct dbinstance {
+    int ok;
+    atomic_bool* lock_connection;
+    dbconfig_t* config;
+    dbconnection_t* connection;
+    dbconnection_t*(*connection_create)(struct dbconfig*);
+} dbinstance_t;
+
+typedef struct db { // mysql, postgreqsl, ...
+    atomic_bool lock_connection_read;
+    atomic_bool lock_connection_write;
     const char* id;
-    databaseconfig_t* config;
-    databaseconnection_t* connection;
-    struct database* next;
-} database_t;
+    dbconfig_t* config;
+    dbconnection_t* connection_read;
+    dbconnection_t* connection_write;
+    struct db* next;
+} db_t;
 
-// typedef struct database_chain {
-//     pthread_mutex_t mutex;
-//     database_t* database;
-//     struct database_chain* next;
-// } database_chain_t;
+db_t* db_alloc();
 
-database_t* database_alloc();
+db_t* db_create(const char*);
 
-database_t* database_create(const char*);
+dbhost_t* db_host_create();
 
-databasehost_t* database_host_create();
+void db_free(db_t*);
 
-void database_free(database_t*);
+void db_host_free(dbhost_t*);
 
-// void database_chain_free(database_chain_t*);
+dbconnection_t* db_find_free_connection(dbconnection_t*);
 
-void database_host_free(databasehost_t*);
+void db_connection_append(dbinstance_t*, dbconnection_t*);
 
-databaseresult_t* db_query(const char*);
-databaseresult_t* db_cquery(databaseconfig_t*, const char*);
+int db_connection_trylock(dbconnection_t*);
 
-databaseresult_t* db_begin(transaction_level_e);
-databaseresult_t* db_cbegin(databaseconfig_t*, transaction_level_e);
-
-databaseresult_t* db_commit();
-databaseresult_t* db_ccommit(databaseconfig_t*);
-
-databaseresult_t* db_rollback();
-databaseresult_t* db_crollback(databaseconfig_t*);
+void db_connection_unlock(dbconnection_t*);
 
 #endif

@@ -41,6 +41,8 @@ typedef struct websocketsrequest {
     websockets_query_t* last_query;
 
     connection_t* connection;
+
+    db_t*(*database_list)(struct websocketsrequest*);
 } websocketsrequest_t;
 
 websocketsrequest_t* websocketsrequest_create(connection_t*);

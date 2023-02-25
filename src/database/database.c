@@ -1,47 +1,52 @@
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
+#include <pthread.h>
 #include "database.h"
 
-database_t* database_alloc() {
-    return (database_t*)malloc(sizeof(database_t));
+db_t* db_alloc() {
+    return (db_t*)malloc(sizeof(db_t));
 }
 
-const char* database_alloc_id(const char* database_id) {
-    char* string = (char*)malloc(strlen(database_id) + 1);
+const char* db_alloc_id(const char* db_id) {
+    char* string = (char*)malloc(strlen(db_id) + 1);
 
     if (string == NULL) return NULL;
 
-    return strcpy(string, database_id);
+    return strcpy(string, db_id);
 }
 
-database_t* database_create(const char* database_id) {
-    database_t* result = NULL;
-    database_t* database = database_alloc();
+db_t* db_create(const char* db_id) {
+    db_t* result = NULL;
+    db_t* db = db_alloc();
 
-    if (database == NULL) return NULL;
+    if (db == NULL) return NULL;
 
-    database->id = database_alloc_id(database_id);
+    db->id = db_alloc_id(db_id);
 
-    if (database->id == NULL) goto failed;
+    if (db->id == NULL) goto failed;
 
-    database->config = NULL;
-    database->connection = NULL;
-    database->next = NULL;
+    atomic_init(&db->lock_connection_read, 0);
+    atomic_init(&db->lock_connection_write, 0);
+    db->config = NULL;
+    db->connection_read = NULL;
+    db->connection_write = NULL;
+    db->next = NULL;
 
-    result = database;
+    result = db;
 
     failed:
 
     if (result == NULL) {
-        free(database);
+        free(db);
     }
 
     return result;
 }
 
-databasehost_t* database_host_create() {
-    databasehost_t* host = (databasehost_t*)malloc(sizeof(databasehost_t));
+dbhost_t* db_host_create() {
+    dbhost_t* host = (dbhost_t*)malloc(sizeof(dbhost_t));
 
     host->ip = NULL;
     host->port = 0;
@@ -52,26 +57,32 @@ databasehost_t* database_host_create() {
     return host;
 }
 
-void database_free(database_t* database) {
-    while (database) {
-        database_t* next = database->next;
+void db_free(db_t* db) {
+    while (db) {
+        db_t* next = db->next;
 
-        if (database->config != NULL) {
-            database->config->free(database->config);
-        }
-        if (database->connection != NULL) {
-            database->connection->free(database->connection);
-        }
-        free((void*)database->id);
-        free(database);
+        atomic_store(&db->lock_connection_read, 0);
+        atomic_store(&db->lock_connection_write, 0);
 
-        database = next;
+        if (db->config != NULL) {
+            db->config->free(db->config);
+        }
+        if (db->connection_read != NULL) {
+            db->connection_read->free(db->connection_read);
+        }
+        if (db->connection_write != NULL) {
+            db->connection_write->free(db->connection_write);
+        }
+        free((void*)db->id);
+        free(db);
+
+        db = next;
     }
 }
 
-void database_host_free(databasehost_t* host) {
+void db_host_free(dbhost_t* host) {
     while (host) {
-        databasehost_t* next = host->next;
+        dbhost_t* next = host->next;
 
         host->port = 0;
         host->read = 0;
@@ -83,34 +94,60 @@ void database_host_free(databasehost_t* host) {
     }
 }
 
-databaseresult_t* db_query(const char* string) {
+dbconnection_t* db_find_free_connection(dbconnection_t* connection) {
+    while (connection) {
+        if (atomic_load(&connection->locked) == 0) {
+            _Bool expected = 0;
+            _Bool desired = 1;
+
+            if (db_connection_trylock(connection) == 0) {
+                return connection;
+            }
+        }
+
+        connection = connection->next;
+    }
+
     return NULL;
 }
 
-databaseresult_t* db_cquery(databaseconfig_t* config, const char* string) {
-    return NULL;
+void db_connection_append(dbinstance_t* instance, dbconnection_t* connection) {
+    _Bool expected = 0;
+    _Bool desired = 1;
+
+    do {
+        expected = 0;
+    } while (!atomic_compare_exchange_strong(instance->lock_connection, &expected, desired));
+
+    if (instance->connection == NULL) {
+        instance->connection = connection;
+    }
+    else {
+        dbconnection_t* last_connection = instance->connection;
+
+        while (last_connection) {
+            dbconnection_t* next = last_connection->next;
+
+            if (next == NULL) break;
+
+            last_connection = next;
+        }
+
+        last_connection->next = connection;
+    }
+
+    atomic_store(instance->lock_connection, 0);
 }
 
-databaseresult_t* db_begin(transaction_level_e level) {
-    return NULL;
+int db_connection_trylock(dbconnection_t* connection) {
+    _Bool expected = 0;
+    _Bool desired = 1;
+
+    if (atomic_compare_exchange_strong(&connection->locked, &expected, desired)) return 0;
+
+    return -1;
 }
 
-databaseresult_t* db_cbegin(databaseconfig_t* config, transaction_level_e level) {
-    return NULL;
-}
-
-databaseresult_t* db_commit() {
-    return NULL;
-}
-
-databaseresult_t* db_ccommit(databaseconfig_t* config) {
-    return NULL;
-}
-
-databaseresult_t* db_rollback() {
-    return NULL;
-}
-
-databaseresult_t* db_crollback(databaseconfig_t* config) {
-    return NULL;
+void db_connection_unlock(dbconnection_t* connection) {
+    atomic_store(&connection->locked, 0);
 }

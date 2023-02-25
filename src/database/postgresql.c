@@ -6,6 +6,7 @@ postgresqlconfig_t* postgresql_config_create() {
     postgresqlconfig_t* config = (postgresqlconfig_t*)malloc(sizeof(postgresqlconfig_t));
 
     config->base.free = postgresql_config_free;
+    config->base.connection_create = postgresql_connection_create;
     config->host = NULL;
     config->dbname = NULL;
     config->user = NULL;
@@ -21,28 +22,30 @@ void postgresql_config_free(void* config) {
 
 }
 
-void postgresql_free(database_t* database) {
-    // if (database->host) free(database->host);
-    // database->host = NULL;
+void postgresql_free(db_t* db) {
+    // if (db->host) free(db->host);
+    // db->host = NULL;
 
-    // if (database->dbname) free(database->dbname);
-    // database->dbname = NULL;
+    // if (db->dbname) free(db->dbname);
+    // db->dbname = NULL;
 
-    // if (database->user) free(database->user);
-    // database->user = NULL;
+    // if (db->user) free(db->user);
+    // db->user = NULL;
 
-    // if (database->password) free(database->password);
-    // database->password = NULL;
+    // if (db->password) free(db->password);
+    // db->password = NULL;
 
-    // database->driver = NONE;
-    // database->port = 0;
-    // database->connection_timeout = 0;
+    // db->driver = NONE;
+    // db->port = 0;
+    // db->connection_timeout = 0;
 
     // connection_t* connections;
 
-    free(database);
+    free(db);
 }
 
-// database_connection_t* database_connection_create(database_t* database) {
-//     return NULL;
-// }
+dbconnection_t* postgresql_connection_create(dbconfig_t* config) {
+    postgresqlconfig_t* pgconfig = (postgresqlconfig_t*)config;
+
+    return (dbconnection_t*)malloc(sizeof(dbconnection_t));
+}

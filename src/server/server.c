@@ -83,7 +83,7 @@ void server_free(server_t* server) {
         if (server->websockets.route) route_free(server->websockets.route);
         server->websockets.route = NULL;
 
-        if (server->database) database_free(server->database);
+        if (server->database) db_free(server->database);
         server->database = NULL;
 
         if (server->openssl) openssl_free(server->openssl);
