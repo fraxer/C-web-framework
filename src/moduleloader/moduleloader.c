@@ -14,7 +14,9 @@
 #include "../domain/domain.h"
 #include "../server/server.h"
 #include "../database/database.h"
-#include "../database/postgresql.h"
+#ifdef PostgreSQL_FOUND
+    #include "../database/postgresql.h"
+#endif
 #include "../openssl/openssl.h"
 #include "../mimetype/mimetype.h"
 #include "../thread/threadhandler.h"
@@ -32,8 +34,6 @@ int module_loader_mimetype_load();
 int module_loader_set_http_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsmntok_t*);
 int module_loader_set_websockets_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsmntok_t*);
 server_info_t* module_loader_server_info_load();
-db_t* module_loader_postgresql_load(const char*, const jsmntok_t* token_object);
-dbhost_t* module_loader_database_hosts_load(const jsmntok_t* token_array);
 
 
 int module_loader_init(int argc, char* argv[]) {
@@ -373,9 +373,15 @@ db_t* module_loader_databases_load(const jsmntok_t* token_object) {
 
         db_t* database = NULL;
 
+        #ifdef PostgreSQL_FOUND
         if (strcmp(driver, "postgresql") == 0) {
-            database = module_loader_postgresql_load(database_id, token->child);
+            database = postgresql_load(database_id, token->child);
         }
+        #else
+        if (strcmp(driver, "postgresql") == 0) {
+            log_error("Postgresql library not found\n");
+        }
+        #endif
 
         if (database == NULL) {
             log_error("Database driver not found\n");
@@ -396,223 +402,6 @@ db_t* module_loader_databases_load(const jsmntok_t* token_object) {
 
     if (result == NULL) {
         db_free(database_first);
-    }
-
-    return result;
-}
-
-db_t* module_loader_postgresql_load(const char* database_id, const jsmntok_t* token_object) {
-    db_t* result = NULL;
-    db_t* database = db_create(database_id);
-
-    if (database == NULL) goto failed;
-
-    postgresqlconfig_t* config = postgresql_config_create();
-
-    if (config == NULL) goto failed;
-
-    enum fields { HOSTS = 0, DBNAME, USER, PASSWORD, CONNECTION_TIMEOUT, CHARSET, COLLATION, FIELDS_COUNT };
-
-    int finded_fields[FIELDS_COUNT] = {0};
-
-    for (jsmntok_t* token = token_object->child; token; token = token->sibling) {
-        const char* key = jsmn_get_value(token);
-
-        if (strcmp(key, "hosts") == 0) {
-            finded_fields[HOSTS] = 1;
-
-            config->host = module_loader_database_hosts_load(token->child);
-
-            if (config->host == NULL) goto failed;
-        }
-        else if (strcmp(key, "dbname") == 0) {
-            finded_fields[DBNAME] = 1;
-
-            const char* value = jsmn_get_value(token->child);
-
-            config->dbname = (char*)malloc(strlen(value) + 1);
-
-            if (config->dbname == NULL) goto failed;
-
-            strcpy(config->dbname, value);
-        }
-        else if (strcmp(key, "user") == 0) {
-            finded_fields[USER] = 1;
-
-            const char* value = jsmn_get_value(token->child);
-
-            config->user = (char*)malloc(strlen(value) + 1);
-
-            if (config->user == NULL) goto failed;
-
-            strcpy(config->user, value);
-        }
-        else if (strcmp(key, "password") == 0) {
-            finded_fields[PASSWORD] = 1;
-
-            const char* value = jsmn_get_value(token->child);
-
-            config->password = (char*)malloc(strlen(value) + 1);
-
-            if (config->password == NULL) goto failed;
-
-            strcpy(config->password, value);
-        }
-        else if (strcmp(key, "connection_timeout") == 0) {
-            finded_fields[CONNECTION_TIMEOUT] = 1;
-
-            const char* value = jsmn_get_value(token->child);
-
-            config->connection_timeout = atoi(value);
-        }
-        else if (strcmp(key, "charset") == 0) {
-            finded_fields[CHARSET] = 1;
-
-            const char* value = jsmn_get_value(token->child);
-
-            config->charset = (char*)malloc(strlen(value) + 1);
-
-            if (config->charset == NULL) goto failed;
-
-            strcpy(config->charset, value);
-        }
-        else if (strcmp(key, "collation") == 0) {
-            finded_fields[COLLATION] = 1;
-
-            const char* value = jsmn_get_value(token->child);
-
-            config->collation = (char*)malloc(strlen(value) + 1);
-
-            if (config->collation == NULL) goto failed;
-
-            strcpy(config->collation, value);
-        }
-    }
-
-    for (int i = 0; i < FIELDS_COUNT; i++) {
-        if (finded_fields[i] == 0) {
-            log_error("Error: Fill database config\n");
-            goto failed;
-        }
-    }
-
-    database->config = (dbconfig_t*)config;
-
-    // printf("dbname %s, user %s, pass %s, timeout %d, charset %s, collation %s\n", config->dbname, config->user, config->password, config->connection_timeout, config->charset, config->collation);
-
-    result = database;
-
-    failed:
-
-    if (result == NULL) {
-        db_free(database);
-    }
-
-    return result;
-}
-
-dbhost_t* module_loader_database_hosts_load(const jsmntok_t* token_array) {
-    dbhost_t* result = NULL;
-    dbhost_t* host_first = NULL;
-    dbhost_t* host_last = NULL;
-
-    for (jsmntok_t* token_object = token_array->child; token_object; token_object = token_object->sibling) {
-        if (token_object->type != JSMN_OBJECT) return NULL;
-
-        dbhost_t* host = db_host_create();
-
-        // check available fields
-
-        for (jsmntok_t* token_item = token_object->child; token_item; token_item = token_item->sibling) {
-            const char* key = jsmn_get_value(token_item);
-
-            if (strcmp(key, "ip") == 0) {
-                if (token_item->child->type != JSMN_STRING) {
-                    log_error("Error database host ip not string\n");
-                    goto failed;
-                }
-
-                const char* value = jsmn_get_value(token_item->child);
-
-                host->ip = (char*)malloc(strlen(value) + 1);
-
-                if (host->ip == NULL) {
-                    log_error("Error database host ip\n");
-                    goto failed;
-                }
-
-                strcpy(host->ip, value);
-            }
-            else if (strcmp(key, "port") == 0) {
-                if (token_item->child->type != JSMN_PRIMITIVE) {
-                    log_error("Error database host port not integer\n");
-                    goto failed;
-                }
-
-                const char* value = jsmn_get_value(token_item->child);
-
-                host->port = atoi(value);
-
-                if (host->port == 0) {
-                    log_error("Error database host port\n");
-                    goto failed;
-                }
-            }
-            else if (strcmp(key, "perms") == 0) {
-                if (token_item->child->type != JSMN_STRING) {
-                    log_error("Error database host perms not string\n");
-                    goto failed;
-                }
-
-                const char* value = jsmn_get_value(token_item->child);
-                const char* p = value;
-
-                while (*p != 0) {
-                    if (*p == 'r') {
-                        if (host->read) {
-                            log_error("Error database host perms duplicate read flag\n");
-                            goto failed;
-                        }
-                        host->read = 1;
-                    }
-                    else if (*p == 'w') {
-                        if (host->write) {
-                            log_error("Error database host perms duplicate write flag\n");
-                            goto failed;
-                        }
-                        host->write = 1;
-                    }
-                    else {
-                        log_error("Error database host perms incorrect\n");
-                        goto failed;
-                    }
-                    p++;
-                }
-
-                if (!host->read && !host->write) {
-                    log_error("Error database host empty perms\n");
-                    goto failed;
-                }
-            }
-        }
-
-        // printf("ip %s, port %d, read %d, write %d\n", host->ip, host->port, host->read, host->write);
-
-        if (host_first == NULL) {
-            host_first = host;
-        }
-        if (host_last != NULL) {
-            host_last->next = host;
-        }
-        host_last = host;
-    }
-
-    result = host_last;
-
-    failed:
-
-    if (result == NULL) {
-        db_host_free(host_first);
     }
 
     return result;

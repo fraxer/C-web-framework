@@ -7,11 +7,9 @@
 #include "signal/signal.h"
 
 static pthread_cond_t main_cond = PTHREAD_COND_INITIALIZER;
-
 static pthread_mutex_t main_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int main(int argc, char* argv[]) {
-
     int result = EXIT_FAILURE;
 
     if (daemon(1, 1) < 0) goto failed;

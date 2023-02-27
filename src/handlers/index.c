@@ -119,11 +119,11 @@ void ws_index(websocketsrequest_t* request, websocketsresponse_t* response) {
 }
 
 void db(http1request_t* request, http1response_t* response) {
-    dbinstance_t dbinst = db_instance(request->database_list(request), READ, "db1");
+    dbinstance_t dbinstance = db_instance(request->database_list(request), READ, "db1");
 
-    if (!dbinst.ok) return response->data(response, "db not found");
+    if (!dbinstance.ok) return response->data(response, "db not found");
 
-    dbresult_t result = db_query(&dbinst, "select * from table");
+    dbresult_t result = db_query(&dbinstance, "SET ROLE slave_select; select email from \"user\"");
 
     if (!result.ok) {
         response->data(response, result.error_message);

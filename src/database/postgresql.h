@@ -1,6 +1,8 @@
 #ifndef __POSTGRESQL__
 #define __POSTGRESQL__
 
+#include <libpq-fe.h>
+#include "../jsmn/jsmn.h"
 #include "database.h"
 
 typedef struct postgresqlconfig {
@@ -9,15 +11,12 @@ typedef struct postgresqlconfig {
     char* dbname;
     char* user;
     char* password;
-    char* charset;
-    char* collation;
     int connection_timeout;
 } postgresqlconfig_t;
 
 typedef struct postgresqlconnection {
     dbconnection_t base;
-    void* connection;
-    pthread_mutex_t mutex;
+    PGconn* connection;
 } postgresqlconnection_t;
 
 postgresqlconfig_t* postgresql_config_create();
@@ -26,18 +25,8 @@ void postgresql_config_free(void*);
 
 dbconnection_t* postgresql_connection_create(dbconfig_t*);
 
-// int query(const char*);
-
-// int cquery(dbconfig_t*, const char*);
-
-// void begin();
-
-// void begin(transaction_level_e);
-
-// void commit();
-
-// void rollback();
-
 // void db_free(db_t*);
+
+db_t* postgresql_load(const char*, const jsmntok_t* token_object);
 
 #endif

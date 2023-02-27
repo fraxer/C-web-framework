@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <pthread.h>
+#include "../log/log.h"
 #include "database.h"
 
 db_t* db_alloc() {
@@ -150,4 +151,111 @@ int db_connection_trylock(dbconnection_t* connection) {
 
 void db_connection_unlock(dbconnection_t* connection) {
     atomic_store(&connection->locked, 0);
+}
+
+dbhost_t* db_hosts_load(const jsmntok_t* token_array) {
+    dbhost_t* result = NULL;
+    dbhost_t* host_first = NULL;
+    dbhost_t* host_last = NULL;
+
+    for (jsmntok_t* token_object = token_array->child; token_object; token_object = token_object->sibling) {
+        if (token_object->type != JSMN_OBJECT) return NULL;
+
+        dbhost_t* host = db_host_create();
+
+        // check available fields
+
+        for (jsmntok_t* token_item = token_object->child; token_item; token_item = token_item->sibling) {
+            const char* key = jsmn_get_value(token_item);
+
+            if (strcmp(key, "ip") == 0) {
+                if (token_item->child->type != JSMN_STRING) {
+                    log_error("Error database host ip not string\n");
+                    goto failed;
+                }
+
+                const char* value = jsmn_get_value(token_item->child);
+
+                host->ip = (char*)malloc(strlen(value) + 1);
+
+                if (host->ip == NULL) {
+                    log_error("Error database host ip\n");
+                    goto failed;
+                }
+
+                strcpy(host->ip, value);
+            }
+            else if (strcmp(key, "port") == 0) {
+                if (token_item->child->type != JSMN_PRIMITIVE) {
+                    log_error("Error database host port not integer\n");
+                    goto failed;
+                }
+
+                const char* value = jsmn_get_value(token_item->child);
+
+                host->port = atoi(value);
+
+                if (host->port == 0) {
+                    log_error("Error database host port\n");
+                    goto failed;
+                }
+            }
+            else if (strcmp(key, "perms") == 0) {
+                if (token_item->child->type != JSMN_STRING) {
+                    log_error("Error database host perms not string\n");
+                    goto failed;
+                }
+
+                const char* value = jsmn_get_value(token_item->child);
+                const char* p = value;
+
+                while (*p != 0) {
+                    if (*p == 'r') {
+                        if (host->read) {
+                            log_error("Error database host perms duplicate read flag\n");
+                            goto failed;
+                        }
+                        host->read = 1;
+                    }
+                    else if (*p == 'w') {
+                        if (host->write) {
+                            log_error("Error database host perms duplicate write flag\n");
+                            goto failed;
+                        }
+                        host->write = 1;
+                    }
+                    else {
+                        log_error("Error database host perms incorrect\n");
+                        goto failed;
+                    }
+                    p++;
+                }
+
+                if (!host->read && !host->write) {
+                    log_error("Error database host empty perms\n");
+                    goto failed;
+                }
+            }
+        }
+
+        // printf("ip %s, port %d, read %d, write %d\n", host->ip, host->port, host->read, host->write);
+
+        if (host_first == NULL) {
+            host_first = host;
+        }
+        if (host_last != NULL) {
+            host_last->next = host;
+        }
+        host_last = host;
+    }
+
+    result = host_last;
+
+    failed:
+
+    if (result == NULL) {
+        db_host_free(host_first);
+    }
+
+    return result;
 }

@@ -2,6 +2,7 @@
 #define __DATABASE__
 
 #include <stdatomic.h>
+#include "../jsmn/jsmn.h"
 
 typedef enum dbdriver {
     NONE = 0,
@@ -38,6 +39,7 @@ typedef struct dbresult {
     int ok;
     int rows;
     int cols;
+    int error_code;
     const char* error_message;
     char* data;
 
@@ -48,7 +50,7 @@ typedef struct dbresult {
 typedef struct dbconnection {
     atomic_bool locked;
     struct dbconnection* next;
-    void(*free)(void*);
+    void(*free)(struct dbconnection*);
     dbresult_t(*send_query)(struct dbconnection*, const char*);
 } dbconnection_t;
 
@@ -92,5 +94,7 @@ void db_connection_append(dbinstance_t*, dbconnection_t*);
 int db_connection_trylock(dbconnection_t*);
 
 void db_connection_unlock(dbconnection_t*);
+
+dbhost_t* db_hosts_load(const jsmntok_t* token_array);
 
 #endif

@@ -8,8 +8,22 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 find_package(PCRE REQUIRED)
 find_package(OpenSSL)
+find_package(PostgreSQL)
 
 include(CTest)
+
+if(INCLUDE_MYSQL STREQUAL yes)
+message(STATUS "Include Mysql: ${INCLUDE_MYSQL}")
+endif()
+
+if(INCLUDE_POSTGRESQL STREQUAL yes)
+message(STATUS "Include Postgresql: ${INCLUDE_POSTGRESQL}")
+endif()
+
+if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
+	include_directories(${PostgreSQL_INCLUDE_DIRS} ${PostgreSQL_SERVER_INCLUDE_DIRS})
+	add_definitions(-DPostgreSQL_FOUND)
+endif()
 
 add_executable(main src/main.c)
 
@@ -71,7 +85,9 @@ add_library(database STATIC src/database/database.c)
 
 add_library(dbquery STATIC src/database/dbquery.c)
 
-add_library(postgresql STATIC src/database/postgresql.c)
+if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
+	add_library(postgresql STATIC src/database/postgresql.c)
+endif()
 
 add_library(openssl STATIC src/openssl/openssl.c)
 
@@ -85,8 +101,6 @@ add_library(base64 STATIC src/base64/base64.c)
 
 # Pages
 add_library(indexpage SHARED src/handlers/index.c)
-
-
 
 target_link_libraries(
 	indexpage
@@ -121,7 +135,6 @@ target_link_libraries(
 	server
 	dbquery
 	database
-	postgresql
 	epoll
 	connection
 	connection_queue
@@ -152,6 +165,14 @@ target_link_libraries(
 	moduleloader
 	signal
 )
+
+if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
+	target_link_libraries(
+		main
+		postgresql
+		${PostgreSQL_LIBRARY}
+	)
+endif()
 
 #enable_testing()
 
