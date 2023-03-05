@@ -78,10 +78,8 @@ dbresult_t send_query(dbconnection_t* connection, const char* string) {
     postgresqlconnection_t* pgconnection = (postgresqlconnection_t*)connection;
 
     dbresult_t result = {
-        .ok = 0,
-        .error_code = 0,
-        .error_message = "Postgresql query error",
-        .data = NULL
+        .query = NULL,
+        .current = NULL
     };
 
     if (!PQsendQuery(pgconnection->connection, string)){
@@ -111,8 +109,8 @@ dbresult_t send_query(dbconnection_t* connection, const char* string) {
                     char* value = (char*)malloc(value_length + 1);
 
                     if (value == NULL) {
-                        result.ok = 0;
-                        result.error_message = "Postgresql error: out of memory";
+                        // result.ok = 0;
+                        // result.error_message = "Postgresql error: out of memory";
                         return result;
                     }
 
@@ -121,6 +119,7 @@ dbresult_t send_query(dbconnection_t* connection, const char* string) {
                     // result.table
 
                     // printf("%s\n", value);
+                    printf("type %d\n", PQftype(res, 0));
                 }
 
                 // append data to list
@@ -147,7 +146,7 @@ dbresult_t send_query(dbconnection_t* connection, const char* string) {
         PQclear(res);
     }
 
-    printf("%d\n", result.ok);
+    // printf("%d\n", result.ok);
 
     return result;
 }

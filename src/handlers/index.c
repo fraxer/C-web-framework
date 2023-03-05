@@ -6,6 +6,7 @@
 #include "../request/websocketsrequest.h"
 #include "../response/websocketsresponse.h"
 #include "../database/dbquery.h"
+#include "../database/dbresult.h"
     #include <stdio.h>
 
 void view(http1request_t* request, http1response_t* response) {
@@ -119,19 +120,54 @@ void ws_index(websocketsrequest_t* request, websocketsresponse_t* response) {
 }
 
 void db(http1request_t* request, http1response_t* response) {
-    dbinstance_t dbinstance = db_instance(request->database_list(request), READ, "db1");
+    dbinstance_t dbinst = dbinstance(request->database_list(request), READ, "db1");
 
-    if (!dbinstance.ok) return response->data(response, "db not found");
+    if (!dbinst.ok) return response->data(response, "db not found");
 
-    dbresult_t result = db_query(&dbinstance, "SET ROLE slave_select; select email from \"user\"");
+    dbresult_t result = dbquery(&dbinst, "SET ROLE slave_select; select email from \"user\" limit 1;");
 
-    if (!result.ok) {
-        response->data(response, result.error_message);
-        db_result_free(&result);
+    if (!dbresult_query_ok(&result)) {
+        response->data(response, dbresult_query_error_message(&result));
+        dbresult_free(&result);
         return;
     }
 
-    response->data(response, result.data);
+    dbresult_query_error_code(&result);
+
+    do {
+        if (!dbresult_query_ok(&result)) {
+            response->data(response, dbresult_query_error_message(&result));
+            dbresult_free(&result);
+            return;
+        }
+
+        while (dbresult_row_next(&result)) {
+            const db_table_cell_t* field = dbresult_field(&result, "email");
+
+            field->value;
+            field->length;
+
+            while (dbresult_col_next(&result)) {
+                const db_table_cell_t* field = dbresult_field(&result, NULL);
+            }
+        }
+    } while (dbresult_query_next(&result));
+
+    dbresult_query_rows(&result);
+    dbresult_query_cols(&result);
+
+    for (int row = 0; row < dbresult_query_rows(&result); row++) {
+        int col = 0;
+        const db_table_cell_t* field = dbresult_cell(&result, row, col);
+    }
+
+    dbresult_query_first(&result); // reset data on start position
+    dbresult_row_first(&result);
+    dbresult_col_first(&result);
+
+    dbresult_free(&result); // free result memory
+
+    response->data(response, "result.data");
 }
 
 

@@ -85,6 +85,8 @@ add_library(database STATIC src/database/database.c)
 
 add_library(dbquery STATIC src/database/dbquery.c)
 
+add_library(dbresult STATIC src/database/dbresult.c)
+
 if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
 	add_library(postgresql STATIC src/database/postgresql.c)
 endif()
@@ -106,6 +108,7 @@ target_link_libraries(
 	indexpage
 	base64
 	dbquery
+	dbresult
 )
 
 target_link_libraries(

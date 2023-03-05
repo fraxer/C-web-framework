@@ -2,9 +2,8 @@
 #include <stddef.h>
 #include <string.h>
 #include "dbquery.h"
-    #include <stdio.h>
 
-dbinstance_t db_instance(db_t* db, dbperms_e permission, const char* dbid) {
+dbinstance_t dbinstance(db_t* db, dbperms_e permission, const char* dbid) {
     dbinstance_t inst = {
         .ok = 0,
         .config = NULL,
@@ -36,11 +35,10 @@ dbinstance_t db_instance(db_t* db, dbperms_e permission, const char* dbid) {
     return inst;
 }
 
-dbresult_t db_query(dbinstance_t* instance, const char* string) {
+dbresult_t dbquery(dbinstance_t* instance, const char* string) {
     dbresult_t result = {
-        .ok = 0,
-        .error_message = "database query error",
-        .data = NULL
+        .query = NULL,
+        .current = NULL
     };
 
     dbconnection_t* connection = db_find_free_connection(instance->connection);
@@ -63,22 +61,14 @@ dbresult_t db_query(dbinstance_t* instance, const char* string) {
     return result;
 }
 
-dbresult_t db_begin(dbinstance_t* instance, transaction_level_e level) {
-    return db_query(instance, "level");
+dbresult_t dbbegin(dbinstance_t* instance, transaction_level_e level) {
+    return dbquery(instance, "level");
 }
 
-dbresult_t db_commit(dbinstance_t* instance) {
-    return db_query(instance, "commit");
+dbresult_t dbcommit(dbinstance_t* instance) {
+    return dbquery(instance, "commit");
 }
 
-dbresult_t db_rollback(dbinstance_t* instance) {
-    return db_query(instance, "rollback");
-}
-
-void db_result_free(dbresult_t* result) {
-    result->ok = 0;
-    result->error_message = NULL;
-
-    if (result->data) free(result->data);
-    result->data = NULL;
+dbresult_t dbrollback(dbinstance_t* instance) {
+    return dbquery(instance, "rollback");
 }

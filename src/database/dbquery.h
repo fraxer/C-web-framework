@@ -3,16 +3,14 @@
 
 #include "database.h"
 
-dbinstance_t db_instance(db_t*, dbperms_e, const char*);
+dbinstance_t dbinstance(db_t*, dbperms_e, const char*);
 
-dbresult_t db_query(dbinstance_t*, const char*);
+dbresult_t dbquery(dbinstance_t*, const char*);
 
-dbresult_t db_begin(dbinstance_t*, transaction_level_e);
+dbresult_t dbbegin(dbinstance_t*, transaction_level_e);
 
-dbresult_t db_commit(dbinstance_t*);
+dbresult_t dbcommit(dbinstance_t*);
 
-dbresult_t db_rollback(dbinstance_t*);
-
-void db_result_free(dbresult_t*);
+dbresult_t dbrollback(dbinstance_t*);
 
 #endif
