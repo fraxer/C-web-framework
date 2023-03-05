@@ -36,22 +36,22 @@ typedef struct db_table_cell {
 } db_table_cell_t;
 
 typedef struct dbresultquery {
-    int ok;
     int rows;
     int cols;
     int current_row;
     int current_col;
-    int error_code;
 
-    const char* error_message;
-
-    db_table_cell_t** fields; // ["", "", "", ...]
-    db_table_cell_t** table; // ["", "", "", ...]
+    db_table_cell_t** fields;
+    db_table_cell_t** table;
 
     struct dbresultquery* next;
 } dbresultquery_t;
 
 typedef struct dbresult {
+    int ok;
+    int error_code;
+    const char* error_message;
+
     dbresultquery_t* query;
     dbresultquery_t* current;
 } dbresult_t;

@@ -5,22 +5,81 @@
 
 db_table_cell_t* __dbresult_field(dbresult_t* result, const char* field);
 
-int dbresult_query_ok(dbresult_t* result) {
-    if (result->current == NULL) return 0;
 
-    return result->current->ok;
+dbresultquery_t* dbresult_query_create(int rows, int cols) {
+    dbresultquery_t* query = (dbresultquery_t*)malloc(sizeof(dbresultquery_t));
+
+    if (query == NULL) return NULL;
+
+    query->rows = rows;
+    query->cols = cols;
+    query->current_row = 0;
+    query->current_col = 0;
+    query->fields = (db_table_cell_t**)malloc(sizeof(db_table_cell_t*) * cols);
+    query->table = (db_table_cell_t**)malloc(sizeof(db_table_cell_t*) * rows * cols);
+    query->next = NULL;
+
+    if (query->fields == NULL || query->table == NULL) {
+        if (query->fields == NULL) free(query->fields);
+        if (query->table == NULL) free(query->table);
+        if (query == NULL) free(query);
+
+        query = NULL;
+    }
+
+    return query;
 }
 
-const char* dbresult_query_error_message(dbresult_t* result) {
-    if (result->current == NULL) return "Db result empty";
+db_table_cell_t* dbresult_cell_create(const char* string, size_t length) {
+    db_table_cell_t* cell = (db_table_cell_t*)malloc(sizeof(db_table_cell_t));
 
-    return result->current->error_message;
+    if (cell == NULL) return NULL;
+
+    cell->length = length;
+    cell->value = (char*)malloc(length + 1);
+
+    if (cell->value == NULL) {
+        free(cell);
+        return NULL;
+    }
+
+    memcpy(cell->value, string, length);
+
+    cell->value[length] = 0;
+
+    return cell;
 }
 
-int dbresult_query_error_code(dbresult_t* result) {
-    if (result->current == NULL) return 0;
+void dbresult_query_table_insert(dbresultquery_t* query, db_table_cell_t* cell, int row, int col) {
+    query->table[row * query->cols + col] = cell;
+}
 
-    return result->current->error_code;
+void dbresult_query_field_insert(dbresultquery_t* query, const char* string, int col) {
+    size_t length = strlen(string);
+
+    db_table_cell_t* cell = dbresult_cell_create(string, length);
+
+    if (cell == NULL) return;
+
+    query->fields[col] = cell;
+}
+
+int dbresult_ok(dbresult_t* result) {
+    if (result == NULL) return 0;
+
+    return result->ok;
+}
+
+const char* dbresult_error_message(dbresult_t* result) {
+    if (result == NULL) return "Db result empty";
+
+    return result->error_message;
+}
+
+int dbresult_error_code(dbresult_t* result) {
+    if (result == NULL) return 0;
+
+    return result->error_code;
 }
 
 void dbresult_free(dbresult_t* result) {
@@ -158,8 +217,8 @@ db_table_cell_t* __dbresult_field(dbresult_t* result, const char* field) {
 
         if (cell == NULL) continue;
 
-        for (int i = 0, j = 0; i < cell->length && j < field_length; i++, j++) {
-            if (cell->value[i] != field[j]) continue;
+        for (int k = 0, j = 0; k < cell->length && j < field_length; k++, j++) {
+            if (cell->value[k] != field[j]) break;
             current_col = i;
         }
 

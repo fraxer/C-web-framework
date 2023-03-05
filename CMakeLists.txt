@@ -173,6 +173,7 @@ if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
 	target_link_libraries(
 		main
 		postgresql
+		dbresult
 		${PostgreSQL_LIBRARY}
 	)
 endif()

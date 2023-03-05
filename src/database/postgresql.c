@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <string.h>
 #include "../log/log.h"
+#include "dbresult.h"
 #include "postgresql.h"
 
 void postgresql_connection_free(dbconnection_t*);
@@ -78,16 +79,21 @@ dbresult_t send_query(dbconnection_t* connection, const char* string) {
     postgresqlconnection_t* pgconnection = (postgresqlconnection_t*)connection;
 
     dbresult_t result = {
+        .ok = 0,
+        .error_code = 0,
+        .error_message = "",
         .query = NULL,
         .current = NULL
     };
 
     if (!PQsendQuery(pgconnection->connection, string)){
         log_error("Postgresql error: %s", PQerrorMessage(pgconnection->connection));
+        result.error_message = "Postgresql error: connection error";
         return result;
     }
 
     PGresult* res = NULL;
+    dbresultquery_t* query_last = NULL;
 
     while (res = PQgetResult(pgconnection->connection)) {
         ExecStatusType status = PQresultStatus(res);
@@ -95,58 +101,71 @@ dbresult_t send_query(dbconnection_t* connection, const char* string) {
         if (status == PGRES_TUPLES_OK || status == PGRES_SINGLE_TUPLE) {
             int cols = PQnfields(res);
             int rows = PQntuples(res);
+            int fields_filled = 0;
 
-            // syslog(LOG_INFO, "[INFO][model/model.cpp][queryNew] %d, %d\n", num_cols, num_rows);
+            dbresultquery_t* query = dbresult_query_create(rows, cols);
+
+            if (query == NULL) {
+                result.error_message = "Out of memory";
+                return result;
+            }
 
             for (int row = 0; row < rows; row++) {
-                // syslog(LOG_INFO, "[INFO][model/model.cpp][queryNew] %s\n", PQfname(res, col));
-
                 for (int col = 0; col < cols; col++) {
-                    // syslog(LOG_INFO, "[INFO][model/model.cpp][queryNew] %s\n", PQgetvalue(res, row, col));
-                    // PQgetvalue(res, row, col); // get data
+                    size_t length = PQgetlength(res, row, col);
+                    const char* value = PQgetvalue(res, row, col);
 
-                    int value_length = PQgetlength(res, row, col);
-                    char* value = (char*)malloc(value_length + 1);
+                    db_table_cell_t* cell = dbresult_cell_create(value, length);
 
-                    if (value == NULL) {
-                        // result.ok = 0;
-                        // result.error_message = "Postgresql error: out of memory";
+                    if (cell == NULL) {
+                        result.error_message = "Out of memory";
                         return result;
                     }
 
-                    strcpy(value, PQgetvalue(res, row, col));
+                    dbresult_query_table_insert(query, cell, row, col);
 
-                    // result.table
-
-                    // printf("%s\n", value);
-                    printf("type %d\n", PQftype(res, 0));
+                    if (!fields_filled) {
+                        dbresult_query_field_insert(query, PQfname(res, col), col);
+                    }
                 }
 
-                // append data to list
+                fields_filled = 1;
             }
 
-            // result.ok = 1;
+            if (query_last != NULL) {
+                query_last->next = query;
+            }
+            query_last = query;
+
+            if (result.query == NULL) {
+                result.query = query;
+                result.current = query;
+            }
+
+            result.ok = 1;
         }
         else if (status == PGRES_FATAL_ERROR) {
             log_error("Postgresql Fatal error: %s", PQresultErrorMessage(res));
+            result.error_message = "Postgresql error: fatal error";
         }
         else if (status == PGRES_NONFATAL_ERROR) {
             log_error("Postgresql Nonfatal error: %s", PQresultErrorMessage(res));
+            result.error_message = "Postgresql error: non fatal error";
         }
         else if (status == PGRES_EMPTY_QUERY) {
             log_error("Postgresql Empty query: %s", PQresultErrorMessage(res));
+            result.error_message = "Postgresql error: empty query";
         }
         else if (status == PGRES_BAD_RESPONSE) {
             log_error("Postgresql Bad response: %s", PQresultErrorMessage(res));
+            result.error_message = "Postgresql error: bad response";
         }
         else if (status == PGRES_COMMAND_OK) {
-            // result.ok = 1;
+            result.ok = 1;
         }
 
         PQclear(res);
     }
-
-    // printf("%d\n", result.ok);
 
     return result;
 }

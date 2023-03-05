@@ -124,50 +124,56 @@ void db(http1request_t* request, http1response_t* response) {
 
     if (!dbinst.ok) return response->data(response, "db not found");
 
-    dbresult_t result = dbquery(&dbinst, "SET ROLE slave_select; select email from \"user\" limit 1;");
+    dbresult_t result = dbquery(&dbinst, "SET ROLE slave_select; select email from \"user\" limit 3; select id from \"user\" limit 3;");
 
-    if (!dbresult_query_ok(&result)) {
-        response->data(response, dbresult_query_error_message(&result));
+    if (!dbresult_ok(&result)) {
+        response->data(response, dbresult_error_message(&result));
         dbresult_free(&result);
         return;
     }
 
-    dbresult_query_error_code(&result);
+    // do {
+    //     while (dbresult_row_next(&result)) {
+    //         const db_table_cell_t* field = dbresult_field(&result, "email");
 
-    do {
-        if (!dbresult_query_ok(&result)) {
-            response->data(response, dbresult_query_error_message(&result));
-            dbresult_free(&result);
-            return;
-        }
+    //         printf("%s\n", field->value);
 
-        while (dbresult_row_next(&result)) {
-            const db_table_cell_t* field = dbresult_field(&result, "email");
+    //         while (dbresult_col_next(&result)) {
+    //             const db_table_cell_t* field = dbresult_field(&result, NULL);
+    //         }
+    //     }
+    // } while (dbresult_query_next(&result));
 
-            field->value;
-            field->length;
+    // dbresult_query_rows(&result);
+    // dbresult_query_cols(&result);
 
-            while (dbresult_col_next(&result)) {
-                const db_table_cell_t* field = dbresult_field(&result, NULL);
-            }
-        }
-    } while (dbresult_query_next(&result));
+    // for (int row = 0; row < dbresult_query_rows(&result); row++) {
+    //     int col = 0;
+    //     const db_table_cell_t* field = dbresult_cell(&result, row, col);
+    // }
 
-    dbresult_query_rows(&result);
-    dbresult_query_cols(&result);
+    // dbresult_query_first(&result); // reset data on start position
+    // dbresult_row_first(&result);
+    // dbresult_col_first(&result);
 
-    for (int row = 0; row < dbresult_query_rows(&result); row++) {
-        int col = 0;
-        const db_table_cell_t* field = dbresult_cell(&result, row, col);
-    }
+    const db_table_cell_t* field = dbresult_field(&result, "email");
 
-    dbresult_query_first(&result); // reset data on start position
-    dbresult_row_first(&result);
-    dbresult_col_first(&result);
 
-    dbresult_free(&result); // free result memory
+    char* str = (char*)malloc(1024);
+    strcpy(str, field->value);
 
-    response->data(response, "result.data");
+    dbresult_query_next(&result);
+
+    field = dbresult_field(&result, "id");
+
+    strcat(str, " | ");
+    strcat(str, field->value);
+
+    dbresult_free(&result);
+
+    response->data(response, str);
+
+    free(str);
 }
 
 

@@ -37,6 +37,9 @@ dbinstance_t dbinstance(db_t* db, dbperms_e permission, const char* dbid) {
 
 dbresult_t dbquery(dbinstance_t* instance, const char* string) {
     dbresult_t result = {
+        .ok = 0,
+        .error_code = 0,
+        .error_message = "",
         .query = NULL,
         .current = NULL
     };
@@ -47,6 +50,7 @@ dbresult_t dbquery(dbinstance_t* instance, const char* string) {
         connection = instance->connection_create(instance->config);
 
         if (connection == NULL) {
+            result.error_message = "Database query: error connection create";
             return result;
         }
 
