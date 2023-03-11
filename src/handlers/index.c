@@ -120,7 +120,7 @@ void ws_index(websocketsrequest_t* request, websocketsresponse_t* response) {
 }
 
 void db(http1request_t* request, http1response_t* response) {
-    dbinstance_t dbinst = dbinstance(request->database_list(request), READ, "db1");
+    dbinstance_t dbinst = dbinstance(request->database_list(request), "db1");
 
     if (!dbinst.ok) return response->data(response, "db not found");
 
@@ -175,37 +175,3 @@ void db(http1request_t* request, http1response_t* response) {
 
     free(str);
 }
-
-
-// {
-//     mysql: {
-//         dbname1: {
-//             read: [
-//                 [127.0.0.1, 4568],
-//                 [127.0.0.1, 4568],
-//                 [127.0.0.1, 4568],
-//                 [127.0.0.1, 4568]
-//             ],
-//             write: [
-//                 [127.0.0.1, 4568],
-//                 [127.0.0.1, 4568],
-//                 [127.0.0.1, 4568],
-//                 [127.0.0.1, 4568]
-//             ]
-//         },
-//         dbname2: {
-//             read: [
-//                 [127.0.0.1, 4568],
-//                 [127.0.0.1, 4568],
-//                 [127.0.0.1, 4568],
-//                 [127.0.0.1, 4568]
-//             ],
-//             write: [
-//                 [127.0.0.1, 4568],
-//                 [127.0.0.1, 4568],
-//                 [127.0.0.1, 4568],
-//                 [127.0.0.1, 4568]
-//             ]
-//         }
-//     }
-// }

@@ -15,6 +15,7 @@ postgresqlconfig_t* postgresql_config_create() {
     config->base.free = postgresql_config_free;
     config->base.connection_create = postgresql_connection_create;
     config->host = NULL;
+    config->current_host = NULL;
     config->dbname = NULL;
     config->user = NULL;
     config->password = NULL;
@@ -23,30 +24,23 @@ postgresqlconfig_t* postgresql_config_create() {
     return config;
 }
 
-void postgresql_config_free(void* config) {
+void postgresql_config_free(void* arg) {
+    if (arg == NULL) return;
 
+    postgresqlconfig_t* config = (postgresqlconfig_t*)arg;
+
+    db_host_free(config->host);
+    config->host = NULL;
+
+    if (config->dbname) free(config->dbname);
+    if (config->user) free(config->user);
+    if (config->password) free(config->password);
+
+    free(config);
 }
 
 void postgresql_free(db_t* db) {
-    // if (db->host) free(db->host);
-    // db->host = NULL;
-
-    // if (db->dbname) free(db->dbname);
-    // db->dbname = NULL;
-
-    // if (db->user) free(db->user);
-    // db->user = NULL;
-
-    // if (db->password) free(db->password);
-    // db->password = NULL;
-
-    // db->driver = NONE;
-    // db->port = 0;
-    // db->connection_timeout = 0;
-
-    // connection_t* connections;
-
-    free(db);
+    db_free(db);
 }
 
 dbconnection_t* postgresql_connection_create(dbconfig_t* config) {
@@ -60,19 +54,53 @@ dbconnection_t* postgresql_connection_create(dbconfig_t* config) {
     connection->base.next = NULL;
     connection->base.free = postgresql_connection_free;
     connection->base.send_query = send_query;
-    connection->connection = postgresql_connect(pgconfig);
 
-    if (PQstatus(connection->connection) != CONNECTION_OK) {
+    void* host_address = pgconfig->current_host;
+
+    while (1) {
+        connection->connection = postgresql_connect(pgconfig);
+
+        int status = PQstatus(connection->connection);
+
+        if (status == CONNECTION_OK) break;
+
         log_error("Postgresql error: %s\n", PQerrorMessage(connection->connection));
-        postgresql_connection_free((dbconnection_t*)connection);
-        return NULL;
+
+        if (host_address == pgconfig->current_host) {
+            postgresql_connection_free((dbconnection_t*)connection);
+            return NULL;
+        }
+        
+        PQfinish(connection->connection);
     }
 
     return (dbconnection_t*)connection;
 }
 
-void postgresql_connection_free(dbconnection_t* connection) {
+const char* postgresql_host(postgresqlconfig_t* config) {
+    return config->current_host->ip;
+}
 
+int postgresql_port(postgresqlconfig_t* config) {
+    return config->current_host->port;
+}
+
+void postgresql_next_host(postgresqlconfig_t* config) {
+    if (config->current_host->next != NULL) {
+        config->current_host = config->current_host->next;
+        return;
+    }
+
+    config->current_host = config->host;
+}
+
+void postgresql_connection_free(dbconnection_t* connection) {
+    if (connection == NULL) return;
+
+    postgresqlconnection_t* conn = (postgresqlconnection_t*)connection;
+
+    PQfinish(conn->connection);
+    free(conn);
 }
 
 dbresult_t send_query(dbconnection_t* connection, const char* string) {
@@ -86,8 +114,9 @@ dbresult_t send_query(dbconnection_t* connection, const char* string) {
         .current = NULL
     };
 
-    if (!PQsendQuery(pgconnection->connection, string)){
+    if (!PQsendQuery(pgconnection->connection, string)) {
         log_error("Postgresql error: %s", PQerrorMessage(pgconnection->connection));
+        result.error_code = 1;
         result.error_message = "Postgresql error: connection error";
         return result;
     }
@@ -146,10 +175,12 @@ dbresult_t send_query(dbconnection_t* connection, const char* string) {
         }
         else if (status == PGRES_FATAL_ERROR) {
             log_error("Postgresql Fatal error: %s", PQresultErrorMessage(res));
+            result.error_code = 1;
             result.error_message = "Postgresql error: fatal error";
         }
         else if (status == PGRES_NONFATAL_ERROR) {
             log_error("Postgresql Nonfatal error: %s", PQresultErrorMessage(res));
+            result.error_code = 1;
             result.error_message = "Postgresql error: non fatal error";
         }
         else if (status == PGRES_EMPTY_QUERY) {
@@ -158,6 +189,7 @@ dbresult_t send_query(dbconnection_t* connection, const char* string) {
         }
         else if (status == PGRES_BAD_RESPONSE) {
             log_error("Postgresql Bad response: %s", PQresultErrorMessage(res));
+            result.error_code = 1;
             result.error_message = "Postgresql error: bad response";
         }
         else if (status == PGRES_COMMAND_OK) {
@@ -173,27 +205,27 @@ dbresult_t send_query(dbconnection_t* connection, const char* string) {
 PGconn* postgresql_connect(postgresqlconfig_t* config) {
     char string[1024] = {0};
 
-    void append(char* string, char* key, char* value) {
+    void append(char* string, const char* key, const char* value) {
         strcat(string, key);
         strcat(string, "=");
         strcat(string, value);
         strcat(string, " ");
     }
 
-    append(string, "host", "127.0.0.1");
-    append(string, "port", "5432");
+    append(string, "host", postgresql_host(config));
+
+    sprintf(&string[strlen(string)], "port=%d ", postgresql_port(config));
+
     append(string, "dbname", config->dbname);
     append(string, "user", config->user);
     append(string, "password", config->password);
 
-    char connection_timeout[10] = {0};
-    sprintf(connection_timeout, "%d", config->connection_timeout);
+    sprintf(&string[strlen(string)], "connect_timeout=%d ", config->connection_timeout);
 
-    append(string, "connect_timeout", connection_timeout);
+    postgresql_next_host(config);
 
     return PQconnectdb(string);
 }
-
 
 db_t* postgresql_load(const char* database_id, const jsmntok_t* token_object) {
     db_t* result = NULL;
@@ -216,6 +248,7 @@ db_t* postgresql_load(const char* database_id, const jsmntok_t* token_object) {
             finded_fields[HOSTS] = 1;
 
             config->host = db_hosts_load(token->child);
+            config->current_host = config->host;
 
             if (config->host == NULL) goto failed;
         }
@@ -269,8 +302,6 @@ db_t* postgresql_load(const char* database_id, const jsmntok_t* token_object) {
     }
 
     database->config = (dbconfig_t*)config;
-
-    // printf("dbname %s, user %s, pass %s, timeout %d, charset %s, collation %s\n", config->dbname, config->user, config->password, config->connection_timeout, config->charset, config->collation);
 
     result = database;
 

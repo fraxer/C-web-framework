@@ -8,6 +8,7 @@
 typedef struct postgresqlconfig {
     dbconfig_t base;
     dbhost_t* host;
+    dbhost_t* current_host;
     char* dbname;
     char* user;
     char* password;
@@ -25,7 +26,11 @@ void postgresql_config_free(void*);
 
 dbconnection_t* postgresql_connection_create(dbconfig_t*);
 
-// void db_free(db_t*);
+const char* postgresql_host(postgresqlconfig_t*);
+
+int postgresql_port(postgresqlconfig_t*);
+
+void postgresql_next_host(postgresqlconfig_t*);
 
 db_t* postgresql_load(const char*, const jsmntok_t* token_object);
 

@@ -6,6 +6,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 #add_compile_options(-Wall -Wextra -Wpedantic)
 
+find_package(Threads REQUIRED)
 find_package(PCRE REQUIRED)
 find_package(OpenSSL)
 find_package(PostgreSQL)

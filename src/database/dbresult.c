@@ -94,13 +94,8 @@ void dbresult_free(dbresult_t* result) {
             for (int i = 0; i < query->cols; i++) {
                 db_table_cell_t* cell = fields[i];
 
-                // db_cell_free(cell);
-                if (cell != NULL) {
-                    if (cell->value != NULL) {
-                        free(cell->value);
-                    }
-                    free(cell);
-                }
+                db_cell_free(cell);
+                cell = NULL;
             }
 
             free(fields);
@@ -111,18 +106,15 @@ void dbresult_free(dbresult_t* result) {
                 for (int j = 0; j < query->cols; j++) {
                     db_table_cell_t* cell = table[i * query->cols + j];
 
-                    // db_cell_free(cell);
-                    if (cell != NULL) {
-                        if (cell->value != NULL) {
-                            free(cell->value);
-                        }
-                        free(cell);
-                    }
+                    db_cell_free(cell);
+                    cell = NULL;
                 }
             }
 
             free(table);
         }
+
+        free(query);
 
         query = next;
     }

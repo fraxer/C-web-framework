@@ -3,7 +3,7 @@
 #include <string.h>
 #include "dbquery.h"
 
-dbinstance_t dbinstance(db_t* db, dbperms_e permission, const char* dbid) {
+dbinstance_t dbinstance(db_t* db, const char* dbid) {
     dbinstance_t inst = {
         .ok = 0,
         .config = NULL,
@@ -16,16 +16,9 @@ dbinstance_t dbinstance(db_t* db, dbperms_e permission, const char* dbid) {
             inst.ok = 1;
             inst.config = db->config;
             inst.connection_create = db->config->connection_create;
+            inst.lock_connection = &db->lock_connection;
+            inst.connection = &db->connection;
 
-            if (permission == READ) {
-                inst.lock_connection = &db->lock_connection_read;
-                inst.connection = db->connection_read;
-            }
-            else if (permission == WRITE) {
-                inst.lock_connection = &db->lock_connection_write;
-                inst.connection = db->connection_write;
-            }
-            
             return inst;
         }
 
@@ -44,23 +37,40 @@ dbresult_t dbquery(dbinstance_t* instance, const char* string) {
         .current = NULL
     };
 
-    dbconnection_t* connection = db_find_free_connection(instance->connection);
-
-    if (connection == NULL) {
-        connection = instance->connection_create(instance->config);
+    while (1) {
+        dbconnection_t* connection = db_connection_find(*instance->connection);
 
         if (connection == NULL) {
-            result.error_message = "Database query: error connection create";
-            return result;
+            connection = instance->connection_create(instance->config);
+
+            if (connection == NULL) {
+                result.error_message = "Database query: error connection create";
+                return result;
+            }
+
+            db_connection_trylock(connection);
+            db_connection_append(instance, connection);
         }
 
-        db_connection_trylock(connection);
-        db_connection_append(instance, connection);
+        result = connection->send_query(connection, string);
+
+        if (!result.ok) {
+            if (result.error_code == 1) {
+                db_connection_pop(instance, connection);
+                db_connection_free(connection);
+
+                if (*instance->connection == connection) {
+                    *instance->connection = NULL;
+                }
+
+                continue;
+            }
+        }
+
+        db_connection_unlock(connection);
+
+        break;
     }
-
-    result = connection->send_query(connection, string);
-
-    db_connection_unlock(connection);
 
     return result;
 }
