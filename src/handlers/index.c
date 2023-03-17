@@ -119,8 +119,8 @@ void ws_index(websocketsrequest_t* request, websocketsresponse_t* response) {
     // response->file(response, "/darek-zabrocki-mg-tree-town1-003-final-darekzabrocki.jpg"); // path
 }
 
-void db(http1request_t* request, http1response_t* response) {
-    dbinstance_t dbinst = dbinstance(request->database_list(request), "db1");
+void db_pg(http1request_t* request, http1response_t* response) {
+    dbinstance_t dbinst = dbinstance(request->database_list(request), "postgresql");
 
     if (!dbinst.ok) return response->data(response, "db not found");
 
@@ -165,6 +165,77 @@ void db(http1request_t* request, http1response_t* response) {
     dbresult_query_next(&result);
 
     field = dbresult_field(&result, "id");
+
+    strcat(str, " | ");
+    strcat(str, field->value);
+
+    dbresult_free(&result);
+
+    response->data(response, str);
+
+    free(str);
+}
+
+void db_mysql(http1request_t* request, http1response_t* response) {
+    dbinstance_t dbinst = dbinstance(request->database_list(request), "mysql");
+
+    if (!dbinst.ok) return response->data(response, "db not found");
+
+    dbresult_t result = dbquery(&dbinst, "select * from check_site ;select * from migration;");
+
+    if (!dbresult_ok(&result)) {
+        response->data(response, dbresult_error_message(&result));
+        dbresult_free(&result);
+        return;
+    }
+
+    while (dbresult_row_next(&result)) {
+        const db_table_cell_t* field = dbresult_field(&result, "domain");
+
+        printf("%s\n", field->value);
+    }
+
+    dbresult_row_first(&result);
+    dbresult_col_first(&result);
+
+    printf("%d\n", dbresult_query_rows(&result));
+    printf("%d\n", dbresult_query_cols(&result));
+    printf("\n");
+
+    dbresult_query_first(&result);
+
+    do {
+        for (int col = 0; col < dbresult_query_cols(&result); col++) {
+            printf("%s | ", result.current->fields[col]->value);
+        }
+        printf("\n");
+
+        for (int row = 0; row < dbresult_query_rows(&result); row++) {
+            for (int col = 0; col < dbresult_query_cols(&result); col++) {
+                const db_table_cell_t* field = dbresult_cell(&result, row, col);
+
+                printf("%s | ", field->value);
+            }
+            printf("\n");
+        }
+        printf("\n");
+
+        dbresult_row_first(&result);
+        dbresult_col_first(&result);
+    } while (dbresult_query_next(&result));
+
+    dbresult_query_first(&result);
+
+
+    const db_table_cell_t* field = dbresult_field(&result, "domain");
+
+
+    char* str = (char*)malloc(1024);
+    strcpy(str, field->value);
+
+    dbresult_query_next(&result);
+
+    field = dbresult_cell(&result, 2, 0);
 
     strcat(str, " | ");
     strcat(str, field->value);

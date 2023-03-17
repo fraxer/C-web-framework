@@ -4,12 +4,6 @@
 #include <stdatomic.h>
 #include "../jsmn/jsmn.h"
 
-typedef enum dbdriver {
-    NONE = 0,
-    POSTGRESQL,
-    MYSQL
-} dbdriver_e;
-
 typedef enum transaction_level {
     READ_UNCOMMITTED,
     READ_COMMITTED,

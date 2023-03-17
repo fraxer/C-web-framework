@@ -9,16 +9,23 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(Threads REQUIRED)
 find_package(PCRE REQUIRED)
 find_package(OpenSSL)
-find_package(PostgreSQL)
 
 include(CTest)
 
 if(INCLUDE_MYSQL STREQUAL yes)
-message(STATUS "Include Mysql: ${INCLUDE_MYSQL}")
+	#sudo apt install libmysqlclient-dev 
+	find_package(MySQL)
+	message(STATUS "Include Mysql: ${INCLUDE_MYSQL}")
+endif()
+
+if(MySQL_FOUND AND INCLUDE_MYSQL STREQUAL yes)
+	include_directories(${MySQL_INCLUDE_DIRS})
+	add_definitions(-DMySQL_FOUND)
 endif()
 
 if(INCLUDE_POSTGRESQL STREQUAL yes)
-message(STATUS "Include Postgresql: ${INCLUDE_POSTGRESQL}")
+	find_package(PostgreSQL)
+	message(STATUS "Include Postgresql: ${INCLUDE_POSTGRESQL}")
 endif()
 
 if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
@@ -87,6 +94,10 @@ add_library(database STATIC src/database/database.c)
 add_library(dbquery STATIC src/database/dbquery.c)
 
 add_library(dbresult STATIC src/database/dbresult.c)
+
+if(MySQL_FOUND AND INCLUDE_MYSQL STREQUAL yes)
+	add_library(mysql STATIC src/database/mysql.c)
+endif()
 
 if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
 	add_library(postgresql STATIC src/database/postgresql.c)
@@ -169,6 +180,15 @@ target_link_libraries(
 	moduleloader
 	signal
 )
+
+if(MySQL_FOUND AND INCLUDE_MYSQL STREQUAL yes)
+	target_link_libraries(
+		main
+		mysql
+		dbresult
+		${MySQL_LIBRARY}
+	)
+endif()
 
 if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
 	target_link_libraries(

@@ -14,6 +14,9 @@
 #include "../domain/domain.h"
 #include "../server/server.h"
 #include "../database/database.h"
+#ifdef MySQL_FOUND
+    #include "../database/mysql.h"
+#endif
 #ifdef PostgreSQL_FOUND
     #include "../database/postgresql.h"
 #endif
@@ -377,9 +380,11 @@ db_t* module_loader_databases_load(const jsmntok_t* token_object) {
         if (strcmp(driver, "postgresql") == 0) {
             database = postgresql_load(database_id, token->child);
         }
-        #else
-        if (strcmp(driver, "postgresql") == 0) {
-            log_error("Postgresql library not found\n");
+        #endif
+
+        #ifdef MySQL_FOUND
+        if (strcmp(driver, "mysql") == 0) {
+            database = my_load(database_id, token->child);
         }
         #endif
 

@@ -6,7 +6,7 @@
 #include "postgresql.h"
 
 void postgresql_connection_free(dbconnection_t*);
-dbresult_t send_query(dbconnection_t*, const char*);
+dbresult_t postgresql_send_query(dbconnection_t*, const char*);
 PGconn* postgresql_connect(postgresqlconfig_t*);
 
 postgresqlconfig_t* postgresql_config_create() {
@@ -53,7 +53,7 @@ dbconnection_t* postgresql_connection_create(dbconfig_t* config) {
     connection->base.locked = 0;
     connection->base.next = NULL;
     connection->base.free = postgresql_connection_free;
-    connection->base.send_query = send_query;
+    connection->base.send_query = postgresql_send_query;
 
     void* host_address = pgconfig->current_host;
 
@@ -103,7 +103,7 @@ void postgresql_connection_free(dbconnection_t* connection) {
     free(conn);
 }
 
-dbresult_t send_query(dbconnection_t* connection, const char* string) {
+dbresult_t postgresql_send_query(dbconnection_t* connection, const char* string) {
     postgresqlconnection_t* pgconnection = (postgresqlconnection_t*)connection;
 
     dbresult_t result = {

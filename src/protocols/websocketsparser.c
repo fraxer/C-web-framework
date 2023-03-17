@@ -109,8 +109,8 @@ int websocketsparser_parse_first_byte(websocketsparser_t* parser) {
     parser->frame.rsv3 = (c >> 4) & 0x01;
     parser->frame.opcode = c & 0x0F;
 
-    if (parser->request->type == NONE && parser->frame.opcode == 1) parser->request->type = WEBSOCKETS_TEXT;
-    if (parser->request->type == NONE && parser->frame.opcode == 2) parser->request->type = WEBSOCKETS_BINARY;
+    if (parser->request->type == WEBSOCKETS_NONE && parser->frame.opcode == 1) parser->request->type = WEBSOCKETS_TEXT;
+    if (parser->request->type == WEBSOCKETS_NONE && parser->frame.opcode == 2) parser->request->type = WEBSOCKETS_BINARY;
 
     parser->request->control_type = WEBSOCKETS_NONE;
 
