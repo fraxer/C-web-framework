@@ -20,6 +20,9 @@
 #ifdef PostgreSQL_FOUND
     #include "../database/postgresql.h"
 #endif
+#ifdef Redis_FOUND
+    #include "../database/redis.h"
+#endif
 #include "../openssl/openssl.h"
 #include "../mimetype/mimetype.h"
 #include "../thread/threadhandler.h"
@@ -385,6 +388,12 @@ db_t* module_loader_databases_load(const jsmntok_t* token_object) {
         #ifdef MySQL_FOUND
         if (strcmp(driver, "mysql") == 0) {
             database = my_load(database_id, token->child);
+        }
+        #endif
+
+        #ifdef Redis_FOUND
+        if (strcmp(driver, "redis") == 0) {
+            database = redis_load(database_id, token->child);
         }
         #endif
 

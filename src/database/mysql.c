@@ -6,8 +6,6 @@
 #include "mysql.h"
     #include <stdio.h>
 
-// static int my_lib_init = 0;
-
 void my_connection_free(dbconnection_t*);
 dbresult_t my_send_query(dbconnection_t*, const char*);
 MYSQL* my_connect(myconfig_t*);
@@ -64,7 +62,7 @@ dbconnection_t* my_connection_create(dbconfig_t* config) {
 
         if (connection->connection != NULL) break;
 
-        log_error("Mysql error: %s\n", mysql_error(connection->connection));
+        log_error("Mysql error: connection error\n");
 
         if (host_address == myconfig->current_host) {
             my_connection_free((dbconnection_t*)connection);
@@ -135,7 +133,18 @@ dbresult_t my_send_query(dbconnection_t* connection, const char* string) {
 
             if (query == NULL) {
                 result.error_message = "Out of memory";
+                mysql_free_result(res);
                 return result;
+            }
+
+            if (query_last != NULL) {
+                query_last->next = query;
+            }
+            query_last = query;
+
+            if (result.query == NULL) {
+                result.query = query;
+                result.current = query;
             }
 
             MYSQL_FIELD* fields = mysql_fetch_fields(res);
@@ -148,6 +157,7 @@ dbresult_t my_send_query(dbconnection_t* connection, const char* string) {
 
             MYSQL_ROW myrow;
             int row = 0;
+
             while ((myrow = mysql_fetch_row(res))) {
                 unsigned long* lengths = mysql_fetch_lengths(res);
 
@@ -159,6 +169,7 @@ dbresult_t my_send_query(dbconnection_t* connection, const char* string) {
 
                     if (cell == NULL) {
                         result.error_message = "Out of memory";
+                        mysql_free_result(res);
                         return result;
                     }
 
@@ -172,16 +183,6 @@ dbresult_t my_send_query(dbconnection_t* connection, const char* string) {
                // printf("\n");
             }
 
-            if (query_last != NULL) {
-                query_last->next = query;
-            }
-            query_last = query;
-
-            if (result.query == NULL) {
-                result.query = query;
-                result.current = query;
-            }
-
             result.ok = 1;
 
             mysql_free_result(res);
@@ -190,6 +191,7 @@ dbresult_t my_send_query(dbconnection_t* connection, const char* string) {
             log_error("Mysql error: %s\n", mysql_error(myconnection->connection));
             result.error_code = 1;
             result.error_message = mysql_error(myconnection->connection);
+            break;
         }
 
         if ((status = mysql_next_result(myconnection->connection)) > 0) {

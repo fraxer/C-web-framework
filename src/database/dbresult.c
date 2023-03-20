@@ -15,14 +15,14 @@ dbresultquery_t* dbresult_query_create(int rows, int cols) {
     query->cols = cols;
     query->current_row = 0;
     query->current_col = 0;
-    query->fields = (db_table_cell_t**)malloc(sizeof(db_table_cell_t*) * cols);
-    query->table = (db_table_cell_t**)malloc(sizeof(db_table_cell_t*) * rows * cols);
+    query->fields = (db_table_cell_t**)calloc(sizeof(db_table_cell_t*) * cols, sizeof(db_table_cell_t*));
+    query->table = (db_table_cell_t**)calloc(sizeof(db_table_cell_t*) * rows * cols, sizeof(db_table_cell_t*));
     query->next = NULL;
 
     if (query->fields == NULL || query->table == NULL) {
-        if (query->fields == NULL) free(query->fields);
-        if (query->table == NULL) free(query->table);
-        if (query == NULL) free(query);
+        if (query->fields != NULL) free(query->fields);
+        if (query->table != NULL) free(query->table);
+        if (query != NULL) free(query);
 
         query = NULL;
     }
@@ -231,9 +231,9 @@ db_table_cell_t* dbresult_cell(dbresult_t* result, int row, int col) {
 
     db_table_cell_t* cell = query->table[row * query->cols + col];
 
-    if (cell != NULL) return cell;
+    if (cell == NULL) return NULL;
 
-    return NULL;
+    return cell;
 }
 
 int dbresult_query_first(dbresult_t* result) {

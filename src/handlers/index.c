@@ -189,60 +189,91 @@ void db_mysql(http1request_t* request, http1response_t* response) {
         return;
     }
 
-    while (dbresult_row_next(&result)) {
+    do {
         const db_table_cell_t* field = dbresult_field(&result, "domain");
 
-        printf("%s\n", field->value);
+        // printf("%s\n", field->value);
     }
+    while (dbresult_row_next(&result));
 
     dbresult_row_first(&result);
     dbresult_col_first(&result);
 
-    printf("%d\n", dbresult_query_rows(&result));
-    printf("%d\n", dbresult_query_cols(&result));
-    printf("\n");
+    // printf("%d\n", dbresult_query_rows(&result));
+    // printf("%d\n", dbresult_query_cols(&result));
+    // printf("\n");
 
     dbresult_query_first(&result);
 
     do {
         for (int col = 0; col < dbresult_query_cols(&result); col++) {
-            printf("%s | ", result.current->fields[col]->value);
+            // printf("%s | ", result.current->fields[col]->value);
         }
-        printf("\n");
+        // printf("\n");
 
         for (int row = 0; row < dbresult_query_rows(&result); row++) {
             for (int col = 0; col < dbresult_query_cols(&result); col++) {
+                // printf("%d %d %p\n", row, col, result.current->fields[col]);
                 const db_table_cell_t* field = dbresult_cell(&result, row, col);
 
-                printf("%s | ", field->value);
+                // printf("%s (%p) | ", field->value, field);
             }
-            printf("\n");
+            // printf("\n");
         }
-        printf("\n");
+        // printf("\n");
 
         dbresult_row_first(&result);
         dbresult_col_first(&result);
     } while (dbresult_query_next(&result));
 
     dbresult_query_first(&result);
+    dbresult_row_first(&result);
+    dbresult_col_first(&result);
 
 
-    const db_table_cell_t* field = dbresult_field(&result, "domain");
-
+    db_table_cell_t* field = dbresult_field(&result, "domain");
 
     char* str = (char*)malloc(1024);
-    strcpy(str, field->value);
+    // strcpy(str, field->value);
 
     dbresult_query_next(&result);
+    dbresult_row_first(&result);
+    dbresult_col_first(&result);
 
     field = dbresult_cell(&result, 2, 0);
+
+    // printf("%s\n", field->value);
 
     strcat(str, " | ");
     strcat(str, field->value);
 
-    dbresult_free(&result);
-
     response->data(response, str);
 
+    dbresult_free(&result);
+
     free(str);
+}
+
+void db_redis(http1request_t* request, http1response_t* response) {
+    dbinstance_t dbinst = dbinstance(request->database_list(request), "redis");
+
+    if (!dbinst.ok) return response->data(response, "db not found");
+
+    // dbresult_t result = dbquery(&dbinst, "SET testkey 7978979");
+    dbresult_t result = dbquery(&dbinst, "GET testkey");
+    // dbresult_t result = dbquery(&dbinst, "GET key_bool");
+    // dbresult_t result = dbquery(&dbinst, "JSON.GET json");
+    // dbresult_t result = dbquery(&dbinst, "LRANGE list 0 -1");
+
+    if (!dbresult_ok(&result)) {
+        response->data(response, dbresult_error_message(&result));
+        dbresult_free(&result);
+        return;
+    }
+
+    const db_table_cell_t* field = dbresult_field(&result, NULL);
+
+    response->datan(response, field->value, field->length);
+
+    dbresult_free(&result);
 }

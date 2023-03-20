@@ -6,6 +6,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 #add_compile_options(-Wall -Wextra -Wpedantic)
 
+
 find_package(Threads REQUIRED)
 find_package(PCRE REQUIRED)
 find_package(OpenSSL)
@@ -31,6 +32,17 @@ endif()
 if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
 	include_directories(${PostgreSQL_INCLUDE_DIRS} ${PostgreSQL_SERVER_INCLUDE_DIRS})
 	add_definitions(-DPostgreSQL_FOUND)
+endif()
+
+if(INCLUDE_REDIS STREQUAL yes)
+	#sudo apt-get install -y libhiredis-dev
+	find_package(Redis)
+	message(STATUS "Include Redis: ${INCLUDE_REDIS}")
+endif()
+
+if(Redis_FOUND AND INCLUDE_REDIS STREQUAL yes)
+	include_directories(${REDIS_INCLUDE_DIRS})
+	add_definitions(-DRedis_FOUND)
 endif()
 
 add_executable(main src/main.c)
@@ -101,6 +113,10 @@ endif()
 
 if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
 	add_library(postgresql STATIC src/database/postgresql.c)
+endif()
+
+if(Redis_FOUND AND INCLUDE_REDIS STREQUAL yes)
+	add_library(redis STATIC src/database/redis.c)
 endif()
 
 add_library(openssl STATIC src/openssl/openssl.c)
@@ -196,6 +212,15 @@ if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
 		postgresql
 		dbresult
 		${PostgreSQL_LIBRARY}
+	)
+endif()
+
+if(Redis_FOUND AND INCLUDE_REDIS STREQUAL yes)
+	target_link_libraries(
+		main
+		redis
+		dbresult
+		${Redis_LIBRARY}
 	)
 endif()
 
