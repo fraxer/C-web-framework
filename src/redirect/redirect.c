@@ -86,6 +86,7 @@ redirect_t* redirect_init(const char* template) {
 
     if (redirect->template == NULL) {
         log_error(REDIRECT_OUT_OF_MEMORY);
+        free(redirect);
         return NULL;
     }
 

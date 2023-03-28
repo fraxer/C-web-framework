@@ -66,7 +66,7 @@ void routeloader_free(routeloader_lib_t* first_lib) {
 }
 
 routeloader_lib_t* routeloader_init_container(const char* filepath, void* shared_lib) {
-    routeloader_lib_t* routeloader_lib = (routeloader_lib_t*)malloc(sizeof(routeloader_lib));
+    routeloader_lib_t* routeloader_lib = (routeloader_lib_t*)malloc(sizeof(routeloader_lib_t));
 
     if (routeloader_lib == NULL) return NULL;
 

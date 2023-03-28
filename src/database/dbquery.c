@@ -7,6 +7,7 @@ dbinstance_t dbinstance(db_t* db, const char* dbid) {
     dbinstance_t inst = {
         .ok = 0,
         .config = NULL,
+        .connection_create = NULL,
         .lock_connection = 0,
         .connection = NULL
     };
@@ -52,7 +53,7 @@ dbresult_t dbquery(dbinstance_t* instance, const char* string) {
             db_connection_append(instance, connection);
         }
 
-        result = connection->send_query(connection, string);
+        connection->send_query(&result, connection, string);
 
         if (!result.ok) {
             if (result.error_code == 1) {

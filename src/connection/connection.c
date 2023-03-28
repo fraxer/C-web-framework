@@ -1,5 +1,3 @@
-#include <stddef.h>
-#include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
 #include "../log/log.h"
@@ -60,6 +58,7 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->ssl_enabled = 0;
     connection->keepalive_enabled = 0;
     connection->timeout = 0;
+    connection->locked = 0;
     connection->counter = NULL;
     connection->ssl = NULL;
     connection->apidata = NULL;
@@ -76,15 +75,11 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->queue_pop = NULL;
     connection->switch_to_protocol = NULL;
 
-    pthread_mutex_init(&connection->mutex, NULL);
-
     return connection;
 }
 
 void connection_free(connection_t* connection) {
     if (connection == NULL) return;
-
-    pthread_mutex_destroy(&connection->mutex);
 
     if (connection->ssl_enabled) {
         SSL_free_buffers(connection->ssl);
@@ -103,7 +98,6 @@ void connection_free(connection_t* connection) {
 
     free(connection->apidata);
     free(connection);
-    connection = NULL;
 }
 
 void connection_reset(connection_t* connection) {
@@ -121,11 +115,30 @@ void connection_reset(connection_t* connection) {
 int connection_trylock(connection_t* connection) {
     if (connection == NULL) return -1;
 
-    return pthread_mutex_trylock(&connection->mutex);
+    _Bool expected = 0;
+    _Bool desired = 1;
+
+    if (atomic_compare_exchange_strong(&connection->locked, &expected, desired)) return 0;
+
+    return -1;
+}
+
+int connection_lock(connection_t* connection) {
+    _Bool expected = 0;
+    _Bool desired = 1;
+
+    do {
+        expected = 0;
+    } while (!atomic_compare_exchange_strong(&connection->locked, &expected, desired));
+
+    return 0;
 }
 
 int connection_unlock(connection_t* connection) {
-    if (connection == NULL) return -1;
+    if (connection) {
+        atomic_store(&connection->locked, 0);
+        return 0;
+    }
 
-    return pthread_mutex_unlock(&connection->mutex);
+    return -1;
 }

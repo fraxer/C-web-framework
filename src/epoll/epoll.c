@@ -98,9 +98,8 @@ void epoll_run(void* chain) {
 
             if ((ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) ||
                 (server_chain->is_deprecated && server_chain->is_hard_reload)) {
-
-                printf("close conn %d\n", connection->fd);
                 connection->close(connection);
+                connection = NULL;
             }
             else if (ev->events & EPOLLIN) {
                 connection->read(connection, buffer, server_chain->info->read_buffer);
@@ -231,6 +230,8 @@ socket_epoll_t* epoll_socket_alloc() {
     socket->base.server = NULL;
     socket->base.next = NULL;
     socket->event = (epoll_event_t*)malloc(sizeof(epoll_event_t));
+    socket->event->events = 0;
+    socket->event->data.ptr = NULL;
 
     return socket;
 }

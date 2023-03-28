@@ -24,8 +24,10 @@ void* thread_handler(void* arg) {
         connection_t* connection = connection_queue_guard_pop();
 
         if (connection && connection->handle) {
+            connection_lock(connection);
             connection->handle(connection->request, connection->response);
             connection->queue_pop(connection);
+            connection_unlock(connection);
         }
 
         if (thread_handler->is_deprecated) break;

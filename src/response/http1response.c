@@ -135,6 +135,8 @@ int http1response_data_append(char* data, size_t* pos, const char* string, size_
     memcpy(&data[*pos], string, length);
 
     *pos += length;
+
+    return 0;
 }
 
 int http1response_prepare(http1response_t* response, const char* body, size_t length) {
@@ -475,7 +477,7 @@ const char* http1response_get_mimetype(const char* extension) {
 }
 
 const char* http1response_get_extention(const char* path, size_t length) {
-    for (size_t i = length - 1; i >= 0; i--) {
+    for (size_t i = length - 1; i > 0; i--) {
         switch (path[i]) {
         case '.':
             return &path[i + 1];

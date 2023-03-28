@@ -1,7 +1,7 @@
 #ifndef __CONNECTION__
 #define __CONNECTION__
 
-#include <pthread.h>
+#include <stdatomic.h>
 #include "../server/server.h"
 #include "../openssl/openssl.h"
 #include "../request/request.h"
@@ -13,6 +13,7 @@ typedef struct connection {
     int ssl_enabled;
     int keepalive_enabled;
     int timeout;
+    atomic_bool locked;
     int* counter;
     void* apidata;
     void* protocol;
@@ -20,8 +21,6 @@ typedef struct connection {
     server_t* server;
     request_t* request;
     response_t* response;
-
-    pthread_mutex_t mutex;
 
     int(*close)(struct connection*);
     void(*read)(struct connection*, char*, size_t);
@@ -43,6 +42,8 @@ void connection_free(connection_t*);
 void connection_reset(connection_t*);
 
 int connection_trylock(connection_t*);
+
+int connection_lock(connection_t*);
 
 int connection_unlock(connection_t*);
 

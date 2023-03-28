@@ -7,7 +7,7 @@
     #include <stdio.h>
 
 void my_connection_free(dbconnection_t*);
-dbresult_t my_send_query(dbconnection_t*, const char*);
+void my_send_query(dbresult_t*, dbconnection_t*, const char*);
 MYSQL* my_connect(myconfig_t*);
 
 myconfig_t* my_config_create() {
@@ -101,22 +101,14 @@ void my_connection_free(dbconnection_t* connection) {
     free(conn);
 }
 
-dbresult_t my_send_query(dbconnection_t* connection, const char* string) {
+void my_send_query(dbresult_t* result, dbconnection_t* connection, const char* string) {
     myconnection_t* myconnection = (myconnection_t*)connection;
-
-    dbresult_t result = {
-        .ok = 0,
-        .error_code = 0,
-        .error_message = "",
-        .query = NULL,
-        .current = NULL
-    };
 
     if (mysql_query(myconnection->connection, string) != 0) {
         log_error("Mysql error: %s\n", mysql_error(myconnection->connection));
-        result.error_code = 1;
-        result.error_message = "Mysql error: connection error";
-        return result;
+        result->error_code = 1;
+        result->error_message = "Mysql error: connection error";
+        return;
     }
 
     int status = 0;
@@ -132,9 +124,9 @@ dbresult_t my_send_query(dbconnection_t* connection, const char* string) {
             dbresultquery_t* query = dbresult_query_create(rows, cols);
 
             if (query == NULL) {
-                result.error_message = "Out of memory";
+                result->error_message = "Out of memory";
                 mysql_free_result(res);
-                return result;
+                return;
             }
 
             if (query_last != NULL) {
@@ -142,16 +134,14 @@ dbresult_t my_send_query(dbconnection_t* connection, const char* string) {
             }
             query_last = query;
 
-            if (result.query == NULL) {
-                result.query = query;
-                result.current = query;
+            if (result->query == NULL) {
+                result->query = query;
+                result->current = query;
             }
 
             MYSQL_FIELD* fields = mysql_fetch_fields(res);
 
             for (int col = 0; col < cols; col++) {
-                // printf("Field %u is %s\n", col, fields[col].name);
-
                 dbresult_query_field_insert(query, fields[col].name, col);
             }
 
@@ -165,44 +155,32 @@ dbresult_t my_send_query(dbconnection_t* connection, const char* string) {
                     size_t length = lengths[col];
                     const char* value = myrow[col];
 
-                    db_table_cell_t* cell = dbresult_cell_create(value, length);
-
-                    if (cell == NULL) {
-                        result.error_message = "Out of memory";
-                        mysql_free_result(res);
-                        return result;
-                    }
-
-                    dbresult_query_table_insert(query, cell, row, col);
-
-                    // printf("[%.*s] ", (int) lengths[col], myrow[col] ? myrow[col] : "NULL");
+                    dbresult_query_table_insert(query, value, length, row, col);
                }
 
                row++;
-
-               // printf("\n");
             }
 
-            result.ok = 1;
+            result->ok = 1;
 
             mysql_free_result(res);
         }
         else if (mysql_field_count(myconnection->connection) != 0) {
             log_error("Mysql error: %s\n", mysql_error(myconnection->connection));
-            result.error_code = 1;
-            result.error_message = mysql_error(myconnection->connection);
+            result->error_code = 1;
+            result->error_message = mysql_error(myconnection->connection);
             break;
         }
 
         if ((status = mysql_next_result(myconnection->connection)) > 0) {
             log_error("Mysql error: %s\n", mysql_error(myconnection->connection));
-            result.ok = 0;
-            result.error_message = mysql_error(myconnection->connection);
+            result->ok = 0;
+            result->error_message = mysql_error(myconnection->connection);
         }
 
     } while (status == 0);
 
-    return result;
+    return;
 }
 
 MYSQL* my_connect(myconfig_t* config) {

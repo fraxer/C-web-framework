@@ -60,7 +60,7 @@ const char* http1_set_field(const char* string, size_t length) {
 
     if (value == NULL) return value;
 
-    strncpy(value, string, length);
+    memcpy(value, string, length);
 
     value[length] = 0;
 

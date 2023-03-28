@@ -124,7 +124,7 @@ void db_pg(http1request_t* request, http1response_t* response) {
 
     if (!dbinst.ok) return response->data(response, "db not found");
 
-    dbresult_t result = dbquery(&dbinst, "SET ROLE slave_select; select email from \"user\" limit 3; select id from \"user\" limit 3;");
+    dbresult_t result = dbquery(&dbinst, "SET ROLE slave_select; select * from \"user\" limit 3; select * from \"room\" limit 4;");
 
     if (!dbresult_ok(&result)) {
         response->data(response, dbresult_error_message(&result));
@@ -156,24 +156,70 @@ void db_pg(http1request_t* request, http1response_t* response) {
     // dbresult_row_first(&result);
     // dbresult_col_first(&result);
 
-    const db_table_cell_t* field = dbresult_field(&result, "email");
+    char* str = malloc(10240);
 
+    // for (int col = 0; col < dbresult_query_cols(&result); col++) {
+    //     strcat(str, result.query->fields[col]->value);
+    //     strcat(str, " | ");
+    // }
 
-    char* str = (char*)malloc(1024);
-    strcpy(str, field->value);
+    // dbresult_query_next(&result);
+
+    // for (int col = 0; col < dbresult_query_cols(&result); col++) {
+    //     strcat(str, result.query->fields[col]->value);
+    //     strcat(str, " | ");
+    // }
+
+    // dbresult_query_first(&result);
+
+    // const db_table_cell_t* field = dbresult_field(&result, "email");
+    const db_table_cell_t* field = dbresult_cell(&result, 0, 1);
+
+    // for (int row = 0; row < dbresult_query_rows(&result); row++) {
+    //     for (int col = 0; col < dbresult_query_cols(&result); col++) {
+    //         printf("%d %p\n", row * result.current->cols + col, result.query->table[row * result.current->cols + col]);
+    //     }
+    // }
+
+    if (field)
+        strcpy(str, field->value);
 
     dbresult_query_next(&result);
 
-    field = dbresult_field(&result, "id");
+    field = dbresult_cell(&result, 2, 6);
 
-    strcat(str, " | ");
-    strcat(str, field->value);
+    if (field) {
+        strcat(str, " | ");
+        strcat(str, field->value);
+    }
+
+    field = dbresult_cell(&result, 0, 10);
+
+    if (field) {
+        strcat(str, " | ");
+        strcat(str, field->value);
+    }
+
+    field = dbresult_cell(&result, 2, 11);
+
+    if (field) {
+        strcat(str, " | ");
+        strcat(str, field->value);
+    }
+
+    field = dbresult_cell(&result, 1, 12);
+
+    if (field) {
+        strcat(str, " | ");
+        strcat(str, field->value);
+    }
 
     dbresult_free(&result);
 
     response->data(response, str);
 
     free(str);
+
 }
 
 void db_mysql(http1request_t* request, http1response_t* response) {
@@ -189,52 +235,57 @@ void db_mysql(http1request_t* request, http1response_t* response) {
         return;
     }
 
-    do {
-        const db_table_cell_t* field = dbresult_field(&result, "domain");
+    // do {
+    //     const db_table_cell_t* field = dbresult_field(&result, "domain");
 
-        // printf("%s\n", field->value);
-    }
-    while (dbresult_row_next(&result));
+    //     // printf("%s\n", field->value);
+    // }
+    // while (dbresult_row_next(&result));
 
-    dbresult_row_first(&result);
-    dbresult_col_first(&result);
+    // dbresult_row_first(&result);
+    // dbresult_col_first(&result);
 
-    // printf("%d\n", dbresult_query_rows(&result));
-    // printf("%d\n", dbresult_query_cols(&result));
-    // printf("\n");
+    // // printf("%d\n", dbresult_query_rows(&result));
+    // // printf("%d\n", dbresult_query_cols(&result));
+    // // printf("\n");
 
-    dbresult_query_first(&result);
+    // dbresult_query_first(&result);
 
-    do {
-        for (int col = 0; col < dbresult_query_cols(&result); col++) {
-            // printf("%s | ", result.current->fields[col]->value);
-        }
-        // printf("\n");
+    // do {
+    //     for (int col = 0; col < dbresult_query_cols(&result); col++) {
+    //         // printf("%s | ", result.current->fields[col]->value);
+    //     }
+    //     // printf("\n");
 
-        for (int row = 0; row < dbresult_query_rows(&result); row++) {
-            for (int col = 0; col < dbresult_query_cols(&result); col++) {
-                // printf("%d %d %p\n", row, col, result.current->fields[col]);
-                const db_table_cell_t* field = dbresult_cell(&result, row, col);
+    //     for (int row = 0; row < dbresult_query_rows(&result); row++) {
+    //         for (int col = 0; col < dbresult_query_cols(&result); col++) {
+    //             // printf("%d %d %p\n", row, col, result.current->fields[col]);
+    //             const db_table_cell_t* field = dbresult_cell(&result, row, col);
 
-                // printf("%s (%p) | ", field->value, field);
-            }
-            // printf("\n");
-        }
-        // printf("\n");
+    //             // printf("%s (%p) | ", field->value, field);
+    //         }
+    //         // printf("\n");
+    //     }
+    //     // printf("\n");
 
-        dbresult_row_first(&result);
-        dbresult_col_first(&result);
-    } while (dbresult_query_next(&result));
+    //     dbresult_row_first(&result);
+    //     dbresult_col_first(&result);
+    // } while (dbresult_query_next(&result));
 
-    dbresult_query_first(&result);
-    dbresult_row_first(&result);
-    dbresult_col_first(&result);
+    // dbresult_query_first(&result);
+    // dbresult_row_first(&result);
+    // dbresult_col_first(&result);
 
 
     db_table_cell_t* field = dbresult_field(&result, "domain");
 
+
     char* str = (char*)malloc(1024);
-    // strcpy(str, field->value);
+    // strcpy(str, "test");
+    
+    if (field && field->value) {
+        strcpy(str, field->value);
+    }
 
     dbresult_query_next(&result);
     dbresult_row_first(&result);
@@ -242,10 +293,10 @@ void db_mysql(http1request_t* request, http1response_t* response) {
 
     field = dbresult_cell(&result, 2, 0);
 
-    // printf("%s\n", field->value);
-
-    strcat(str, " | ");
-    strcat(str, field->value);
+    if (field && field->value) {
+        strcat(str, " | ");
+        strcat(str, field->value);
+    }
 
     response->data(response, str);
 

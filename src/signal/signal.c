@@ -31,7 +31,7 @@ void server_backtrace() {
 
     if (strings != NULL) {
         for (int j = 0; j < size; j++) {
-            log_error("[server_backtrace] %s\n", strings[j]);
+            printf("[server_backtrace] %s\n", strings[j]);
         }
 
         free(strings);

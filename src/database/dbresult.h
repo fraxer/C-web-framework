@@ -5,9 +5,9 @@
 
 dbresultquery_t* dbresult_query_create(int, int);
 
-db_table_cell_t* dbresult_cell_create(const char*, size_t);
+int dbresult_cell_create(db_table_cell_t*, const char*, size_t);
 
-void dbresult_query_table_insert(dbresultquery_t*, db_table_cell_t*, int, int);
+void dbresult_query_table_insert(dbresultquery_t*, const char*, size_t, int, int);
 
 void dbresult_query_field_insert(dbresultquery_t*, const char*, int);
 

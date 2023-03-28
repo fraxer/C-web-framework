@@ -211,7 +211,7 @@ if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
 		main
 		postgresql
 		dbresult
-		${PostgreSQL_LIBRARY}
+		pq
 	)
 endif()
 

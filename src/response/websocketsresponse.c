@@ -121,6 +121,8 @@ int websocketsresponse_data_append(char* data, size_t* pos, const char* string, 
     memcpy(&data[*pos], string, length);
 
     *pos += length;
+
+    return 0;
 }
 
 int websocketsresponse_prepare(websocketsresponse_t* response, const char* body, size_t length) {

@@ -88,22 +88,16 @@ void db_host_free(dbhost_t* host) {
 void db_cell_free(db_table_cell_t* cell) {
     if (cell == NULL) return;
 
-    if (cell->value != NULL) {
+    if (cell->value) {
         free(cell->value);
+        cell->value = NULL;
     }
-
-    free(cell);
 }
 
 dbconnection_t* db_connection_find(dbconnection_t* connection) {
     while (connection) {
-        if (atomic_load(&connection->locked) == 0) {
-            _Bool expected = 0;
-            _Bool desired = 1;
-
-            if (db_connection_trylock(connection) == 0) {
-                return connection;
-            }
+        if (db_connection_trylock(connection) == 0) {
+            return connection;
         }
 
         connection = connection->next;

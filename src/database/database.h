@@ -18,7 +18,7 @@ typedef struct dbhost {
 } dbhost_t;
 
 typedef struct db_table_cell {
-    int length;
+    size_t length;
     char* value;
 } db_table_cell_t;
 
@@ -28,8 +28,8 @@ typedef struct dbresultquery {
     int current_row;
     int current_col;
 
-    db_table_cell_t** fields;
-    db_table_cell_t** table;
+    db_table_cell_t* fields;
+    db_table_cell_t* table;
 
     struct dbresultquery* next;
 } dbresultquery_t;
@@ -47,7 +47,7 @@ typedef struct dbconnection {
     atomic_bool locked;
     struct dbconnection* next;
     void(*free)(struct dbconnection*);
-    dbresult_t(*send_query)(struct dbconnection*, const char*);
+    void(*send_query)(dbresult_t*, struct dbconnection*, const char*);
 } dbconnection_t;
 
 typedef struct dbconfig {
@@ -57,7 +57,6 @@ typedef struct dbconfig {
 
 typedef struct dbinstance {
     int ok;
-    int permission;
     atomic_bool* lock_connection;
     dbconfig_t* config;
     dbconnection_t** connection;

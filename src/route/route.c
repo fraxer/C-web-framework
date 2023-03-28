@@ -63,7 +63,10 @@ route_t* route_create(const char* dirty_location) {
 
     failed:
 
-    if (result == -1 && route) free(route);
+    if (result == -1 && route) {
+        free(route);
+        route = NULL;
+    }
 
     route_parser_free(&parser);
 

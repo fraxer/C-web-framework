@@ -7,7 +7,7 @@
     #include <stdio.h>
 
 void redis_connection_free(dbconnection_t*);
-dbresult_t redis_send_query(dbconnection_t*, const char*);
+void redis_send_query(dbresult_t*, dbconnection_t*, const char*);
 redisContext* redis_connect(redisconfig_t*);
 
 redisconfig_t* redis_config_create() {
@@ -102,35 +102,25 @@ void redis_connection_free(dbconnection_t* connection) {
     free(conn);
 }
 
-dbresult_t redis_send_query(dbconnection_t* connection, const char* string) {
+void redis_send_query(dbresult_t* result, dbconnection_t* connection, const char* string) {
     redisconnection_t* redisconnection = (redisconnection_t*)connection;
-
-    dbresult_t result = {
-        .ok = 0,
-        .error_code = 0,
-        .error_message = "",
-        .query = NULL,
-        .current = NULL
-    };
 
     redisReply* reply = redisCommand(redisconnection->connection, string);
 
     if (reply == NULL || redisconnection->connection->err != 0) {
         log_error("Redis error: %s\n", redisconnection->connection->errstr);
-        result.error_code = 1;
-        result.error_message = "Redis error: connection error";
+        result->error_code = 1;
+        result->error_message = "Redis error: connection error";
         freeReplyObject(reply);
-        return result;
+        return;
     }
 
     if (reply->type == REDIS_REPLY_ERROR) {
         log_error("Redis error: %s\n", reply->str);
-        result.error_message = "Redis error: query error";
+        result->error_message = "Redis error: query error";
         freeReplyObject(reply);
-        return result;
+        return;
     }
-
-    // printf("%ld %s\n", reply->len, reply->str);
 
     int rows = reply->type == REDIS_REPLY_ARRAY ? reply->elements : 1;
     int cols = 1;
@@ -138,13 +128,13 @@ dbresult_t redis_send_query(dbconnection_t* connection, const char* string) {
     dbresultquery_t* query = dbresult_query_create(rows, cols);
 
     if (query == NULL) {
-        result.error_message = "Out of memory";
+        result->error_message = "Out of memory";
         freeReplyObject(reply);
-        return result;
+        return;
     }
 
-    result.query = query;
-    result.current = query;
+    result->query = query;
+    result->current = query;
 
     dbresult_query_field_insert(query, "", col);
     
@@ -157,22 +147,14 @@ dbresult_t redis_send_query(dbconnection_t* connection, const char* string) {
             value = reply->element[row]->str;
         }
 
-        db_table_cell_t* cell = dbresult_cell_create(value, length);
-
-        if (cell == NULL) {
-            result.error_message = "Out of memory";
-            freeReplyObject(reply);
-            return result;
-        }
-
-        dbresult_query_table_insert(query, cell, row, col);
+        dbresult_query_table_insert(query, value, length, row, col);
     }
 
-    result.ok = 1;
+    result->ok = 1;
 
     freeReplyObject(reply);
 
-    return result;
+    return;
 }
 
 redisContext* redis_connect(redisconfig_t* config) {

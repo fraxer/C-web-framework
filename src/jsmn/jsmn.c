@@ -419,6 +419,7 @@ int jsmn_init(jsmn_parser_t *parser, const char* string) {
 void jsmn_free(jsmn_parser_t *parser) {
   if (parser->string_internal) {
     free(parser->string_internal);
+    parser->string_internal = NULL;
   }
 
   if (parser->tokens) {
