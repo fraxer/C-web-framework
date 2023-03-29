@@ -109,7 +109,6 @@ void redis_send_query(dbresult_t* result, dbconnection_t* connection, const char
 
     if (reply == NULL || redisconnection->connection->err != 0) {
         log_error("Redis error: %s\n", redisconnection->connection->errstr);
-        result->error_code = 1;
         result->error_message = "Redis error: connection error";
         freeReplyObject(reply);
         return;

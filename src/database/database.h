@@ -36,7 +36,6 @@ typedef struct dbresultquery {
 
 typedef struct dbresult {
     int ok;
-    int error_code;
     const char* error_message;
 
     dbresultquery_t* query;

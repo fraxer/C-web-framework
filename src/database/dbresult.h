@@ -15,8 +15,6 @@ int dbresult_ok(dbresult_t*);
 
 const char* dbresult_error_message(dbresult_t*);
 
-int dbresult_error_code(dbresult_t*);
-
 void dbresult_free(dbresult_t*);
 
 int dbresult_row_next(dbresult_t*);

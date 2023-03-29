@@ -67,12 +67,6 @@ const char* dbresult_error_message(dbresult_t* result) {
     return result->error_message;
 }
 
-int dbresult_error_code(dbresult_t* result) {
-    if (result == NULL) return 0;
-
-    return result->error_code;
-}
-
 void dbresult_free(dbresult_t* result) {
     if (!result) return;
 

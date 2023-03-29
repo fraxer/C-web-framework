@@ -108,10 +108,11 @@ void postgresql_send_query(dbresult_t* result, dbconnection_t* connection, const
 
     if (!PQsendQuery(pgconnection->connection, string)) {
         log_error("Postgresql error: %s", PQerrorMessage(pgconnection->connection));
-        result->error_code = 1;
         result->error_message = "Postgresql error: connection error";
         return;
     }
+
+    result->ok = 1;
 
     PGresult* res = NULL;
     dbresultquery_t* query_last = NULL;
@@ -153,19 +154,15 @@ void postgresql_send_query(dbresult_t* result, dbconnection_t* connection, const
                     dbresult_query_table_insert(query, value, length, row, col);
                 }
             }
-
-            result->ok = 1;
         }
         else if (status == PGRES_FATAL_ERROR) {
             log_error("Postgresql Fatal error: %s", PQresultErrorMessage(res));
             result->ok = 0;
-            result->error_code = 1;
             result->error_message = "Postgresql error: fatal error";
         }
         else if (status == PGRES_NONFATAL_ERROR) {
             log_error("Postgresql Nonfatal error: %s", PQresultErrorMessage(res));
             result->ok = 0;
-            result->error_code = 1;
             result->error_message = "Postgresql error: non fatal error";
         }
         else if (status == PGRES_EMPTY_QUERY) {
@@ -176,11 +173,7 @@ void postgresql_send_query(dbresult_t* result, dbconnection_t* connection, const
         else if (status == PGRES_BAD_RESPONSE) {
             log_error("Postgresql Bad response: %s", PQresultErrorMessage(res));
             result->ok = 0;
-            result->error_code = 1;
             result->error_message = "Postgresql error: bad response";
-        }
-        else if (status == PGRES_COMMAND_OK) {
-            result->ok = 1;
         }
 
         clear:

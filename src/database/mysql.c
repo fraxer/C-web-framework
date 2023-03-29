@@ -106,10 +106,11 @@ void my_send_query(dbresult_t* result, dbconnection_t* connection, const char* s
 
     if (mysql_query(myconnection->connection, string) != 0) {
         log_error("Mysql error: %s\n", mysql_error(myconnection->connection));
-        result->error_code = 1;
         result->error_message = "Mysql error: connection error";
         return;
     }
+
+    result->ok = 1;
 
     int status = 0;
     dbresultquery_t* query_last = NULL;
@@ -117,16 +118,16 @@ void my_send_query(dbresult_t* result, dbconnection_t* connection, const char* s
     do {
         MYSQL_RES* res = NULL;
 
-        if (res = mysql_store_result(myconnection->connection)) {
+        if ((res = mysql_store_result(myconnection->connection))) {
             int cols = mysql_num_fields(res);
             int rows = mysql_num_rows(res);
 
             dbresultquery_t* query = dbresult_query_create(rows, cols);
 
             if (query == NULL) {
+                result->ok = 0;
                 result->error_message = "Out of memory";
-                mysql_free_result(res);
-                return;
+                goto clear;
             }
 
             if (query_last != NULL) {
@@ -161,13 +162,13 @@ void my_send_query(dbresult_t* result, dbconnection_t* connection, const char* s
                row++;
             }
 
-            result->ok = 1;
+            clear:
 
             mysql_free_result(res);
         }
         else if (mysql_field_count(myconnection->connection) != 0) {
             log_error("Mysql error: %s\n", mysql_error(myconnection->connection));
-            result->error_code = 1;
+            result->ok = 0;
             result->error_message = mysql_error(myconnection->connection);
             break;
         }

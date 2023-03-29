@@ -32,11 +32,12 @@ dbinstance_t dbinstance(db_t* db, const char* dbid) {
 dbresult_t dbquery(dbinstance_t* instance, const char* string) {
     dbresult_t result = {
         .ok = 0,
-        .error_code = 0,
         .error_message = "",
         .query = NULL,
         .current = NULL
     };
+
+    int second_try = 0;
 
     while (1) {
         dbconnection_t* connection = db_connection_find(*instance->connection);
@@ -55,17 +56,16 @@ dbresult_t dbquery(dbinstance_t* instance, const char* string) {
 
         connection->send_query(&result, connection, string);
 
-        if (!result.ok) {
-            if (result.error_code == 1) {
-                db_connection_pop(instance, connection);
-                db_connection_free(connection);
+        if (!result.ok && second_try == 0) {
+            second_try = 1;
+            db_connection_pop(instance, connection);
+            db_connection_free(connection);
 
-                if (*instance->connection == connection) {
-                    *instance->connection = NULL;
-                }
-
-                continue;
+            if (*instance->connection == connection) {
+                *instance->connection = NULL;
             }
+
+            continue;
         }
 
         db_connection_unlock(connection);
