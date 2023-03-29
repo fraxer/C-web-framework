@@ -16,15 +16,6 @@ void log_reinit() {
     log_init();
 }
 
-void log_full(int level, const char* format, va_list* args) {
-
-    vprintf(format, *args);
-
-    vsyslog(level, format, *args);
-
-    return;
-}
-
 void log_print(const char* format, ...) {
     va_list args;
 
@@ -42,7 +33,12 @@ void log_error(const char* format, ...) {
 
     va_start(args, format);
 
-    log_full(LOG_ERR, format, &args);
+    vprintf(format, args);
+
+    va_end(args);
+    va_start(args, format);
+
+    vsyslog(LOG_ERR, format, args);
 
     va_end(args);
 
@@ -54,7 +50,12 @@ void log_info(const char* format, ...) {
 
     va_start(args, format);
 
-    log_full(LOG_INFO, format, &args);
+    vprintf(format, args);
+
+    va_end(args);
+    va_start(args, format);
+
+    vsyslog(LOG_INFO, format, args);
 
     va_end(args);
 
