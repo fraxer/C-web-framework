@@ -1,13 +1,16 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdio.h>
 #include "../log/log.h"
 #include "dbresult.h"
 #include "redis.h"
-    #include <stdio.h>
 
 void redis_connection_free(dbconnection_t*);
 void redis_send_query(dbresult_t*, dbconnection_t*, const char*);
+int redis_send_command(redisContext*, const char*);
+int redis_auth(redisContext*, const char*, const char*);
+int redis_selectdb(redisContext*, const int);
 redisContext* redis_connect(redisconfig_t*);
 
 redisconfig_t* redis_config_create() {
@@ -136,7 +139,7 @@ void redis_send_query(dbresult_t* result, dbconnection_t* connection, const char
     result->current = query;
 
     dbresult_query_field_insert(query, "", col);
-    
+
     for (int row = 0; row < rows; row++) {
         size_t length = reply->len;
         const char* value = reply->str;
@@ -156,12 +159,73 @@ void redis_send_query(dbresult_t* result, dbconnection_t* connection, const char
     return;
 }
 
+int redis_send_command(redisContext* connection, const char* string) {
+    int result = -1;
+
+    redisReply* reply = redisCommand(connection, string);
+
+    if (reply == NULL) return result;
+
+    if (reply->type == REDIS_REPLY_ERROR)
+        log_error("Redis error: %s\n", reply->str);
+    else
+        result = 0;
+
+    freeReplyObject(reply);
+
+    return 0;
+}
+
+int redis_auth(redisContext* connection, const char* user, const char* password) {
+    size_t string_length = 256;
+    char string[string_length];
+
+    size_t user_length = strlen(user);
+    size_t password_length = strlen(password);
+
+    if (string_length <= user_length + password_length + 6) {
+        log_error("Redis error: user or password is too large");
+        return -1;
+    }
+
+    const char* arg1 = user;
+    const char* arg2 = password;
+
+    if (user_length == 0) {
+        arg1 = password;
+        arg2 = user;
+    }
+
+    if (password_length == 0) return 0;
+
+    sprintf(&string[0], "AUTH %s %s", arg1, arg2);
+
+    return redis_send_command(connection, &string[0]);
+}
+
+int redis_selectdb(redisContext* connection, const int index) {
+    char string[10];
+    sprintf(&string[0], "SELECT %d", index);
+
+    return redis_send_command(connection, &string[0]);
+}
+
 redisContext* redis_connect(redisconfig_t* config) {
     redisContext* connection = redisConnect(redis_host(config), redis_port(config));
 
     if (connection == NULL || connection->err != 0) {
         log_error("Redis error: %s\n", connection->errstr);
         if (connection) redisFree(connection);
+        return NULL;
+    }
+
+    if (redis_auth(connection, config->user, config->password) == -1) {
+        redisFree(connection);
+        return NULL;
+    }
+
+    if (redis_selectdb(connection, config->dbindex) == -1) {
+        redisFree(connection);
         return NULL;
     }
 
@@ -183,6 +247,7 @@ db_t* redis_load(const char* database_id, const jsmntok_t* token_object) {
     if (config == NULL) goto failed;
 
     enum fields { HOSTS = 0, DBINDEX, USER, PASSWORD, FIELDS_COUNT };
+    enum required_fields { R_HOSTS = 0, R_DBINDEX, R_FIELDS_COUNT };
 
     int finded_fields[FIELDS_COUNT] = {0};
 
@@ -230,7 +295,19 @@ db_t* redis_load(const char* database_id, const jsmntok_t* token_object) {
         }
     }
 
-    for (int i = 0; i < FIELDS_COUNT; i++) {
+    if (finded_fields[USER] == 0) {
+        config->user = (char*)malloc(1);
+        if (config->user == NULL) goto failed;
+        strcpy(config->user, "");
+    }
+
+    if (finded_fields[PASSWORD] == 0) {
+        config->password = (char*)malloc(1);
+        if (config->password == NULL) goto failed;
+        strcpy(config->password, "");
+    }
+
+    for (int i = 0; i < R_FIELDS_COUNT; i++) {
         if (finded_fields[i] == 0) {
             log_error("Error: Fill database config\n");
             goto failed;

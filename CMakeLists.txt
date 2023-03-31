@@ -6,7 +6,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 #add_compile_options(-Wall -Wextra -Wpedantic)
 
-
 find_package(Threads REQUIRED)
 find_package(PCRE REQUIRED)
 find_package(OpenSSL)
@@ -44,6 +43,9 @@ if(Redis_FOUND AND INCLUDE_REDIS STREQUAL yes)
 	include_directories(${REDIS_INCLUDE_DIRS})
 	add_definitions(-DRedis_FOUND)
 endif()
+
+add_compile_definitions(CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
+
 
 add_executable(main src/main.c)
 

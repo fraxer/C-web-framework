@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <pthread.h>
 #include "moduleloader/moduleloader.h"
@@ -12,7 +13,9 @@ static pthread_mutex_t main_mutex = PTHREAD_MUTEX_INITIALIZER;
 int main(int argc, char* argv[]) {
     int result = EXIT_FAILURE;
 
-    if (daemon(1, 1) < 0) goto failed;
+    if (strcmp(CMAKE_BUILD_TYPE, "Release") == 0) {
+        if (daemon(1, 1) < 0) goto failed;
+    }
 
     log_init();
 
