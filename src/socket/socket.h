@@ -10,11 +10,11 @@ typedef struct socket {
     struct socket* next;
 } socket_t;
 
-socket_t* socket_listen_create(int, server_t*, in_addr_t, unsigned short int, void*(*)());
+socket_t* socket_listen_create(server_t*, in_addr_t, unsigned short int, void*(*)());
 
 void socket_free();
 
-socket_t* socket_find(int, int, socket_t*);
+socket_t* socket_find(int, socket_t*);
 
 int socket_set_nonblocking(int);
 

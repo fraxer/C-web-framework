@@ -12,7 +12,7 @@ int socket_init(in_addr_t, unsigned short int);
 
 int socket_set_options(int);
 
-socket_t* socket_listen_create(int basefd, server_t* server, in_addr_t ip, unsigned short int port, void*(*socket_alloc)()) {
+socket_t* socket_listen_create(server_t* server, in_addr_t ip, unsigned short int port, void*(*socket_alloc)()) {
     socket_t* result = NULL;
     socket_t* socket = (socket_t*)socket_alloc();
 
@@ -118,7 +118,7 @@ int socket_set_nonblocking(int socket) {
     return 0;
 }
 
-socket_t* socket_find(int fd, int basefd, socket_t* first_socket) {
+socket_t* socket_find(int fd, socket_t* first_socket) {
     for (socket_t* socket = first_socket; socket; socket = socket->next) {
         if (socket->fd == fd) return socket;
     }

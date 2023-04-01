@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <getopt.h>
 #include "../helpers/helpers.h"
 #include "../log/log.h"
 #include "../jsmn/jsmn.h"

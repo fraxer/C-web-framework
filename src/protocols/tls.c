@@ -19,10 +19,15 @@
 ssize_t tls_read_internal(connection_t*, char*, size_t);
 
 void tls_read(connection_t* connection, char* buffer, size_t size) {
+    (void)buffer;
+    (void)size;
     tls_handshake(connection);
 }
 
 void tls_write(connection_t* connection, char* buffer, size_t size) {
+    (void)connection;
+    (void)buffer;
+    (void)size;
     log_error("tls write\n");
 }
 

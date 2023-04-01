@@ -15,7 +15,6 @@ server_chain_t* server_chain_alloc();
 
 
 server_t* server_create() {
-    server_t* result = NULL;
     server_t* server = server_alloc();
 
     if (server == NULL) return NULL;
@@ -35,15 +34,7 @@ server_t* server_create() {
     server->info = NULL;
     server->next = NULL;
 
-    result = server;
-
-    failed:
-
-    if (result == NULL) {
-        free(server);
-    }
-
-    return result;
+    return server;
 }
 
 server_t* server_alloc() {
@@ -171,8 +162,6 @@ int server_chain_append(server_t* server, routeloader_lib_t* lib, server_info_t*
     }
 
     last_server_chain = chain;
-
-    server_chain_t* c = server_chain;
 
     return 0;
 }

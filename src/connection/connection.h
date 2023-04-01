@@ -24,7 +24,7 @@ typedef struct connection {
 
     int(*close)(struct connection*);
     void(*read)(struct connection*, char*, size_t);
-    void(*handle)(request_t*, response_t*);
+    void(*handle)(void*, void*);
     void(*write)(struct connection*, char*, size_t);
     int(*after_read_request)(struct connection*);
     int(*after_write_request)(struct connection*);

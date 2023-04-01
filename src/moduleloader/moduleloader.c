@@ -191,7 +191,9 @@ int module_loader_set_http_route(routeloader_lib_t** first_lib, routeloader_lib_
             *last_lib = routeloader_lib;
         }
 
-        void*(*function)(void*) = (void*(*)(void*))routeloader_get_handler(*first_lib, lib_file, lib_handler);
+        void(*function)(void*, void*);
+
+        *(void**)(&function) = routeloader_get_handler(*first_lib, lib_file, lib_handler);
 
         if (function == NULL) return -1;
 
@@ -306,7 +308,9 @@ int module_loader_set_websockets_route(routeloader_lib_t** first_lib, routeloade
             *last_lib = routeloader_lib;
         }
 
-        void*(*function)(void*) = (void*(*)(void*))routeloader_get_handler(*first_lib, lib_file, lib_handler);
+        void(*function)(void*, void*);
+
+        *(void**)(&function) = routeloader_get_handler(*first_lib, lib_file, lib_handler);
 
         if (function == NULL) return -1;
 
@@ -731,8 +735,6 @@ int module_loader_mimetype_load() {
     if (token_root->type != JSMN_OBJECT) return -1;
 
     int result = -1;
-
-    jsmntok_t* token_array = token_root->child;
 
     size_t table_type_size = token_root->size;
     size_t table_ext_size = 0;

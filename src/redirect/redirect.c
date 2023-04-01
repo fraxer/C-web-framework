@@ -241,7 +241,7 @@ void redirect_free(redirect_t* redirect) {
     }
 }
 
-char* redirect_get_uri(redirect_t* redirect, const char* string, size_t length, int* vector) {
+char* redirect_get_uri(redirect_t* redirect, const char* string, int* vector) {
     char* uri = NULL;
 
     size_t uri_length = 0;

@@ -13,6 +13,7 @@ void signal_flush_streams() {
 }
 
 void signal_before_ctrl_c(int s) {
+    (void)s;
     signal_flush_streams();
     log_error("[signal_before_ctrl_c] Сигнал CTRL + C\n");
     log_close();
@@ -41,6 +42,7 @@ void server_backtrace() {
 }
 
 void signal_before_undefined_instruction(int s) {
+    (void)s;
     signal_flush_streams();
     log_error("[signal_before_undefined_instruction] Недопустимая инструкция\n");
 
@@ -52,6 +54,7 @@ void signal_before_undefined_instruction(int s) {
 }
 
 void signal_before_float_point(int s) {
+    (void)s;
     signal_flush_streams();
     log_error("[signal_before_float_point] Ошибка с плавающей запятой - переполнение, или деление на ноль\n");
 
@@ -63,6 +66,7 @@ void signal_before_float_point(int s) {
 }
 
 void signal_before_segmentation_fault(int s) {
+    (void)s;
     signal_flush_streams();
     log_error("[signal_before_segmentation_fault] Ошибка доступа к памяти\n");
 
@@ -74,6 +78,7 @@ void signal_before_segmentation_fault(int s) {
 }
 
 void signal_before_terminate(int s) {
+    (void)s;
     signal_flush_streams();
     log_error("[signal_before_terminate] Запрос на прекращение работы\n");
     log_close();
@@ -84,6 +89,7 @@ void signal_before_terminate(int s) {
 }
 
 void signal_before_abort(int s) {
+    (void)s;
     signal_flush_streams();
     log_error("[signal_before_abort] Аварийное завершение\n");
 
@@ -95,6 +101,7 @@ void signal_before_abort(int s) {
 }
 
 void signal_USR1(int s) {
+    (void)s;
     signal_flush_streams();
 
     printf("signal_USR1\n");
@@ -117,7 +124,8 @@ void signal_USR1(int s) {
     // syslog(LOG_INFO, "Polling data array size: %d", count2);
 }
 
-void signal_sigpipe_handler(int signum) {
+void signal_sigpipe_handler(int s) {
+    (void)s;
     return;
 }
 

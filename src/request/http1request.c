@@ -107,7 +107,7 @@ http1_header_t* http1request_headern(http1request_t* request, const char* key, s
     http1_header_t* header = request->header_;
 
     while (header) {
-        for (int i = 0, j = 0; i < header->key_length && j < key_length; i++, j++) {
+        for (size_t i = 0, j = 0; i < header->key_length && j < key_length; i++, j++) {
             if (tolower(header->key[i]) != tolower(key[j])) goto next;
         }
 

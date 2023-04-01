@@ -54,7 +54,7 @@ typedef struct jsmn_parser {
   unsigned int pos;          
   unsigned int toknext;      /* next token to allocate */
   unsigned int tokens_count; /* tokens count */
-  unsigned int toksuper;     /* superior token node, e.g. parent object or array */
+  int toksuper;     /* superior token node, e.g. parent object or array */
   size_t string_len;
   const char* string;
   char* string_internal;

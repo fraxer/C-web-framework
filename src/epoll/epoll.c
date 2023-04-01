@@ -26,7 +26,7 @@ typedef struct socket_epoll {
 
 int epoll_init(socket_epoll_t** first_socket, server_t*);
 
-int epoll_after_create_connection(connection_t*, server_chain_t*, server_t*, int*);
+int epoll_after_create_connection(connection_t*, server_t*, int*);
 
 int epoll_after_read_request(connection_t*);
 
@@ -48,7 +48,7 @@ int epoll_connection_set_event(connection_t*);
 
 void epoll_connection_set_hooks(connection_t*);
 
-int epoll_disable(socket_t*, int);
+void epoll_disable(socket_t*, int);
 
 
 void epoll_run(void* chain) {
@@ -78,13 +78,13 @@ void epoll_run(void* chain) {
         while (--n >= 0) {
             epoll_event_t* ev = &events[n];
 
-            socket_t* listen_socket = socket_find(ev->data.fd, basefd, (socket_t*)first_socket);
+            socket_t* listen_socket = socket_find(ev->data.fd, (socket_t*)first_socket);
 
             if (listen_socket != NULL) {
                 connection_t* connection = NULL;
 
                 while ((connection = connection_create(listen_socket->fd, basefd)) != NULL) {
-                    if (epoll_after_create_connection(connection, server_chain, listen_socket->server, &connection_count) == -1) break;
+                    if (epoll_after_create_connection(connection, listen_socket->server, &connection_count) == -1) break;
                 }
 
                 continue;
@@ -152,7 +152,7 @@ int epoll_init(socket_epoll_t** first_socket, server_t* first_server) {
     socket_epoll_t* last_socket = NULL;
 
     for (server_t* server = first_server; server; server = server->next) {
-        socket_epoll_t* socket = (socket_epoll_t*)socket_listen_create(basefd, server, server->ip, server->port, (void*(*)())epoll_socket_alloc);
+        socket_epoll_t* socket = (socket_epoll_t*)socket_listen_create(server, server->ip, server->port, (void*(*)())epoll_socket_alloc);
 
         if (socket == NULL) return -1;
 
@@ -178,7 +178,7 @@ int epoll_init(socket_epoll_t** first_socket, server_t* first_server) {
     return basefd;
 }
 
-int epoll_disable(socket_t* first_socket, int basefd) {
+void epoll_disable(socket_t* first_socket, int basefd) {
     socket_t* socket = first_socket;
 
     while (socket) {
@@ -196,7 +196,7 @@ char* epoll_buffer_alloc(int size) {
     return (char*)malloc(size);
 }
 
-int epoll_after_create_connection(connection_t* connection, server_chain_t* server_chain, server_t* server, int* connection_count) {
+int epoll_after_create_connection(connection_t* connection, server_t* server, int* connection_count) {
     if (epoll_connection_set_event(connection) == -1) {
         log_error("Epoll error: Error event allocation\n");
         return -1;

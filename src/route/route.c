@@ -28,7 +28,7 @@ typedef struct route_parser {
 
 route_t* route_init_route();
 int route_init_parser(route_parser_t* parser, const char* dirty_location);
-int route_parse_location(route_parser_t* parser, const char* dirty_location);
+int route_parse_location(route_parser_t* parser);
 int route_parse_token(route_parser_t* parser);
 void route_insert_symbol(route_parser_t* parser);
 int route_alloc_param(route_parser_t* parser);
@@ -47,7 +47,7 @@ route_t* route_create(const char* dirty_location) {
 
     if (route_init_parser(&parser, dirty_location) == -1) goto failed;
 
-    if (route_parse_location(&parser, dirty_location) == -1) goto failed;
+    if (route_parse_location(&parser) == -1) goto failed;
 
     route->location = pcre_compile(parser.location, 0, &route->location_error, &route->location_erroffset, NULL);
 
@@ -120,7 +120,7 @@ int route_init_parser(route_parser_t* parser, const char* dirty_location) {
     return 0;
 }
 
-int route_parse_location(route_parser_t* parser, const char* dirty_location) {
+int route_parse_location(route_parser_t* parser) {
     parser->is_primitive = 1;
 
     for (; parser->dirty_location[parser->dirty_pos] != 0; parser->dirty_pos++) {
@@ -313,7 +313,7 @@ void route_parser_free(route_parser_t* parser) {
     parser->location = NULL;
 }
 
-int route_set_http_handler(route_t* route, const char* method, void* function) {
+int route_set_http_handler(route_t* route, const char* method, void(*function)(void*, void*)) {
     int m = ROUTE_NONE;
 
     if (method[0] == 'G' && method[1] == 'E' && method[2] == 'T') {
@@ -339,12 +339,12 @@ int route_set_http_handler(route_t* route, const char* method, void* function) {
 
     if (route->handler[m]) return 0;
 
-    route->handler[m] = (void(*)(request_t*, response_t*))function;
+    route->handler[m] = function;
 
     return 0;
 }
 
-int route_set_websockets_handler(route_t* route, const char* method, void* function) {
+int route_set_websockets_handler(route_t* route, const char* method, void(*function)(void*, void*)) {
     int m = ROUTE_NONE;
 
     if (method[0] == 'G' && method[1] == 'E' && method[2] == 'T') {
@@ -364,7 +364,7 @@ int route_set_websockets_handler(route_t* route, const char* method, void* funct
 
     if (route->handler[m]) return 0;
 
-    route->handler[m] = (void(*)(request_t*, response_t*))function;
+    route->handler[m] = function;
 
     return 0;
 }

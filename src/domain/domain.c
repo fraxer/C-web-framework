@@ -77,8 +77,7 @@ domain_t* domain_alloc(const char* value) {
     strcpy(domain->template, value);
 
 
-    size_t pcre_length = domain_estimate_length(domain->template);
-
+    int pcre_length = domain_estimate_length(domain->template);
     if (pcre_length == -1) goto failed;
 
     domain->prepared_template = (char*)malloc(pcre_length + 1);
@@ -105,7 +104,7 @@ int domain_parse(domain_t* domain) {
 
     domain_parser_alloc(&parser, domain);
 
-    int length = strlen(domain->template);
+    size_t length = strlen(domain->template);
 
     if (domain->template[0] != '^' && domain->template[length - 1] != '$') {
         parser.prepared_pos = 1;

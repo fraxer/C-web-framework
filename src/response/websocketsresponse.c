@@ -14,8 +14,8 @@ void websocketsresponse_binary(websocketsresponse_t*, const char*);
 void websocketsresponse_binaryn(websocketsresponse_t*, const char*, size_t);
 int websocketsresponse_file(websocketsresponse_t*, const char*);
 int websocketsresponse_filen(websocketsresponse_t*, const char*, size_t);
-size_t websocketsresponse_data_size(websocketsresponse_t*, size_t);
-size_t websocketsresponse_file_size(websocketsresponse_t*, size_t);
+size_t websocketsresponse_data_size(size_t);
+size_t websocketsresponse_file_size(size_t);
 int websocketsresponse_prepare(websocketsresponse_t*, const char*, size_t);
 void websocketsresponse_reset(websocketsresponse_t*);
 int websocketsresponse_set_payload_length(char*, size_t*, size_t);
@@ -77,7 +77,7 @@ void websocketsresponse_reset(websocketsresponse_t* response) {
     response->body.data = NULL;
 }
 
-size_t websocketsresponse_data_size(websocketsresponse_t* response, size_t length) {
+size_t websocketsresponse_data_size(size_t length) {
     size_t size = 0;
 
     size += 1; // fin, opcode
@@ -98,7 +98,7 @@ size_t websocketsresponse_data_size(websocketsresponse_t* response, size_t lengt
     return size;
 }
 
-size_t websocketsresponse_file_size(websocketsresponse_t* response, size_t length) {
+size_t websocketsresponse_file_size(size_t length) {
     size_t size = 0;
 
     size += 1; // fin, opcode
@@ -132,7 +132,7 @@ int websocketsresponse_prepare(websocketsresponse_t* response, const char* body,
 
     size_t pos = 0;
 
-    if (websocketsresponse_data_append(data, &pos, &response->frame_code, 1) == -1) return -1;
+    if (websocketsresponse_data_append(data, &pos, (const char*)&response->frame_code, 1) == -1) return -1;
 
     if (websocketsresponse_set_payload_length(data, &pos, length) == -1) return -1;
 
@@ -176,7 +176,7 @@ void websocketsresponse_text(websocketsresponse_t* response, const char* data) {
 void websocketsresponse_textn(websocketsresponse_t* response, const char* data, size_t length) {
     response->frame_code = 0x81;
 
-    response->body.size = websocketsresponse_data_size(response, length);
+    response->body.size = websocketsresponse_data_size(length);
 
     websocketsresponse_prepare(response, data, length);
 
@@ -190,7 +190,7 @@ void websocketsresponse_binary(websocketsresponse_t* response, const char* data)
 void websocketsresponse_binaryn(websocketsresponse_t* response, const char* data, size_t length) {
     response->frame_code = 0x82;
 
-    response->body.size = websocketsresponse_data_size(response, length);
+    response->body.size = websocketsresponse_data_size(length);
 
     websocketsresponse_prepare(response, data, length);
 
@@ -245,7 +245,7 @@ int websocketsresponse_filen(websocketsresponse_t* response, const char* path, s
 
     response->frame_code = 0x82;
 
-    response->body.size = websocketsresponse_file_size(response, response->file_.size);
+    response->body.size = websocketsresponse_file_size(response->file_.size);
 
     if (websocketsresponse_prepare(response, NULL, response->file_.size) == -1) return -1;
 
@@ -264,7 +264,7 @@ void websocketsresponse_pong(websocketsresponse_t* response, const char* data, s
 
     response->frame_code = 0x8A;
 
-    response->body.size = websocketsresponse_data_size(response, length);
+    response->body.size = websocketsresponse_data_size(length);
 
     websocketsresponse_prepare(response, data, length);
 }
@@ -274,7 +274,7 @@ void websocketsresponse_close(websocketsresponse_t* response, const char* data, 
 
     response->frame_code = 0x88;
 
-    response->body.size = websocketsresponse_data_size(response, length);
+    response->body.size = websocketsresponse_data_size(length);
 
     websocketsresponse_prepare(response, data, length);
 }

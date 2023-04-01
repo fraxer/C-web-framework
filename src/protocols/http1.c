@@ -78,13 +78,13 @@ void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
             size = buffer_size;
         }
 
-        size_t writed = http1_write_internal(connection, &response->body.data[response->body.pos], size);
+        ssize_t writed = http1_write_internal(connection, &response->body.data[response->body.pos], size);
 
         if (writed == -1) return;
 
         response->body.pos += writed;
 
-        if (writed == buffer_size) return;
+        if ((size_t)writed == buffer_size) return;
     }
 
     // file
@@ -99,7 +99,7 @@ void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
 
         size_t readed = read(response->file_.fd, buffer, size);
 
-        size_t writed = http1_write_internal(connection, buffer, readed);
+        ssize_t writed = http1_write_internal(connection, buffer, readed);
 
         if (writed == -1) return;
 
@@ -119,13 +119,13 @@ ssize_t http1_read_internal(connection_t* connection, char* buffer, size_t size)
 
 ssize_t http1_write_internal(connection_t* connection, const char* response, size_t size) {
     if (connection->ssl_enabled) {
-        size_t sended = openssl_write(connection->ssl, response, size);
+        ssize_t sended = openssl_write(connection->ssl, response, size);
 
-        if (sended == -1) {
-            int err = openssl_get_status(connection->ssl, sended);
+        // if (sended == -1) {
+        //     int err = openssl_get_status(connection->ssl, sended);
 
-            // printf("%d\n", err);
-        }
+        //     // printf("%d\n", err);
+        // }
 
         return sended;
     }
@@ -246,7 +246,7 @@ int http1_get_redirect(connection_t* connection) {
         const char* old_path = request->path;
         const char* old_ext = request->ext;
 
-        char* new_uri = redirect_get_uri(redirect, request->path, request->path_length, vector);
+        char* new_uri = redirect_get_uri(redirect, request->path, vector);
 
         if (new_uri == NULL) return REDIRECT_OUT_OF_MEMORY;
 

@@ -33,6 +33,6 @@ redirect_t* redirect_create(const char*, const char*);
 
 void redirect_free(redirect_t*);
 
-char* redirect_get_uri(redirect_t*, const char*, size_t, int*);
+char* redirect_get_uri(redirect_t*, const char*, int*);
 
 #endif

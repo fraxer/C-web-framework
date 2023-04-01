@@ -61,13 +61,13 @@ void websockets_write(connection_t* connection, char* buffer, size_t buffer_size
             size = buffer_size;
         }
 
-        size_t writed = websockets_write_internal(connection, &response->body.data[response->body.pos], size);
+        ssize_t writed = websockets_write_internal(connection, &response->body.data[response->body.pos], size);
 
         if (writed == -1) return;
 
         response->body.pos += writed;
 
-        if (writed == buffer_size) return;
+        if ((size_t)writed == buffer_size) return;
     }
 
     // file
@@ -82,7 +82,7 @@ void websockets_write(connection_t* connection, char* buffer, size_t buffer_size
 
         size_t readed = read(response->file_.fd, buffer, size);
 
-        size_t writed = websockets_write_internal(connection, buffer, readed);
+        ssize_t writed = websockets_write_internal(connection, buffer, readed);
 
         if (writed == -1) return;
 
@@ -104,9 +104,9 @@ ssize_t websockets_write_internal(connection_t* connection, const char* response
     if (connection->ssl_enabled) {
         size_t sended = openssl_write(connection->ssl, response, size);
 
-        if (sended == -1) {
-            int err = openssl_get_status(connection->ssl, sended);
-        }
+        // if (sended == -1) {
+        //     int err = openssl_get_status(connection->ssl, sended);
+        // }
 
         return sended;
     }
@@ -121,7 +121,7 @@ void websockets_handle(connection_t* connection, websocketsparser_t* parser) {
     if (parser->frame.fin == 0) return;
 
     if (parser->frame.fin == 1) {
-        if (websocketsparser_save_location(parser, request) == -1) {
+        if (websocketsparser_save_location(parser) == -1) {
             websocketsresponse_default_response(response, "bad request");
             connection->after_read_request(connection);
             return;
@@ -155,7 +155,6 @@ void websockets_handle(connection_t* connection, websocketsparser_t* parser) {
 
 int websockets_get_resource(connection_t* connection) {
     websocketsrequest_t* request = (websocketsrequest_t*)connection->request;
-    websocketsresponse_t* response = (websocketsresponse_t*)connection->response;
 
     if (request->method == ROUTE_NONE) return -1;
     if (request->path == NULL) return -1;
@@ -184,14 +183,6 @@ int websockets_get_resource(connection_t* connection) {
                 if (query == NULL || query->key == NULL || query->value == NULL) return -1;
 
                 websocketsparser_append_query(request, query);
-            }
-
-            websockets_query_t* query = request->query;
-
-            while (query) {
-                printf("%s -> %s\n", query->key, query->value);
-
-                query = query->next;
             }
 
             connection->handle = route->handler[request->method];

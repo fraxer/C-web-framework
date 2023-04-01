@@ -7,6 +7,7 @@
 
 void postgresql_connection_free(dbconnection_t*);
 void postgresql_send_query(dbresult_t*, dbconnection_t*, const char*);
+void postgresql_append_string(char*, const char*, const char*);
 PGconn* postgresql_connect(postgresqlconfig_t*);
 
 postgresqlconfig_t* postgresql_config_create() {
@@ -184,23 +185,23 @@ void postgresql_send_query(dbresult_t* result, dbconnection_t* connection, const
     return;
 }
 
+void postgresql_append_string(char* string, const char* key, const char* value) {
+    strcat(string, key);
+    strcat(string, "=");
+    strcat(string, value);
+    strcat(string, " ");
+}
+
 PGconn* postgresql_connect(postgresqlconfig_t* config) {
     char string[1024] = {0};
 
-    void append(char* string, const char* key, const char* value) {
-        strcat(string, key);
-        strcat(string, "=");
-        strcat(string, value);
-        strcat(string, " ");
-    }
-
-    append(string, "host", postgresql_host(config));
+    postgresql_append_string(string, "host", postgresql_host(config));
 
     sprintf(&string[strlen(string)], "port=%d ", postgresql_port(config));
 
-    append(string, "dbname", config->dbname);
-    append(string, "user", config->user);
-    append(string, "password", config->password);
+    postgresql_append_string(string, "dbname", config->dbname);
+    postgresql_append_string(string, "user", config->user);
+    postgresql_append_string(string, "password", config->password);
 
     sprintf(&string[strlen(string)], "connect_timeout=%d ", config->connection_timeout);
 

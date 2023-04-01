@@ -14,8 +14,7 @@ enum http1parser_status {
 };
 
 typedef enum http1_request_stage {
-    SPACE = 0,
-    METHOD,
+    METHOD = 0,
     URI,
     PROTOCOL,
     HEADER_KEY,

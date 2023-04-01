@@ -15,7 +15,7 @@ int websocketsparser_parse_method(websocketsparser_t*);
 int websocketsparser_parse_location(websocketsparser_t*);
 int websocketsparser_parse_payload(websocketsparser_t*);
 int websocketsparser_string_append(websocketsparser_t*);
-int websocketsparser_set_payload_length(websocketsparser_t*, const unsigned char*, size_t);
+int websocketsparser_set_payload_length(websocketsparser_t*, const char*);
 int websocketsparser_set_method(websocketsrequest_t*, const char*, size_t);
 int websocketsparser_set_location(websocketsrequest_t*, const char*, size_t);
 int websocketsparser_set_uri(websocketsrequest_t*, const char*, size_t);
@@ -186,9 +186,9 @@ int websocketsparser_parse_payload_length(websocketsparser_t* parser) {
     if (parser->string && websocketsparser_string_append(parser) == -1) return -1;
 
     if (parser->string) {
-        if (websocketsparser_set_payload_length(parser, parser->string, parser->string_len) == -1) return -1;
+        if (websocketsparser_set_payload_length(parser, parser->string) == -1) return -1;
     } else {
-        if (websocketsparser_set_payload_length(parser, &parser->buffer[parser->pos_start], parser->pos - parser->pos_start) == -1) return -1;
+        if (websocketsparser_set_payload_length(parser, &parser->buffer[parser->pos_start]) == -1) return -1;
     }
 
     parser->pos_start = parser->pos;
@@ -386,29 +386,13 @@ int websocketsparser_string_append(websocketsparser_t* parser) {
     return -2;
 }
 
-int websocketsparser_set_payload_length(websocketsparser_t* parser, const unsigned char* string, size_t length) {
+int websocketsparser_set_payload_length(websocketsparser_t* parser, const char* string) {
     int byte_count = 0;
     
     if (parser->frame.payload_length == 126) {
-        // parser->frame.payload_length = (
-        //     (string[0] << 8) | 
-        //     (string[1])
-        // );
-
         byte_count = 2;
     }
     else if (parser->frame.payload_length == 127) {
-        // parser->frame.payload_length = (
-        //     (string[0] << 56) |
-        //     (string[1] << 48) |
-        //     (string[2] << 40) |
-        //     (string[3] << 32) |
-        //     (string[4] << 24) |
-        //     (string[5] << 16) |
-        //     (string[6] << 8)  |
-        //     (string[7])
-        // );
-
         byte_count = 8;
     }
     else {
@@ -419,15 +403,16 @@ int websocketsparser_set_payload_length(websocketsparser_t* parser, const unsign
 
     int counter = byte_count;
     int byte_left = 8;
+    const unsigned char* value = (const unsigned char*)string;
 
     do {
-        parser->frame.payload_length |= string[byte_count - counter] << (byte_left * counter - byte_left);
+        parser->frame.payload_length |= value[byte_count - counter] << (byte_left * counter - byte_left);
     } while (--counter > 0);
 
     return 0;
 }
 
-int websocketsparser_save_location(websocketsparser_t* parser, websocketsrequest_t* request) {
+int websocketsparser_save_location(websocketsparser_t* parser) {
     if (parser->frame.payload_length == 0) return 0;
 
     int result = 0;
@@ -472,7 +457,6 @@ int websocketsparser_set_method(websocketsrequest_t* request, const char* string
 int websocketsparser_set_location(websocketsrequest_t* request, const char* string, size_t length) {
     if (string[0] != '/') return -1;
 
-    char prev_c = 0;
     size_t uri_point_end = 0;
     size_t path_point_end = 0;
     size_t ext_point_start = 0;
@@ -500,8 +484,6 @@ int websocketsparser_set_location(websocketsrequest_t* request, const char* stri
             uri_point_end = i;
             break;
         }
-
-        prev_c = c;
     }
 
     next:
@@ -648,8 +630,6 @@ void websocketsparser_append_query(websocketsrequest_t* request, websockets_quer
 }
 
 int websocketsparser_set_payload(websocketsparser_t* parser, const char* string, size_t length) {
-    websocketsrequest_t* request = parser->request;
-
     if (*parser->payload == NULL) {
         *parser->payload_length = length;
 

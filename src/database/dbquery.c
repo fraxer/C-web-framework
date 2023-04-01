@@ -77,6 +77,7 @@ dbresult_t dbquery(dbinstance_t* instance, const char* string) {
 }
 
 dbresult_t dbbegin(dbinstance_t* instance, transaction_level_e level) {
+    (void)level;
     return dbquery(instance, "level");
 }
 

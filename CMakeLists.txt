@@ -4,7 +4,7 @@ project(server LANGUAGES C)
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-#add_compile_options(-Wall -Wextra -Wpedantic)
+add_compile_options(-Wall -Wextra -Wpedantic)
 
 find_package(Threads REQUIRED)
 find_package(PCRE REQUIRED)
@@ -225,6 +225,8 @@ if(Redis_FOUND AND INCLUDE_REDIS STREQUAL yes)
 		${Redis_LIBRARY}
 	)
 endif()
+
+add_subdirectory(migration)
 
 #enable_testing()
 

@@ -45,7 +45,7 @@ void websocketsparser_set_bytes_readed(websocketsparser_t*, size_t);
 
 int websocketsparser_run(websocketsparser_t*);
 
-int websocketsparser_save_location(websocketsparser_t*, websocketsrequest_t*);
+int websocketsparser_save_location(websocketsparser_t*);
 
 void websocketsparser_append_query(websocketsrequest_t*, websockets_query_t*);
 

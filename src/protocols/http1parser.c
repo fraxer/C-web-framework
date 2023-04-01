@@ -54,18 +54,23 @@ int http1parser_run(http1parser_t* parser) {
     case METHOD:
         result = http1parser_parse_method(parser);
         if (result != HTTP1PARSER_SUCCESS) return result;
+        __attribute__ ((fallthrough));
     case URI:
         result = http1parser_parse_uri(parser);
         if (result != HTTP1PARSER_SUCCESS) return result;
+        __attribute__ ((fallthrough));
     case PROTOCOL:
         result = http1parser_parse_protocol(parser);
         if (result != HTTP1PARSER_SUCCESS) return result;
+        __attribute__ ((fallthrough));
     case HEADER_KEY:
         result = http1parser_parse_headers_key(parser);
         if (result != HTTP1PARSER_SUCCESS) return result;
+        __attribute__ ((fallthrough));
     case HEADER_VALUE:
         result = http1parser_parse_headers_value(parser);
         if (result != HTTP1PARSER_SUCCESS) return result;
+        __attribute__ ((fallthrough));
     case PAYLOAD:
         result = http1parser_parse_payload(parser);
         if (result != HTTP1PARSER_SUCCESS) return result;
@@ -79,7 +84,7 @@ void http1parser_set_bytes_readed(struct http1parser* parser, int readed) {
 }
 
 int http1parser_parse_method(http1parser_t* parser) {
-    int method_max_length = 7;
+    size_t method_max_length = 7;
 
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
         if (parser->buffer[parser->pos] < 32) {
@@ -97,9 +102,11 @@ int http1parser_parse_method(http1parser_t* parser) {
 
     return http1parser_string_append(parser);
 
+    int result = 0;
+
     next:
 
-    int result = http1parser_string_append(parser);
+    result = http1parser_string_append(parser);
 
     if (parser->string && result != HTTP1PARSER_CONTINUE) return result;
 
@@ -148,9 +155,11 @@ int http1parser_parse_uri(http1parser_t* parser) {
 
     return http1parser_string_append(parser);
 
+    int result = 0;
+
     next:
 
-    int result = http1parser_string_append(parser);
+    result = http1parser_string_append(parser);
 
     if (parser->string && result != HTTP1PARSER_CONTINUE) return result;
 
@@ -188,7 +197,7 @@ int http1parser_parse_uri(http1parser_t* parser) {
 }
 
 int http1parser_parse_protocol(http1parser_t* parser) {
-    int protocol_max_length = 8;
+    size_t protocol_max_length = 8;
 
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
         char ch = parser->buffer[parser->pos];
@@ -216,9 +225,11 @@ int http1parser_parse_protocol(http1parser_t* parser) {
 
     return http1parser_string_append(parser);
 
+    int result = 0;
+
     next:
 
-    int result = http1parser_string_append(parser);
+    result = http1parser_string_append(parser);
 
     if (parser->string && result != HTTP1PARSER_CONTINUE) return result;
 
@@ -310,9 +321,11 @@ int http1parser_parse_header_key(http1parser_t* parser) {
 
     return http1parser_string_append(parser);
 
+    int result = 0;
+
     next:
 
-    int result = http1parser_string_append(parser);
+    result = http1parser_string_append(parser);
 
     if (parser->string && result != HTTP1PARSER_CONTINUE) return result;
 
@@ -376,9 +389,11 @@ int http1parser_parse_header_value(http1parser_t* parser) {
 
     return http1parser_string_append(parser);
 
+    int result = 0;
+
     next:
 
-    int result = http1parser_string_append(parser);
+    result = http1parser_string_append(parser);
 
     if (parser->string && result != HTTP1PARSER_CONTINUE) return result;
 
@@ -720,7 +735,7 @@ int http1parser_host_not_found(http1parser_t* parser) {
     const char* host_key = "host";
     size_t host_key_length = 4;
 
-    for (int i = 0, j = 0; i < header->key_length && j < host_key_length; i++, j++) {
+    for (size_t i = 0, j = 0; i < header->key_length && j < host_key_length; i++, j++) {
         if (tolower(header->key[i]) != tolower(host_key[j])) return HTTP1PARSER_CONTINUE;
     }
 
@@ -757,11 +772,11 @@ void http1parser_try_set_keepalive(http1parser_t* parser) {
 
     if (header->key_length != connection_key_length) return;
 
-    for (int i = 0, j = 0; i < header->key_length && j < connection_key_length; i++, j++) {
+    for (size_t i = 0, j = 0; i < header->key_length && j < connection_key_length; i++, j++) {
         if (tolower(header->key[i]) != tolower(connection_key[j])) return;
     }
 
-    for (int i = 0, j = 0; i < header->value_length && j < connection_value_length; i++, j++) {
+    for (size_t i = 0, j = 0; i < header->value_length && j < connection_value_length; i++, j++) {
         if (tolower(header->value[i]) != tolower(connection_value[j])) return;
     }
 
