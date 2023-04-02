@@ -8,45 +8,44 @@
 void postgresql_connection_free(dbconnection_t*);
 void postgresql_send_query(dbresult_t*, dbconnection_t*, const char*);
 void postgresql_append_string(char*, const char*, const char*);
-PGconn* postgresql_connect(postgresqlconfig_t*);
+PGconn* postgresql_connect(dbhosts_t*);
 
-postgresqlconfig_t* postgresql_config_create() {
-    postgresqlconfig_t* config = (postgresqlconfig_t*)malloc(sizeof(postgresqlconfig_t));
+postgresqlhost_t* postgresql_host_create() {
+    postgresqlhost_t* host = malloc(sizeof *host);
 
-    config->base.free = postgresql_config_free;
-    config->base.connection_create = postgresql_connection_create;
-    config->host = NULL;
-    config->current_host = NULL;
-    config->dbname = NULL;
-    config->user = NULL;
-    config->password = NULL;
-    config->connection_timeout = 0;
+    host->base.free = postgresql_host_free;
+    host->base.next = NULL;
+    host->port = 0;
+    host->ip = NULL;
+    host->dbname = NULL;
+    host->user = NULL;
+    host->password = NULL;
+    host->connection_timeout = 0;
 
-    return config;
+    return host;
 }
 
-void postgresql_config_free(void* arg) {
+void postgresql_host_free(void* arg) {
     if (arg == NULL) return;
 
-    postgresqlconfig_t* config = (postgresqlconfig_t*)arg;
+    postgresqlhost_t* host = arg;
 
-    db_host_free(config->host);
-    config->host = NULL;
+    if (host->ip) free(host->ip);
+    if (host->dbname) free(host->dbname);
+    if (host->user) free(host->user);
+    if (host->password) free(host->password);
+    host->port = 0;
+    host->connection_timeout = 0;
+    host->base.next = NULL;
 
-    if (config->dbname) free(config->dbname);
-    if (config->user) free(config->user);
-    if (config->password) free(config->password);
-
-    free(config);
+    free(host);
 }
 
 void postgresql_free(db_t* db) {
     db_free(db);
 }
 
-dbconnection_t* postgresql_connection_create(dbconfig_t* config) {
-    postgresqlconfig_t* pgconfig = (postgresqlconfig_t*)config;
-
+dbconnection_t* postgresql_connection_create(dbhosts_t* hosts) {
     postgresqlconnection_t* connection = (postgresqlconnection_t*)malloc(sizeof(postgresqlconnection_t));
 
     if (connection == NULL) return NULL;
@@ -56,10 +55,10 @@ dbconnection_t* postgresql_connection_create(dbconfig_t* config) {
     connection->base.free = postgresql_connection_free;
     connection->base.send_query = postgresql_send_query;
 
-    void* host_address = pgconfig->current_host;
+    void* host_address = hosts->current_host;
 
     while (1) {
-        connection->connection = postgresql_connect(pgconfig);
+        connection->connection = postgresql_connect(hosts);
 
         int status = PQstatus(connection->connection);
 
@@ -67,7 +66,7 @@ dbconnection_t* postgresql_connection_create(dbconfig_t* config) {
 
         log_error("Postgresql error: %s\n", PQerrorMessage(connection->connection));
 
-        if (host_address == pgconfig->current_host) {
+        if (host_address == hosts->current_host) {
             postgresql_connection_free((dbconnection_t*)connection);
             return NULL;
         }
@@ -78,21 +77,13 @@ dbconnection_t* postgresql_connection_create(dbconfig_t* config) {
     return (dbconnection_t*)connection;
 }
 
-const char* postgresql_host(postgresqlconfig_t* config) {
-    return config->current_host->ip;
-}
-
-int postgresql_port(postgresqlconfig_t* config) {
-    return config->current_host->port;
-}
-
-void postgresql_next_host(postgresqlconfig_t* config) {
-    if (config->current_host->next != NULL) {
-        config->current_host = config->current_host->next;
+void postgresql_next_host(dbhosts_t* hosts) {
+    if (hosts->current_host->next != NULL) {
+        hosts->current_host = hosts->current_host->next;
         return;
     }
 
-    config->current_host = config->host;
+    hosts->current_host = hosts->host;
 }
 
 void postgresql_connection_free(dbconnection_t* connection) {
@@ -192,99 +183,116 @@ void postgresql_append_string(char* string, const char* key, const char* value) 
     strcat(string, " ");
 }
 
-PGconn* postgresql_connect(postgresqlconfig_t* config) {
+PGconn* postgresql_connect(dbhosts_t* hosts) {
+    postgresqlhost_t* host = (postgresqlhost_t*)hosts->current_host;
     char string[1024] = {0};
 
-    postgresql_append_string(string, "host", postgresql_host(config));
+    postgresql_append_string(string, "host", host->ip);
+    sprintf(&string[strlen(string)], "port=%d ", host->port);
+    postgresql_append_string(string, "dbname", host->dbname);
+    postgresql_append_string(string, "user", host->user);
+    postgresql_append_string(string, "password", host->password);
+    sprintf(&string[strlen(string)], "connect_timeout=%d ", host->connection_timeout);
 
-    sprintf(&string[strlen(string)], "port=%d ", postgresql_port(config));
-
-    postgresql_append_string(string, "dbname", config->dbname);
-    postgresql_append_string(string, "user", config->user);
-    postgresql_append_string(string, "password", config->password);
-
-    sprintf(&string[strlen(string)], "connect_timeout=%d ", config->connection_timeout);
-
-    postgresql_next_host(config);
+    postgresql_next_host(hosts);
 
     return PQconnectdb(string);
 }
 
-db_t* postgresql_load(const char* database_id, const jsmntok_t* token_object) {
+db_t* postgresql_load(const char* database_id, const jsmntok_t* token_array) {
     db_t* result = NULL;
     db_t* database = db_create(database_id);
-
     if (database == NULL) goto failed;
 
-    postgresqlconfig_t* config = postgresql_config_create();
+    database->hosts = db_hosts_create(postgresql_connection_create);
+    if (database->hosts == NULL) goto failed;
 
-    if (config == NULL) goto failed;
-
-    enum fields { HOSTS = 0, DBNAME, USER, PASSWORD, CONNECTION_TIMEOUT, FIELDS_COUNT };
-
+    enum fields { PORT = 0, IP, DBNAME, USER, PASSWORD, CONNECTION_TIMEOUT, FIELDS_COUNT };
     int finded_fields[FIELDS_COUNT] = {0};
+    dbhost_t* host_last = NULL;
 
-    for (jsmntok_t* token = token_object->child; token; token = token->sibling) {
-        const char* key = jsmn_get_value(token);
+    for (jsmntok_t* token_object = token_array->child; token_object; token_object = token_object->sibling) {
+        postgresqlhost_t* host = postgresql_host_create();
+        
+        for (jsmntok_t* token = token_object->child; token; token = token->sibling) {
+            const char* key = jsmn_get_value(token);
 
-        if (strcmp(key, "hosts") == 0) {
-            finded_fields[HOSTS] = 1;
+            if (strcmp(key, "port") == 0) {
+                finded_fields[PORT] = 1;
 
-            config->host = db_hosts_load(token->child);
-            config->current_host = config->host;
+                const char* value = jsmn_get_value(token->child);
 
-            if (config->host == NULL) goto failed;
+                host->port = atoi(value);
+            }
+            else if (strcmp(key, "ip") == 0) {
+                finded_fields[IP] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->ip = (char*)malloc(strlen(value) + 1);
+
+                if (host->ip == NULL) goto failed;
+
+                strcpy(host->ip, value);
+            }
+            else if (strcmp(key, "dbname") == 0) {
+                finded_fields[DBNAME] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->dbname = (char*)malloc(strlen(value) + 1);
+
+                if (host->dbname == NULL) goto failed;
+
+                strcpy(host->dbname, value);
+            }
+            else if (strcmp(key, "user") == 0) {
+                finded_fields[USER] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->user = (char*)malloc(strlen(value) + 1);
+
+                if (host->user == NULL) goto failed;
+
+                strcpy(host->user, value);
+            }
+            else if (strcmp(key, "password") == 0) {
+                finded_fields[PASSWORD] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->password = (char*)malloc(strlen(value) + 1);
+
+                if (host->password == NULL) goto failed;
+
+                strcpy(host->password, value);
+            }
+            else if (strcmp(key, "connection_timeout") == 0) {
+                finded_fields[CONNECTION_TIMEOUT] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->connection_timeout = atoi(value);
+            }
         }
-        else if (strcmp(key, "dbname") == 0) {
-            finded_fields[DBNAME] = 1;
 
-            const char* value = jsmn_get_value(token->child);
-
-            config->dbname = (char*)malloc(strlen(value) + 1);
-
-            if (config->dbname == NULL) goto failed;
-
-            strcpy(config->dbname, value);
+        if (database->hosts->host == NULL) {
+            database->hosts->host = (dbhost_t*)host;
+            database->hosts->current_host = (dbhost_t*)host;
         }
-        else if (strcmp(key, "user") == 0) {
-            finded_fields[USER] = 1;
-
-            const char* value = jsmn_get_value(token->child);
-
-            config->user = (char*)malloc(strlen(value) + 1);
-
-            if (config->user == NULL) goto failed;
-
-            strcpy(config->user, value);
+        if (host_last != NULL) {
+            host_last->next = (dbhost_t*)host;
         }
-        else if (strcmp(key, "password") == 0) {
-            finded_fields[PASSWORD] = 1;
+        host_last = (dbhost_t*)host;
 
-            const char* value = jsmn_get_value(token->child);
-
-            config->password = (char*)malloc(strlen(value) + 1);
-
-            if (config->password == NULL) goto failed;
-
-            strcpy(config->password, value);
-        }
-        else if (strcmp(key, "connection_timeout") == 0) {
-            finded_fields[CONNECTION_TIMEOUT] = 1;
-
-            const char* value = jsmn_get_value(token->child);
-
-            config->connection_timeout = atoi(value);
+        for (int i = 0; i < FIELDS_COUNT; i++) {
+            if (finded_fields[i] == 0) {
+                log_error("Error: Fill postgresql config\n");
+                goto failed;
+            }
         }
     }
-
-    for (int i = 0; i < FIELDS_COUNT; i++) {
-        if (finded_fields[i] == 0) {
-            // log_error("Error: Fill database config\n");
-            goto failed;
-        }
-    }
-
-    database->config = (dbconfig_t*)config;
 
     result = database;
 

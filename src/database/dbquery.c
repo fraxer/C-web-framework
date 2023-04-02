@@ -6,7 +6,7 @@
 dbinstance_t dbinstance(db_t* db, const char* dbid) {
     dbinstance_t inst = {
         .ok = 0,
-        .config = NULL,
+        .hosts = NULL,
         .connection_create = NULL,
         .lock_connection = 0,
         .connection = NULL
@@ -15,8 +15,8 @@ dbinstance_t dbinstance(db_t* db, const char* dbid) {
     while (db) {
         if (strcmp(db->id, dbid) == 0) {
             inst.ok = 1;
-            inst.config = db->config;
-            inst.connection_create = db->config->connection_create;
+            inst.hosts = db->hosts;
+            inst.connection_create = db->hosts->connection_create;
             inst.lock_connection = &db->lock_connection;
             inst.connection = &db->connection;
 
@@ -43,7 +43,7 @@ dbresult_t dbquery(dbinstance_t* instance, const char* string) {
         dbconnection_t* connection = db_connection_find(*instance->connection);
 
         if (connection == NULL) {
-            connection = instance->connection_create(instance->config);
+            connection = instance->connection_create(instance->hosts);
 
             if (connection == NULL) {
                 result.error_message = "Database query: error connection create";

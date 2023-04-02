@@ -11,45 +11,42 @@ void redis_send_query(dbresult_t*, dbconnection_t*, const char*);
 int redis_send_command(redisContext*, const char*);
 int redis_auth(redisContext*, const char*, const char*);
 int redis_selectdb(redisContext*, const int);
-redisContext* redis_connect(redisconfig_t*);
+redisContext* redis_connect(dbhosts_t*);
 
-redisconfig_t* redis_config_create() {
-    redisconfig_t* config = (redisconfig_t*)malloc(sizeof(redisconfig_t));
+redishost_t* redis_host_create() {
+    redishost_t* host = malloc(sizeof *host);
 
-    config->base.free = redis_config_free;
-    config->base.connection_create = redis_connection_create;
-    config->host = NULL;
-    config->current_host = NULL;
-    config->dbindex = 0;
-    config->user = NULL;
-    config->password = NULL;
+    host->base.free = redis_host_free;
+    host->base.next = NULL;
+    host->port = 0;
+    host->ip = NULL;
+    host->dbindex = 0;
+    host->user = NULL;
+    host->password = NULL;
 
-    return config;
+    return host;
 }
 
-void redis_config_free(void* arg) {
+void redis_host_free(void* arg) {
     if (arg == NULL) return;
 
-    redisconfig_t* config = (redisconfig_t*)arg;
+    redishost_t* host = arg;
 
-    db_host_free(config->host);
-    config->host = NULL;
+    if (host->ip) free(host->ip);
+    if (host->user) free(host->user);
+    if (host->password) free(host->password);
+    host->port = 0;
+    host->dbindex = 0;
+    host->base.next = NULL;
 
-    config->dbindex = 0;
-
-    if (config->user) free(config->user);
-    if (config->password) free(config->password);
-
-    free(config);
+    free(host);
 }
 
 void redis_free(db_t* db) {
     db_free(db);
 }
 
-dbconnection_t* redis_connection_create(dbconfig_t* config) {
-    redisconfig_t* redisconfig = (redisconfig_t*)config;
-
+dbconnection_t* redis_connection_create(dbhosts_t* hosts) {
     redisconnection_t* connection = (redisconnection_t*)malloc(sizeof(redisconnection_t));
 
     if (connection == NULL) return NULL;
@@ -59,16 +56,16 @@ dbconnection_t* redis_connection_create(dbconfig_t* config) {
     connection->base.free = redis_connection_free;
     connection->base.send_query = redis_send_query;
 
-    void* host_address = redisconfig->current_host;
+    void* host_address = hosts->current_host;
 
     while (1) {
-        connection->connection = redis_connect(redisconfig);
+        connection->connection = redis_connect(hosts);
 
         if (connection->connection != NULL) break;
 
         log_error("Redis error: connection error\n");
 
-        if (host_address == redisconfig->current_host) {
+        if (host_address == hosts->current_host) {
             redis_connection_free((dbconnection_t*)connection);
             return NULL;
         }
@@ -79,21 +76,13 @@ dbconnection_t* redis_connection_create(dbconfig_t* config) {
     return (dbconnection_t*)connection;
 }
 
-const char* redis_host(redisconfig_t* config) {
-    return config->current_host->ip;
-}
-
-int redis_port(redisconfig_t* config) {
-    return config->current_host->port;
-}
-
-void redis_next_host(redisconfig_t* config) {
-    if (config->current_host->next != NULL) {
-        config->current_host = config->current_host->next;
+void redis_next_host(dbhosts_t* hosts) {
+    if (hosts->current_host->next != NULL) {
+        hosts->current_host = hosts->current_host->next;
         return;
     }
 
-    config->current_host = config->host;
+    hosts->current_host = hosts->host;
 }
 
 void redis_connection_free(dbconnection_t* connection) {
@@ -210,8 +199,9 @@ int redis_selectdb(redisContext* connection, const int index) {
     return redis_send_command(connection, &string[0]);
 }
 
-redisContext* redis_connect(redisconfig_t* config) {
-    redisContext* connection = redisConnect(redis_host(config), redis_port(config));
+redisContext* redis_connect(dbhosts_t* hosts) {
+    redishost_t* host = (redishost_t*)hosts->current_host;
+    redisContext* connection = redisConnect(host->ip, host->port);
 
     if (connection == NULL || connection->err != 0) {
         log_error("Redis error: %s\n", connection->errstr);
@@ -219,102 +209,121 @@ redisContext* redis_connect(redisconfig_t* config) {
         return NULL;
     }
 
-    if (redis_auth(connection, config->user, config->password) == -1) {
+    if (redis_auth(connection, host->user, host->password) == -1) {
         redisFree(connection);
         return NULL;
     }
 
-    if (redis_selectdb(connection, config->dbindex) == -1) {
+    if (redis_selectdb(connection, host->dbindex) == -1) {
         redisFree(connection);
         return NULL;
     }
 
     redisEnableKeepAlive(connection);
 
-    redis_next_host(config);
+    redis_next_host(hosts);
 
     return connection;
 }
 
-db_t* redis_load(const char* database_id, const jsmntok_t* token_object) {
+db_t* redis_load(const char* database_id, const jsmntok_t* token_array) {
     db_t* result = NULL;
     db_t* database = db_create(database_id);
-
     if (database == NULL) goto failed;
 
-    redisconfig_t* config = redis_config_create();
+    database->hosts = db_hosts_create(redis_connection_create);
+    if (database->hosts == NULL) goto failed;
 
-    if (config == NULL) goto failed;
-
-    enum fields { HOSTS = 0, DBINDEX, USER, PASSWORD, FIELDS_COUNT };
-    enum required_fields { R_HOSTS = 0, R_DBINDEX, R_FIELDS_COUNT };
-
+    enum fields { PORT = 0, IP, DBINDEX, USER, PASSWORD, FIELDS_COUNT };
+    enum required_fields { R_PORT = 0, R_IP, R_DBINDEX, R_FIELDS_COUNT };
     int finded_fields[FIELDS_COUNT] = {0};
+    dbhost_t* host_last = NULL;
 
-    for (jsmntok_t* token = token_object->child; token; token = token->sibling) {
-        const char* key = jsmn_get_value(token);
+    for (jsmntok_t* token_object = token_array->child; token_object; token_object = token_object->sibling) {
+        redishost_t* host = redis_host_create();
 
-        if (strcmp(key, "hosts") == 0) {
-            finded_fields[HOSTS] = 1;
+        for (jsmntok_t* token = token_object->child; token; token = token->sibling) {
+            const char* key = jsmn_get_value(token);
 
-            config->host = db_hosts_load(token->child);
-            config->current_host = config->host;
+            if (strcmp(key, "port") == 0) {
+                finded_fields[PORT] = 1;
 
-            if (config->host == NULL) goto failed;
+                const char* value = jsmn_get_value(token->child);
+
+                host->port = atoi(value);
+            }
+            else if (strcmp(key, "ip") == 0) {
+                finded_fields[IP] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->ip = (char*)malloc(strlen(value) + 1);
+
+                if (host->ip == NULL) goto failed;
+
+                strcpy(host->ip, value);
+            }
+            else if (strcmp(key, "dbindex") == 0) {
+                finded_fields[DBINDEX] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->dbindex = atoi(value);
+
+                if (host->dbindex < 0 || host->dbindex > 16) goto failed;
+            }
+            else if (strcmp(key, "user") == 0) {
+                finded_fields[USER] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->user = (char*)malloc(strlen(value) + 1);
+
+                if (host->user == NULL) goto failed;
+
+                strcpy(host->user, value);
+            }
+            else if (strcmp(key, "password") == 0) {
+                finded_fields[PASSWORD] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->password = (char*)malloc(strlen(value) + 1);
+
+                if (host->password == NULL) goto failed;
+
+                strcpy(host->password, value);
+            }
         }
-        else if (strcmp(key, "dbindex") == 0) {
-            finded_fields[DBINDEX] = 1;
 
-            const char* value = jsmn_get_value(token->child);
-
-            config->dbindex = atoi(value);
-
-            if (config->dbindex < 0 || config->dbindex > 16) goto failed;
+        if (database->hosts->host == NULL) {
+            database->hosts->host = (dbhost_t*)host;
+            database->hosts->current_host = (dbhost_t*)host;
         }
-        else if (strcmp(key, "user") == 0) {
-            finded_fields[USER] = 1;
-
-            const char* value = jsmn_get_value(token->child);
-
-            config->user = (char*)malloc(strlen(value) + 1);
-
-            if (config->user == NULL) goto failed;
-
-            strcpy(config->user, value);
+        if (host_last != NULL) {
+            host_last->next = (dbhost_t*)host;
         }
-        else if (strcmp(key, "password") == 0) {
-            finded_fields[PASSWORD] = 1;
+        host_last = (dbhost_t*)host;
 
-            const char* value = jsmn_get_value(token->child);
+        if (finded_fields[USER] == 0) {
+            host->user = (char*)malloc(1);
+            if (host->user == NULL) goto failed;
+            strcpy(host->user, "");
+        }
 
-            config->password = (char*)malloc(strlen(value) + 1);
+        if (finded_fields[PASSWORD] == 0) {
+            host->password = (char*)malloc(1);
+            if (host->password == NULL) goto failed;
+            strcpy(host->password, "");
+        }
 
-            if (config->password == NULL) goto failed;
-
-            strcpy(config->password, value);
+        for (int i = 0; i < R_FIELDS_COUNT; i++) {
+            if (finded_fields[i] == 0) {
+                log_error("Error: Fill database config\n");
+                goto failed;
+            }
         }
     }
-
-    if (finded_fields[USER] == 0) {
-        config->user = (char*)malloc(1);
-        if (config->user == NULL) goto failed;
-        strcpy(config->user, "");
-    }
-
-    if (finded_fields[PASSWORD] == 0) {
-        config->password = (char*)malloc(1);
-        if (config->password == NULL) goto failed;
-        strcpy(config->password, "");
-    }
-
-    for (int i = 0; i < R_FIELDS_COUNT; i++) {
-        if (finded_fields[i] == 0) {
-            log_error("Error: Fill database config\n");
-            goto failed;
-        }
-    }
-
-    database->config = (dbconfig_t*)config;
 
     result = database;
 

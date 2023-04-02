@@ -4,48 +4,45 @@
 #include "../log/log.h"
 #include "dbresult.h"
 #include "mysql.h"
-    #include <stdio.h>
 
 void my_connection_free(dbconnection_t*);
 void my_send_query(dbresult_t*, dbconnection_t*, const char*);
-MYSQL* my_connect(myconfig_t*);
+MYSQL* my_connect(dbhosts_t*);
 
-myconfig_t* my_config_create() {
-    myconfig_t* config = (myconfig_t*)malloc(sizeof(myconfig_t));
+myhost_t* my_host_create() {
+    myhost_t* host = malloc(sizeof *host);
 
-    config->base.free = my_config_free;
-    config->base.connection_create = my_connection_create;
-    config->host = NULL;
-    config->current_host = NULL;
-    config->dbname = NULL;
-    config->user = NULL;
-    config->password = NULL;
+    host->base.free = my_host_free;
+    host->base.next = NULL;
+    host->port = 0;
+    host->ip = NULL;
+    host->dbname = NULL;
+    host->user = NULL;
+    host->password = NULL;
 
-    return config;
+    return host;
 }
 
-void my_config_free(void* arg) {
+void my_host_free(void* arg) {
     if (arg == NULL) return;
 
-    myconfig_t* config = (myconfig_t*)arg;
+    myhost_t* host = arg;
 
-    db_host_free(config->host);
-    config->host = NULL;
+    if (host->ip) free(host->ip);
+    if (host->dbname) free(host->dbname);
+    if (host->user) free(host->user);
+    if (host->password) free(host->password);
+    host->port = 0;
+    host->base.next = NULL;
 
-    if (config->dbname) free(config->dbname);
-    if (config->user) free(config->user);
-    if (config->password) free(config->password);
-
-    free(config);
+    free(host);
 }
 
 void my_free(db_t* db) {
     db_free(db);
 }
 
-dbconnection_t* my_connection_create(dbconfig_t* config) {
-    myconfig_t* myconfig = (myconfig_t*)config;
-
+dbconnection_t* my_connection_create(dbhosts_t* hosts) {
     myconnection_t* connection = (myconnection_t*)malloc(sizeof(myconnection_t));
 
     if (connection == NULL) return NULL;
@@ -55,16 +52,16 @@ dbconnection_t* my_connection_create(dbconfig_t* config) {
     connection->base.free = my_connection_free;
     connection->base.send_query = my_send_query;
 
-    void* host_address = myconfig->current_host;
+    void* host_address = hosts->current_host;
 
     while (1) {
-        connection->connection = my_connect(myconfig);
+        connection->connection = my_connect(hosts);
 
         if (connection->connection != NULL) break;
 
         log_error("Mysql error: connection error\n");
 
-        if (host_address == myconfig->current_host) {
+        if (host_address == hosts->current_host) {
             my_connection_free((dbconnection_t*)connection);
             return NULL;
         }
@@ -75,21 +72,13 @@ dbconnection_t* my_connection_create(dbconfig_t* config) {
     return (dbconnection_t*)connection;
 }
 
-const char* my_host(myconfig_t* config) {
-    return config->current_host->ip;
-}
-
-int my_port(myconfig_t* config) {
-    return config->current_host->port;
-}
-
-void my_next_host(myconfig_t* config) {
-    if (config->current_host->next != NULL) {
-        config->current_host = config->current_host->next;
+void my_next_host(dbhosts_t* hosts) {
+    if (hosts->current_host->next != NULL) {
+        hosts->current_host = hosts->current_host->next;
         return;
     }
 
-    config->current_host = config->host;
+    hosts->current_host = hosts->host;
 }
 
 void my_connection_free(dbconnection_t* connection) {
@@ -184,95 +173,116 @@ void my_send_query(dbresult_t* result, dbconnection_t* connection, const char* s
     return;
 }
 
-MYSQL* my_connect(myconfig_t* config) {
+MYSQL* my_connect(dbhosts_t* hosts) {
     MYSQL* connection = mysql_init(NULL);
 
     if (connection == NULL) return NULL;
 
+    myhost_t* host = (myhost_t*)hosts->current_host;
+
     connection = mysql_real_connect(
         connection,
-        my_host(config),
-        config->user,
-        config->password,
-        config->dbname,
-        my_port(config),
+        host->ip,
+        host->user,
+        host->password,
+        host->dbname,
+        host->port,
         NULL,
         CLIENT_MULTI_STATEMENTS
     );
 
-    my_next_host(config);
+    my_next_host(hosts);
 
     return connection;
 }
 
-db_t* my_load(const char* database_id, const jsmntok_t* token_object) {
+db_t* my_load(const char* database_id, const jsmntok_t* token_array) {
     db_t* result = NULL;
     db_t* database = db_create(database_id);
-
     if (database == NULL) goto failed;
 
-    myconfig_t* config = my_config_create();
+    database->hosts = db_hosts_create(my_connection_create);
+    if (database->hosts == NULL) goto failed;
 
-    if (config == NULL) goto failed;
-
-    enum fields { HOSTS = 0, DBNAME, USER, PASSWORD, FIELDS_COUNT };
-
+    enum fields { PORT = 0, IP, DBNAME, USER, PASSWORD, FIELDS_COUNT };
     int finded_fields[FIELDS_COUNT] = {0};
+    dbhost_t* host_last = NULL;
 
-    for (jsmntok_t* token = token_object->child; token; token = token->sibling) {
-        const char* key = jsmn_get_value(token);
+    for (jsmntok_t* token_object = token_array->child; token_object; token_object = token_object->sibling) {
+        myhost_t* host = my_host_create();
 
-        if (strcmp(key, "hosts") == 0) {
-            finded_fields[HOSTS] = 1;
+        for (jsmntok_t* token = token_object->child; token; token = token->sibling) {
+            const char* key = jsmn_get_value(token);
 
-            config->host = db_hosts_load(token->child);
-            config->current_host = config->host;
+            if (strcmp(key, "port") == 0) {
+                finded_fields[PORT] = 1;
 
-            if (config->host == NULL) goto failed;
+                const char* value = jsmn_get_value(token->child);
+
+                host->port = atoi(value);
+            }
+            else if (strcmp(key, "ip") == 0) {
+                finded_fields[IP] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->ip = (char*)malloc(strlen(value) + 1);
+
+                if (host->ip == NULL) goto failed;
+
+                strcpy(host->ip, value);
+            }
+            else if (strcmp(key, "dbname") == 0) {
+                finded_fields[DBNAME] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->dbname = (char*)malloc(strlen(value) + 1);
+
+                if (host->dbname == NULL) goto failed;
+
+                strcpy(host->dbname, value);
+            }
+            else if (strcmp(key, "user") == 0) {
+                finded_fields[USER] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->user = (char*)malloc(strlen(value) + 1);
+
+                if (host->user == NULL) goto failed;
+
+                strcpy(host->user, value);
+            }
+            else if (strcmp(key, "password") == 0) {
+                finded_fields[PASSWORD] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->password = (char*)malloc(strlen(value) + 1);
+
+                if (host->password == NULL) goto failed;
+
+                strcpy(host->password, value);
+            }
         }
-        else if (strcmp(key, "dbname") == 0) {
-            finded_fields[DBNAME] = 1;
 
-            const char* value = jsmn_get_value(token->child);
-
-            config->dbname = (char*)malloc(strlen(value) + 1);
-
-            if (config->dbname == NULL) goto failed;
-
-            strcpy(config->dbname, value);
+        if (database->hosts->host == NULL) {
+            database->hosts->host = (dbhost_t*)host;
+            database->hosts->current_host = (dbhost_t*)host;
         }
-        else if (strcmp(key, "user") == 0) {
-            finded_fields[USER] = 1;
-
-            const char* value = jsmn_get_value(token->child);
-
-            config->user = (char*)malloc(strlen(value) + 1);
-
-            if (config->user == NULL) goto failed;
-
-            strcpy(config->user, value);
+        if (host_last != NULL) {
+            host_last->next = (dbhost_t*)host;
         }
-        else if (strcmp(key, "password") == 0) {
-            finded_fields[PASSWORD] = 1;
+        host_last = (dbhost_t*)host;
 
-            const char* value = jsmn_get_value(token->child);
-
-            config->password = (char*)malloc(strlen(value) + 1);
-
-            if (config->password == NULL) goto failed;
-
-            strcpy(config->password, value);
+        for (int i = 0; i < FIELDS_COUNT; i++) {
+            if (finded_fields[i] == 0) {
+                log_error("Error: Fill mysql config\n");
+                goto failed;
+            }
         }
     }
-
-    for (int i = 0; i < FIELDS_COUNT; i++) {
-        if (finded_fields[i] == 0) {
-            log_error("Error: Fill database config\n");
-            goto failed;
-        }
-    }
-
-    database->config = (dbconfig_t*)config;
 
     result = database;
 

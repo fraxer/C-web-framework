@@ -363,14 +363,14 @@ db_t* module_loader_databases_load(const jsmntok_t* token_object) {
         const char* database_id = jsmn_get_value(token);
         const char* driver = NULL;
 
-        // printf("%s\n", database_id);
+        for (jsmntok_t* token_array = token->child->child; token_array; token_array = token_array->sibling) {
+            for (jsmntok_t* token_key = token_array->child; token_key; token_key = token_key->sibling) {
+                const char* key = jsmn_get_value(token_key);
 
-        for (jsmntok_t* token_prop = token->child->child; token_prop; token_prop = token_prop->sibling) {
-            const char* key_prop = jsmn_get_value(token_prop);
-
-            if (strcmp(key_prop, "driver") == 0) {
-                driver = jsmn_get_value(token_prop->child);
-                break;
+                if (strcmp(key, "driver") == 0) {
+                    driver = jsmn_get_value(token_key->child);
+                    break;
+                }
             }
         }
 
@@ -378,8 +378,6 @@ db_t* module_loader_databases_load(const jsmntok_t* token_object) {
             log_error("Database driver not found\n");
             goto failed;
         }
-
-        // printf("driver - %s\n", driver);
 
         db_t* database = NULL;
 
@@ -513,9 +511,9 @@ int module_loader_check_unique_domains(server_t* first_server) {
 }
 
 int module_loader_servers_load(int reload_is_hard) {
-    const jsmntok_t* token_array = config_get_section("servers");
+    const jsmntok_t* token_object = config_get_section("servers");
 
-    if (token_array->type != JSMN_ARRAY) return -1;
+    if (token_object->type != JSMN_OBJECT) return -1;
 
     server_t* first_server = NULL;
     server_t* last_server = NULL;
@@ -528,7 +526,9 @@ int module_loader_servers_load(int reload_is_hard) {
 
     if (server_info == NULL) goto failed;
 
-    for (jsmntok_t* token_item = token_array->child; token_item; token_item = token_item->sibling) {
+    jsmntok_t* token_key = token_object->child;
+
+    for (jsmntok_t* token_item = token_key->child; token_item; token_item = token_item->sibling) {
         enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
         enum fields { DOMAINS = 0, IP, PORT, ROOT, INDEX, HTTP, WEBSOCKETS, DATABASE, OPENSSL, FIELDS_COUNT };
 

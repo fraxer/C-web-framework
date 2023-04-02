@@ -11,12 +11,6 @@ typedef enum transaction_level {
     SERIALIZABLE
 } transaction_level_e;
 
-typedef struct dbhost {
-    int port;
-    char* ip;
-    struct dbhost* next;
-} dbhost_t;
-
 typedef struct db_table_cell {
     size_t length;
     char* value;
@@ -49,23 +43,29 @@ typedef struct dbconnection {
     void(*send_query)(dbresult_t*, struct dbconnection*, const char*);
 } dbconnection_t;
 
-typedef struct dbconfig {
+typedef struct dbhost {
     void(*free)(void*);
-    dbconnection_t*(*connection_create)(struct dbconfig*);
-} dbconfig_t;
+    struct dbhost* next;
+} dbhost_t;
+
+typedef struct dbhosts {
+    dbhost_t* host;
+    dbhost_t* current_host;
+    dbconnection_t*(*connection_create)(struct dbhosts*);
+} dbhosts_t;
 
 typedef struct dbinstance {
     int ok;
     atomic_bool* lock_connection;
-    dbconfig_t* config;
+    dbhosts_t* hosts;
     dbconnection_t** connection;
-    dbconnection_t*(*connection_create)(struct dbconfig*);
+    dbconnection_t*(*connection_create)(dbhosts_t*);
 } dbinstance_t;
 
 typedef struct db {
     atomic_bool lock_connection;
     const char* id;
-    dbconfig_t* config;
+    dbhosts_t* hosts;
     dbconnection_t* connection;
     struct db* next;
 } db_t;
@@ -76,9 +76,13 @@ db_t* db_create(const char*);
 
 dbhost_t* db_host_create();
 
+dbhosts_t* db_hosts_create(dbconnection_t*(*)(dbhosts_t*));
+
 void db_free(db_t*);
 
 void db_host_free(dbhost_t*);
+
+void db_hosts_free(dbhosts_t*);
 
 void db_cell_free(db_table_cell_t*);
 
@@ -95,7 +99,5 @@ int db_connection_lock(dbconnection_t*);
 void db_connection_unlock(dbconnection_t*);
 
 void db_connection_free(dbconnection_t*);
-
-dbhost_t* db_hosts_load(const jsmntok_t* token_array);
 
 #endif

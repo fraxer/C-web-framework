@@ -167,6 +167,7 @@ target_link_libraries(
 	domain
 	server
 	dbquery
+	dbresult
 	database
 	epoll
 	connection
@@ -203,7 +204,6 @@ if(MySQL_FOUND AND INCLUDE_MYSQL STREQUAL yes)
 	target_link_libraries(
 		main
 		mysql
-		dbresult
 		${MySQL_LIBRARY}
 	)
 endif()
@@ -212,7 +212,6 @@ if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
 	target_link_libraries(
 		main
 		postgresql
-		dbresult
 		pq
 	)
 endif()
@@ -221,12 +220,11 @@ if(Redis_FOUND AND INCLUDE_REDIS STREQUAL yes)
 	target_link_libraries(
 		main
 		redis
-		dbresult
 		${Redis_LIBRARY}
 	)
 endif()
 
-add_subdirectory(migration)
+add_subdirectory(migrations)
 
 #enable_testing()
 
