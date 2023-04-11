@@ -86,6 +86,8 @@ int jsmn_is_object(const jsmntok_t* token);
 
 jsmntok_t* jsmn_object_get_field(const jsmntok_t* token, const char* field);
 
+jsmntok_t* jsmn_object_find_key(const jsmntok_t* token, const char* field);
+
 const char* jsmn_get_value(const jsmntok_t* token);
 
 const char* jsmn_get_array_value(const jsmntok_t* token, int index);

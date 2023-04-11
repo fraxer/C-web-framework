@@ -6,6 +6,7 @@
 #include "dbresult.h"
 #include "redis.h"
 
+dbhosts_t* redis_hosts_create();
 void redis_connection_free(dbconnection_t*);
 void redis_send_query(dbresult_t*, dbconnection_t*, const char*);
 int redis_send_command(redisContext*, const char*);
@@ -13,13 +14,27 @@ int redis_auth(redisContext*, const char*, const char*);
 int redis_selectdb(redisContext*, const int);
 redisContext* redis_connect(dbhosts_t*);
 
+dbhosts_t* redis_hosts_create() {
+    dbhosts_t* hosts = malloc(sizeof *hosts);
+
+    hosts->host = NULL;
+    hosts->current_host = NULL;
+    hosts->connection_create = redis_connection_create;
+    hosts->connection_create_manual = NULL;
+    hosts->table_exist_sql = NULL;
+    hosts->table_migration_create_sql = NULL;
+
+    return hosts;
+}
+
 redishost_t* redis_host_create() {
     redishost_t* host = malloc(sizeof *host);
 
     host->base.free = redis_host_free;
+    host->base.migration = 0;
+    host->base.port = 0;
+    host->base.ip = NULL;
     host->base.next = NULL;
-    host->port = 0;
-    host->ip = NULL;
     host->dbindex = 0;
     host->user = NULL;
     host->password = NULL;
@@ -32,10 +47,10 @@ void redis_host_free(void* arg) {
 
     redishost_t* host = arg;
 
-    if (host->ip) free(host->ip);
+    if (host->base.ip) free(host->base.ip);
     if (host->user) free(host->user);
     if (host->password) free(host->password);
-    host->port = 0;
+    host->base.port = 0;
     host->dbindex = 0;
     host->base.next = NULL;
 
@@ -74,15 +89,6 @@ dbconnection_t* redis_connection_create(dbhosts_t* hosts) {
     }
 
     return (dbconnection_t*)connection;
-}
-
-void redis_next_host(dbhosts_t* hosts) {
-    if (hosts->current_host->next != NULL) {
-        hosts->current_host = hosts->current_host->next;
-        return;
-    }
-
-    hosts->current_host = hosts->host;
 }
 
 void redis_connection_free(dbconnection_t* connection) {
@@ -201,7 +207,7 @@ int redis_selectdb(redisContext* connection, const int index) {
 
 redisContext* redis_connect(dbhosts_t* hosts) {
     redishost_t* host = (redishost_t*)hosts->current_host;
-    redisContext* connection = redisConnect(host->ip, host->port);
+    redisContext* connection = redisConnect(host->base.ip, host->base.port);
 
     if (connection == NULL || connection->err != 0) {
         log_error("Redis error: %s\n", connection->errstr);
@@ -221,7 +227,7 @@ redisContext* redis_connect(dbhosts_t* hosts) {
 
     redisEnableKeepAlive(connection);
 
-    redis_next_host(hosts);
+    db_next_host(hosts);
 
     return connection;
 }
@@ -231,7 +237,7 @@ db_t* redis_load(const char* database_id, const jsmntok_t* token_array) {
     db_t* database = db_create(database_id);
     if (database == NULL) goto failed;
 
-    database->hosts = db_hosts_create(redis_connection_create);
+    database->hosts = redis_hosts_create();
     if (database->hosts == NULL) goto failed;
 
     enum fields { PORT = 0, IP, DBINDEX, USER, PASSWORD, FIELDS_COUNT };
@@ -250,18 +256,18 @@ db_t* redis_load(const char* database_id, const jsmntok_t* token_array) {
 
                 const char* value = jsmn_get_value(token->child);
 
-                host->port = atoi(value);
+                host->base.port = atoi(value);
             }
             else if (strcmp(key, "ip") == 0) {
                 finded_fields[IP] = 1;
 
                 const char* value = jsmn_get_value(token->child);
 
-                host->ip = (char*)malloc(strlen(value) + 1);
+                host->base.ip = (char*)malloc(strlen(value) + 1);
 
-                if (host->ip == NULL) goto failed;
+                if (host->base.ip == NULL) goto failed;
 
-                strcpy(host->ip, value);
+                strcpy(host->base.ip, value);
             }
             else if (strcmp(key, "dbindex") == 0) {
                 finded_fields[DBINDEX] = 1;

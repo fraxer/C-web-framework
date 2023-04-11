@@ -45,6 +45,9 @@ typedef struct dbconnection {
 
 typedef struct dbhost {
     void(*free)(void*);
+    int migration;
+    int port;
+    char* ip;
     struct dbhost* next;
 } dbhost_t;
 
@@ -52,6 +55,9 @@ typedef struct dbhosts {
     dbhost_t* host;
     dbhost_t* current_host;
     dbconnection_t*(*connection_create)(struct dbhosts*);
+    dbconnection_t*(*connection_create_manual)(struct dbhosts*);
+    const char*(*table_exist_sql)();
+    const char*(*table_migration_create_sql)();
 } dbhosts_t;
 
 typedef struct dbinstance {
@@ -60,6 +66,8 @@ typedef struct dbinstance {
     dbhosts_t* hosts;
     dbconnection_t** connection;
     dbconnection_t*(*connection_create)(dbhosts_t*);
+    const char*(*table_exist_sql)();
+    const char*(*table_migration_create_sql)();
 } dbinstance_t;
 
 typedef struct db {
@@ -76,7 +84,7 @@ db_t* db_create(const char*);
 
 dbhost_t* db_host_create();
 
-dbhosts_t* db_hosts_create(dbconnection_t*(*)(dbhosts_t*));
+void db_next_host(dbhosts_t*);
 
 void db_free(db_t*);
 

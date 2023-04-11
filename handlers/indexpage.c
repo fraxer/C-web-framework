@@ -1,12 +1,12 @@
 #include <openssl/sha.h>
 #include <string.h>
-#include "../base64/base64.h"
-#include "../request/http1request.h"
-#include "../response/http1response.h"
-#include "../request/websocketsrequest.h"
-#include "../response/websocketsresponse.h"
-#include "../database/dbquery.h"
-#include "../database/dbresult.h"
+#include "../src/base64/base64.h"
+#include "../src/request/http1request.h"
+#include "../src/response/http1response.h"
+#include "../src/request/websocketsrequest.h"
+#include "../src/response/websocketsresponse.h"
+#include "../src/database/dbquery.h"
+#include "../src/database/dbresult.h"
     #include <stdio.h>
 
 void view(http1request_t* request, http1response_t* response) {

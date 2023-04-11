@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include "dbquery.h"
 
 dbinstance_t dbinstance(db_t* db, const char* dbid) {
@@ -9,7 +11,9 @@ dbinstance_t dbinstance(db_t* db, const char* dbid) {
         .hosts = NULL,
         .connection_create = NULL,
         .lock_connection = 0,
-        .connection = NULL
+        .connection = NULL,
+        .table_exist_sql = NULL,
+        .table_migration_create_sql = NULL
     };
 
     while (db) {
@@ -19,6 +23,7 @@ dbinstance_t dbinstance(db_t* db, const char* dbid) {
             inst.connection_create = db->hosts->connection_create;
             inst.lock_connection = &db->lock_connection;
             inst.connection = &db->connection;
+            inst.table_exist_sql = db->hosts->table_exist_sql;
 
             return inst;
         }
@@ -29,7 +34,7 @@ dbinstance_t dbinstance(db_t* db, const char* dbid) {
     return inst;
 }
 
-dbresult_t dbquery(dbinstance_t* instance, const char* string) {
+dbresult_t dbquery(dbinstance_t* instance, const char* format, ...) {
     dbresult_t result = {
         .ok = 0,
         .error_message = "",
@@ -37,8 +42,19 @@ dbresult_t dbquery(dbinstance_t* instance, const char* string) {
         .current = NULL
     };
 
-    int second_try = 0;
+    va_list args;
+    va_start(args, format);
+    size_t string_length = vsnprintf(NULL, 0, format, args);
+    va_end(args);
 
+    char* string = malloc(string_length + 1);
+    if (string == NULL) return result;
+
+    va_start(args, format);
+    vsnprintf(string, string_length + 1, format, args);
+    va_end(args);
+
+    int second_try = 0;
     while (1) {
         dbconnection_t* connection = db_connection_find(*instance->connection);
 
@@ -72,6 +88,46 @@ dbresult_t dbquery(dbinstance_t* instance, const char* string) {
 
         break;
     }
+
+    return result;
+}
+
+dbresult_t dbtable_exist(dbinstance_t* instance, const char* table) {
+    dbresult_t result = {
+        .ok = 0,
+        .error_message = "",
+        .query = NULL,
+        .current = NULL
+    };
+
+    if (instance->table_exist_sql == NULL) return result;
+
+    const char* sql = instance->table_exist_sql(table);
+    if (sql == NULL) return result;
+
+    result = dbquery(instance, sql);
+
+    free((void*)sql);
+
+    return result;
+}
+
+dbresult_t dbtable_migration_create(dbinstance_t* instance) {
+    dbresult_t result = {
+        .ok = 0,
+        .error_message = "",
+        .query = NULL,
+        .current = NULL
+    };
+
+    if (instance->table_migration_create_sql == NULL) return result;
+
+    const char* sql = instance->table_migration_create_sql();
+    if (sql == NULL) return result;
+
+    result = dbquery(instance, sql);
+
+    free((void*)sql);
 
     return result;
 }

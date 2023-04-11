@@ -12,6 +12,8 @@ find_package(OpenSSL)
 
 include(CTest)
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/exec")
+
 if(INCLUDE_MYSQL STREQUAL yes)
 	#sudo apt install libmysqlclient-dev 
 	find_package(MySQL)
@@ -131,16 +133,6 @@ add_library(threadworker STATIC src/thread/threadworker.c)
 
 add_library(base64 STATIC src/base64/base64.c)
 
-# Pages
-add_library(indexpage SHARED src/handlers/index.c)
-
-target_link_libraries(
-	indexpage
-	base64
-	dbquery
-	dbresult
-)
-
 target_link_libraries(
 	config
 	jsmn
@@ -225,6 +217,7 @@ if(Redis_FOUND AND INCLUDE_REDIS STREQUAL yes)
 endif()
 
 add_subdirectory(migrations)
+add_subdirectory(handlers)
 
 #enable_testing()
 

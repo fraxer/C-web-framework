@@ -438,29 +438,21 @@ void jsmn_free(jsmn_parser_t *parser) {
 }
 
 jsmntok_t* jsmn_get_root_token(const jsmn_parser_t* parser) {
-  if (parser->tokens) {
-    return &parser->tokens[0];
-  }
-
-  return NULL;
+    if (parser->tokens) return &parser->tokens[0];
+    return NULL;
 }
 
 int jsmn_field_string(jsmntok_t* token, const char *str) {
-  if (token->type == JSMN_STRING && strlen(str) == token->string_len &&
-      strncmp(token->string, str, token->string_len) == 0) {
-    return 1;
-  }
-
-  return 0;
+    return token->type == JSMN_STRING && strncmp(token->string, str, token->string_len) == 0;
 }
 
 int jsmn_is_object(const jsmntok_t* token) {
-  return token && token->type == JSMN_OBJECT;
+    if (token == NULL) return 0;
+    return token && token->type == JSMN_OBJECT;
 }
 
 jsmntok_t* jsmn_object_get_field(const jsmntok_t* token, const char* field) {
   if (token) {
-
     jsmntok_t* token_it = token->child;
 
     while (token_it) {
@@ -470,15 +462,21 @@ jsmntok_t* jsmn_object_get_field(const jsmntok_t* token, const char* field) {
 
       token_it = token_it->sibling;
     }
-
-    // for (int i = 0; i < 15; i++) {
-    //   jsmntok_t* token = &parser->tokens[i];
-
-    //   printf("str, %.*s, index: %d, parent: %d, addr: %p, child: %p, sibling: %p\n", token->end - token->start, parser->string + token->start, token->index, token->parent, token, token->child, token->sibling);
-    // }
   }
 
   return NULL;
+}
+
+jsmntok_t* jsmn_object_find_key(const jsmntok_t* token, const char* field) {
+    if (token->type != JSMN_OBJECT) return NULL;
+
+    for (jsmntok_t* token_key = token->child; token_key; token_key = token_key->sibling) {
+        const char* key = jsmn_get_value(token_key);
+
+        if (strcmp(key, field) == 0) return token_key->child;
+    }
+
+    return NULL;
 }
 
 const char* jsmn_get_value(const jsmntok_t* token) {

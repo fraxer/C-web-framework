@@ -7,8 +7,6 @@
 
 typedef struct myhost {
     dbhost_t base;
-    int port;
-    char* ip;
     char* dbname;
     char* user;
     char* password;
@@ -25,7 +23,11 @@ void my_host_free(void*);
 
 dbconnection_t* my_connection_create(dbhosts_t*);
 
-void my_next_host(dbhosts_t*);
+dbconnection_t* my_connection_create_manual(dbhosts_t*);
+
+const char* my_table_exist_sql(const char*);
+
+const char* my_table_migration_create_sql();
 
 db_t* my_load(const char*, const jsmntok_t*);
 

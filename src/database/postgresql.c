@@ -1,22 +1,41 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdio.h>
 #include "../log/log.h"
 #include "dbresult.h"
 #include "postgresql.h"
 
+#define WITH_LOOP 1
+#define WITHOUT_LOOP 0
+
+dbhosts_t* postgresql_hosts_create();
 void postgresql_connection_free(dbconnection_t*);
 void postgresql_send_query(dbresult_t*, dbconnection_t*, const char*);
-void postgresql_append_string(char*, const char*, const char*);
-PGconn* postgresql_connect(dbhosts_t*);
+void postgresql_append_string(char*, size_t, postgresqlhost_t*);
+PGconn* postgresql_connect(dbhosts_t*, int);
+
+dbhosts_t* postgresql_hosts_create() {
+    dbhosts_t* hosts = malloc(sizeof *hosts);
+
+    hosts->host = NULL;
+    hosts->current_host = NULL;
+    hosts->connection_create = postgresql_connection_create;
+    hosts->connection_create_manual = postgresql_connection_create_manual;
+    hosts->table_exist_sql = postgresql_table_exist_sql;
+    hosts->table_migration_create_sql = postgresql_table_migration_create_sql;
+
+    return hosts;
+}
 
 postgresqlhost_t* postgresql_host_create() {
     postgresqlhost_t* host = malloc(sizeof *host);
 
     host->base.free = postgresql_host_free;
+    host->base.migration = 0;
+    host->base.port = 0;
+    host->base.ip = NULL;
     host->base.next = NULL;
-    host->port = 0;
-    host->ip = NULL;
     host->dbname = NULL;
     host->user = NULL;
     host->password = NULL;
@@ -30,11 +49,11 @@ void postgresql_host_free(void* arg) {
 
     postgresqlhost_t* host = arg;
 
-    if (host->ip) free(host->ip);
+    if (host->base.ip) free(host->base.ip);
     if (host->dbname) free(host->dbname);
     if (host->user) free(host->user);
     if (host->password) free(host->password);
-    host->port = 0;
+    host->base.port = 0;
     host->connection_timeout = 0;
     host->base.next = NULL;
 
@@ -58,11 +77,9 @@ dbconnection_t* postgresql_connection_create(dbhosts_t* hosts) {
     void* host_address = hosts->current_host;
 
     while (1) {
-        connection->connection = postgresql_connect(hosts);
+        connection->connection = postgresql_connect(hosts, WITH_LOOP);
 
-        int status = PQstatus(connection->connection);
-
-        if (status == CONNECTION_OK) break;
+        if (PQstatus(connection->connection) == CONNECTION_OK) break;
 
         log_error("Postgresql error: %s\n", PQerrorMessage(connection->connection));
 
@@ -77,13 +94,60 @@ dbconnection_t* postgresql_connection_create(dbhosts_t* hosts) {
     return (dbconnection_t*)connection;
 }
 
-void postgresql_next_host(dbhosts_t* hosts) {
-    if (hosts->current_host->next != NULL) {
-        hosts->current_host = hosts->current_host->next;
-        return;
+dbconnection_t* postgresql_connection_create_manual(dbhosts_t* hosts) {
+    postgresqlconnection_t* connection = (postgresqlconnection_t*)malloc(sizeof(postgresqlconnection_t));
+
+    if (connection == NULL) return NULL;
+
+    connection->base.locked = 0;
+    connection->base.next = NULL;
+    connection->base.free = postgresql_connection_free;
+    connection->base.send_query = postgresql_send_query;
+    connection->connection = postgresql_connect(hosts, WITHOUT_LOOP);
+
+    if (PQstatus(connection->connection) == CONNECTION_OK) {
+        return (dbconnection_t*)connection;
     }
 
-    hosts->current_host = hosts->host;
+    log_error("Postgresql error: %s\n", PQerrorMessage(connection->connection));
+
+    postgresql_connection_free((dbconnection_t*)connection);
+
+    return NULL;
+}
+
+const char* postgresql_table_exist_sql(const char* table) {
+    char tmp[512] = {0};
+
+    sprintf(
+        &tmp[0],
+        "SELECT "
+            "1 "
+        "FROM "
+            "information_schema.tables "
+        "WHERE "
+            "table_name = '%s' AND "
+            "table_type = 'BASE TABLE'",
+        table
+    );
+
+    return strdup(&tmp[0]);
+}
+
+const char* postgresql_table_migration_create_sql()
+{
+    char tmp[512] = {0};
+
+    strcpy(
+        &tmp[0],
+        "CREATE TABLE migration "
+        "("
+            "version     varchar(180)  NOT NULL PRIMARY KEY,"
+            "apply_time  integer       NOT NULL DEFAULT 0"
+        ")"
+    );
+
+    return strdup(&tmp[0]);
 }
 
 void postgresql_connection_free(dbconnection_t* connection) {
@@ -176,27 +240,39 @@ void postgresql_send_query(dbresult_t* result, dbconnection_t* connection, const
     return;
 }
 
-void postgresql_append_string(char* string, const char* key, const char* value) {
-    strcat(string, key);
-    strcat(string, "=");
-    strcat(string, value);
-    strcat(string, " ");
+size_t postgresql_connection_string(char* buffer, size_t size, postgresqlhost_t* host) {
+    return snprintf(buffer, size,
+        "host=%s "
+        "port=%d "
+        "dbname=%s "
+        "user=%s "
+        "password=%s "
+        "connect_timeout=%d ",
+        host->base.ip,
+        host->base.port,
+        host->dbname,
+        host->user,
+        host->password,
+        host->connection_timeout
+    );
 }
 
-PGconn* postgresql_connect(dbhosts_t* hosts) {
+PGconn* postgresql_connect(dbhosts_t* hosts, int with_loop) {
     postgresqlhost_t* host = (postgresqlhost_t*)hosts->current_host;
-    char string[1024] = {0};
 
-    postgresql_append_string(string, "host", host->ip);
-    sprintf(&string[strlen(string)], "port=%d ", host->port);
-    postgresql_append_string(string, "dbname", host->dbname);
-    postgresql_append_string(string, "user", host->user);
-    postgresql_append_string(string, "password", host->password);
-    sprintf(&string[strlen(string)], "connect_timeout=%d ", host->connection_timeout);
+    size_t string_length = postgresql_connection_string(NULL, 0, host);
+    char* string = malloc(string_length + 1);
+    if (string == NULL) return NULL;
 
-    postgresql_next_host(hosts);
+    postgresql_connection_string(string, string_length, host);
 
-    return PQconnectdb(string);
+    if (with_loop) db_next_host(hosts);
+
+    PGconn* connection = PQconnectdb(string);
+
+    free(string);
+
+    return connection;
 }
 
 db_t* postgresql_load(const char* database_id, const jsmntok_t* token_array) {
@@ -204,10 +280,11 @@ db_t* postgresql_load(const char* database_id, const jsmntok_t* token_array) {
     db_t* database = db_create(database_id);
     if (database == NULL) goto failed;
 
-    database->hosts = db_hosts_create(postgresql_connection_create);
+    database->hosts = postgresql_hosts_create();
     if (database->hosts == NULL) goto failed;
 
-    enum fields { PORT = 0, IP, DBNAME, USER, PASSWORD, CONNECTION_TIMEOUT, FIELDS_COUNT };
+    enum fields { PORT = 0, IP, DBNAME, USER, PASSWORD, CONNECTION_TIMEOUT, MIGRATION, FIELDS_COUNT };
+    enum reqired_fields { R_PORT = 0, R_IP, R_DBNAME, R_USER, R_PASSWORD, R_CONNECTION_TIMEOUT, R_FIELDS_COUNT };
     int finded_fields[FIELDS_COUNT] = {0};
     dbhost_t* host_last = NULL;
 
@@ -222,18 +299,18 @@ db_t* postgresql_load(const char* database_id, const jsmntok_t* token_array) {
 
                 const char* value = jsmn_get_value(token->child);
 
-                host->port = atoi(value);
+                host->base.port = atoi(value);
             }
             else if (strcmp(key, "ip") == 0) {
                 finded_fields[IP] = 1;
 
                 const char* value = jsmn_get_value(token->child);
 
-                host->ip = (char*)malloc(strlen(value) + 1);
+                host->base.ip = (char*)malloc(strlen(value) + 1);
 
-                if (host->ip == NULL) goto failed;
+                if (host->base.ip == NULL) goto failed;
 
-                strcpy(host->ip, value);
+                strcpy(host->base.ip, value);
             }
             else if (strcmp(key, "dbname") == 0) {
                 finded_fields[DBNAME] = 1;
@@ -275,6 +352,13 @@ db_t* postgresql_load(const char* database_id, const jsmntok_t* token_array) {
 
                 host->connection_timeout = atoi(value);
             }
+            else if (strcmp(key, "migration") == 0) {
+                finded_fields[MIGRATION] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->base.migration = strcmp(value, "true") == 0;
+            }
         }
 
         if (database->hosts->host == NULL) {
@@ -286,7 +370,7 @@ db_t* postgresql_load(const char* database_id, const jsmntok_t* token_array) {
         }
         host_last = (dbhost_t*)host;
 
-        for (int i = 0; i < FIELDS_COUNT; i++) {
+        for (int i = 0; i < R_FIELDS_COUNT; i++) {
             if (finded_fields[i] == 0) {
                 log_error("Error: Fill postgresql config\n");
                 goto failed;

@@ -5,7 +5,11 @@
 
 dbinstance_t dbinstance(db_t*, const char*);
 
-dbresult_t dbquery(dbinstance_t*, const char*);
+dbresult_t dbquery(dbinstance_t*, const char*, ...);
+
+dbresult_t dbtable_exist(dbinstance_t*, const char*);
+
+dbresult_t dbtable_migration_create(dbinstance_t*);
 
 dbresult_t dbbegin(dbinstance_t*, transaction_level_e);
 

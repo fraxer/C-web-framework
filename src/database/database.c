@@ -53,14 +53,13 @@ dbhost_t* db_host_create() {
     return host;
 }
 
-dbhosts_t* db_hosts_create(dbconnection_t*(*f)(dbhosts_t* hosts)) {
-    dbhosts_t* hosts = malloc(sizeof *hosts);
+void db_next_host(dbhosts_t* hosts) {
+    if (hosts->current_host->next != NULL) {
+        hosts->current_host = hosts->current_host->next;
+        return;
+    }
 
-    hosts->host = NULL;
-    hosts->current_host = NULL;
-    hosts->connection_create = f;
-
-    return hosts;
+    hosts->current_host = hosts->host;
 }
 
 void db_free(db_t* db) {

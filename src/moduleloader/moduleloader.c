@@ -7,13 +7,11 @@
 #include <sys/stat.h>
 #include "../config/config.h"
 #include "../log/log.h"
-#include "../jsmn/jsmn.h"
 #include "../redirect/redirect.h"
 #include "../route/route.h"
 #include "../route/routeloader.h"
 #include "../domain/domain.h"
 #include "../server/server.h"
-#include "../database/database.h"
 #ifdef MySQL_FOUND
     #include "../database/mysql.h"
 #endif

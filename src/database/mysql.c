@@ -1,21 +1,40 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdio.h>
 #include "../log/log.h"
 #include "dbresult.h"
 #include "mysql.h"
 
+#define WITH_LOOP 1
+#define WITHOUT_LOOP 0
+
+dbhosts_t* my_hosts_create();
 void my_connection_free(dbconnection_t*);
 void my_send_query(dbresult_t*, dbconnection_t*, const char*);
-MYSQL* my_connect(dbhosts_t*);
+MYSQL* my_connect(dbhosts_t*, int);
+
+dbhosts_t* my_hosts_create() {
+    dbhosts_t* hosts = malloc(sizeof *hosts);
+
+    hosts->host = NULL;
+    hosts->current_host = NULL;
+    hosts->connection_create = my_connection_create;
+    hosts->connection_create_manual = my_connection_create_manual;
+    hosts->table_exist_sql = my_table_exist_sql;
+    hosts->table_migration_create_sql = my_table_migration_create_sql;
+
+    return hosts;
+}
 
 myhost_t* my_host_create() {
     myhost_t* host = malloc(sizeof *host);
 
     host->base.free = my_host_free;
+    host->base.migration = 0;
+    host->base.port = 0;
+    host->base.ip = NULL;
     host->base.next = NULL;
-    host->port = 0;
-    host->ip = NULL;
     host->dbname = NULL;
     host->user = NULL;
     host->password = NULL;
@@ -28,11 +47,11 @@ void my_host_free(void* arg) {
 
     myhost_t* host = arg;
 
-    if (host->ip) free(host->ip);
+    if (host->base.ip) free(host->base.ip);
     if (host->dbname) free(host->dbname);
     if (host->user) free(host->user);
     if (host->password) free(host->password);
-    host->port = 0;
+    host->base.port = 0;
     host->base.next = NULL;
 
     free(host);
@@ -55,7 +74,7 @@ dbconnection_t* my_connection_create(dbhosts_t* hosts) {
     void* host_address = hosts->current_host;
 
     while (1) {
-        connection->connection = my_connect(hosts);
+        connection->connection = my_connect(hosts, WITH_LOOP);
 
         if (connection->connection != NULL) break;
 
@@ -72,13 +91,60 @@ dbconnection_t* my_connection_create(dbhosts_t* hosts) {
     return (dbconnection_t*)connection;
 }
 
-void my_next_host(dbhosts_t* hosts) {
-    if (hosts->current_host->next != NULL) {
-        hosts->current_host = hosts->current_host->next;
-        return;
+dbconnection_t* my_connection_create_manual(dbhosts_t* hosts) {
+    myconnection_t* connection = (myconnection_t*)malloc(sizeof(myconnection_t));
+
+    if (connection == NULL) return NULL;
+
+    connection->base.locked = 0;
+    connection->base.next = NULL;
+    connection->base.free = my_connection_free;
+    connection->base.send_query = my_send_query;
+    connection->connection = my_connect(hosts, WITHOUT_LOOP);
+
+    if (connection->connection != NULL) {
+        return (dbconnection_t*)connection;
     }
 
-    hosts->current_host = hosts->host;
+    log_error("Mysql error: connection error\n");
+
+    my_connection_free((dbconnection_t*)connection);
+
+    return NULL;
+}
+
+const char* my_table_exist_sql(const char* table) {
+    char tmp[512] = {0};
+
+    sprintf(
+        &tmp[0],
+        "SELECT "
+            "1 "
+        "FROM "
+            "information_schema.TABLES "
+        "WHERE "
+            "TABLE_TYPE LIKE 'BASE TABLE' AND "
+            "TABLE_NAME = '%s' ",
+        table
+    );
+
+    return strdup(&tmp[0]);
+}
+
+const char* my_table_migration_create_sql()
+{
+    char tmp[512] = {0};
+
+    strcpy(
+        &tmp[0],
+        "CREATE TABLE migration "
+        "("
+            "version     varchar(180)  NOT NULL PRIMARY KEY,"
+            "apply_time  integer       NOT NULL DEFAULT 0"
+        ")"
+    );
+
+    return strdup(&tmp[0]);
 }
 
 void my_connection_free(dbconnection_t* connection) {
@@ -173,7 +239,7 @@ void my_send_query(dbresult_t* result, dbconnection_t* connection, const char* s
     return;
 }
 
-MYSQL* my_connect(dbhosts_t* hosts) {
+MYSQL* my_connect(dbhosts_t* hosts, int with_loop) {
     MYSQL* connection = mysql_init(NULL);
 
     if (connection == NULL) return NULL;
@@ -182,16 +248,16 @@ MYSQL* my_connect(dbhosts_t* hosts) {
 
     connection = mysql_real_connect(
         connection,
-        host->ip,
+        host->base.ip,
         host->user,
         host->password,
         host->dbname,
-        host->port,
+        host->base.port,
         NULL,
         CLIENT_MULTI_STATEMENTS
     );
 
-    my_next_host(hosts);
+    if (with_loop) db_next_host(hosts);
 
     return connection;
 }
@@ -201,10 +267,11 @@ db_t* my_load(const char* database_id, const jsmntok_t* token_array) {
     db_t* database = db_create(database_id);
     if (database == NULL) goto failed;
 
-    database->hosts = db_hosts_create(my_connection_create);
+    database->hosts = my_hosts_create();
     if (database->hosts == NULL) goto failed;
 
-    enum fields { PORT = 0, IP, DBNAME, USER, PASSWORD, FIELDS_COUNT };
+    enum fields { PORT = 0, IP, DBNAME, USER, PASSWORD, MIGRATION, FIELDS_COUNT };
+    enum required_fields { R_PORT = 0, R_IP, R_DBNAME, R_USER, R_PASSWORD, R_FIELDS_COUNT };
     int finded_fields[FIELDS_COUNT] = {0};
     dbhost_t* host_last = NULL;
 
@@ -219,18 +286,18 @@ db_t* my_load(const char* database_id, const jsmntok_t* token_array) {
 
                 const char* value = jsmn_get_value(token->child);
 
-                host->port = atoi(value);
+                host->base.port = atoi(value);
             }
             else if (strcmp(key, "ip") == 0) {
                 finded_fields[IP] = 1;
 
                 const char* value = jsmn_get_value(token->child);
 
-                host->ip = (char*)malloc(strlen(value) + 1);
+                host->base.ip = (char*)malloc(strlen(value) + 1);
 
-                if (host->ip == NULL) goto failed;
+                if (host->base.ip == NULL) goto failed;
 
-                strcpy(host->ip, value);
+                strcpy(host->base.ip, value);
             }
             else if (strcmp(key, "dbname") == 0) {
                 finded_fields[DBNAME] = 1;
@@ -265,6 +332,13 @@ db_t* my_load(const char* database_id, const jsmntok_t* token_array) {
 
                 strcpy(host->password, value);
             }
+            else if (strcmp(key, "migration") == 0) {
+                finded_fields[MIGRATION] = 1;
+
+                const char* value = jsmn_get_value(token->child);
+
+                host->base.migration = strcmp(value, "true") == 0;
+            }
         }
 
         if (database->hosts->host == NULL) {
@@ -276,7 +350,7 @@ db_t* my_load(const char* database_id, const jsmntok_t* token_array) {
         }
         host_last = (dbhost_t*)host;
 
-        for (int i = 0; i < FIELDS_COUNT; i++) {
+        for (int i = 0; i < R_FIELDS_COUNT; i++) {
             if (finded_fields[i] == 0) {
                 log_error("Error: Fill mysql config\n");
                 goto failed;
