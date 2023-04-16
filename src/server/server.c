@@ -4,14 +4,14 @@
 #include <pthread.h>
 #include "../log/log.h"
 #include "server.h"
-    #include <stdio.h>
 
 static server_chain_t* server_chain = NULL;
 static server_chain_t* last_server_chain = NULL;
 
 server_t* server_alloc();
-
 server_chain_t* server_chain_alloc();
+gzip_mimetype_t* server_gzip_mimetype_alloc();
+void server_gzip_mimetype_free(gzip_mimetype_t*);
 
 
 server_t* server_create() {
@@ -38,7 +38,7 @@ server_t* server_create() {
 }
 
 server_t* server_alloc() {
-    return (server_t*)malloc(sizeof(server_t));
+    return malloc(sizeof(server_t));
 }
 
 void server_free(server_t* server) {
@@ -93,13 +93,13 @@ void server_free(server_t* server) {
 index_t* server_create_index(const char* value) {
     index_t* result = NULL;
 
-    index_t* index = (index_t*)malloc(sizeof(index_t));
+    index_t* index = malloc(sizeof(index_t));
 
     if (index == NULL) goto failed;
 
     size_t length = strlen(value);
 
-    index->value = (char*)malloc(length + 1);
+    index->value = malloc(length + 1);
 
     if (index->value == NULL) goto failed;
 
@@ -193,7 +193,7 @@ void server_chain_destroy(server_chain_t* _server_chain) {
 }
 
 server_info_t* server_info_alloc() {
-    return (server_info_t*)malloc(sizeof(server_info_t));
+    return malloc(sizeof(server_info_t));
 }
 
 void server_info_free(server_info_t* server_info) {
@@ -202,7 +202,42 @@ void server_info_free(server_info_t* server_info) {
     if (server_info->tmp_dir) free(server_info->tmp_dir);
     server_info->tmp_dir = NULL;
 
+    server_gzip_mimetype_free(server_info->gzip_mimetype);
+    server_info->gzip_mimetype = NULL;
+
     free(server_info);
 
     server_info = NULL;
+}
+
+gzip_mimetype_t* server_gzip_mimetype_alloc() {
+    return malloc(sizeof(gzip_mimetype_t));
+}
+
+gzip_mimetype_t* server_gzip_mimetype_create(const char* string) {
+    gzip_mimetype_t* gzip_mimetype = server_gzip_mimetype_alloc();
+    if (gzip_mimetype == NULL) return NULL;
+
+    gzip_mimetype->length = strlen(string);
+    gzip_mimetype->value = malloc(gzip_mimetype->length + 1);
+    if (gzip_mimetype->value == NULL) {
+        free(gzip_mimetype);
+        return NULL;
+    }
+
+    strcpy(gzip_mimetype->value, string);
+
+    return gzip_mimetype;
+}
+
+void server_gzip_mimetype_free(gzip_mimetype_t* gzip_mimetype) {
+    while (gzip_mimetype) {
+        gzip_mimetype_t* next = gzip_mimetype->next;
+
+        if (gzip_mimetype->value) free(gzip_mimetype->value);
+
+        free(gzip_mimetype);
+
+        gzip_mimetype = next;
+    }
 }

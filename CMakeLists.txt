@@ -8,6 +8,7 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 
 find_package(Threads REQUIRED)
 find_package(PCRE REQUIRED)
+find_package(ZLIB REQUIRED)
 find_package(OpenSSL)
 
 include(CTest)
@@ -50,6 +51,7 @@ add_compile_definitions(CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
 
 
 add_executable(main src/main.c)
+add_executable(range src/range.c)
 
 add_library(log STATIC src/log/log.c)
 
@@ -184,6 +186,7 @@ target_link_libraries(
 	pthread
 	pcre
 	${OPENSSL_LIBRARIES}
+	${ZLIB_LIBRARIES}
 )
 
 target_link_libraries(

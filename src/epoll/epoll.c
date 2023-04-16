@@ -53,19 +53,15 @@ void epoll_disable(socket_t*, int);
 
 void epoll_run(void* chain) {
     int result = -1;
-
     int connection_count = 0;
 
     server_chain_t* server_chain = chain;
-
     socket_epoll_t* first_socket = NULL;
 
     int basefd = epoll_init(&first_socket, server_chain->server);
-
     if (basefd == -1) goto failed;
 
     char* buffer = epoll_buffer_alloc(server_chain->info->read_buffer);
-
     if (buffer == NULL) goto failed;
 
     epoll_event_t events[EPOLL_MAX_EVENTS];
@@ -143,7 +139,6 @@ void epoll_run(void* chain) {
 
 int epoll_init(socket_epoll_t** first_socket, server_t* first_server) {
     int basefd = epoll_create1(0);
-
     if (basefd == -1) {
         log_error("Epoll error: Epoll create1 failed\n");
         return -1;
@@ -167,7 +162,7 @@ int epoll_init(socket_epoll_t** first_socket, server_t* first_server) {
         last_socket = socket;
 
         socket->event->data.fd = socket->base.fd;
-        socket->event->events = EPOLLIN;
+        socket->event->events = EPOLLIN | EPOLLRDHUP;
 
         if (epoll_ctl(basefd, EPOLL_CTL_ADD, socket->base.fd, socket->event) == -1) {
             log_error("Epoll error: Epoll_ctl failed in addListener\n");
@@ -213,7 +208,7 @@ int epoll_after_create_connection(connection_t* connection, server_t* server, in
 
     epoll_connection_set_hooks(connection);
 
-    if (epoll_control_add(connection, EPOLLIN) == -1) {
+    if (epoll_control_add(connection, EPOLLIN | EPOLLRDHUP) == -1) {
         log_error("Epoll error: Error epoll_ctl failed accept\n");
         return -1;
     }
@@ -237,7 +232,7 @@ socket_epoll_t* epoll_socket_alloc() {
 }
 
 int epoll_after_read_request(connection_t* connection) {
-    if (epoll_control_mod(connection, EPOLLOUT) == -1) {
+    if (epoll_control_mod(connection, EPOLLOUT | EPOLLRDHUP) == -1) {
         log_error("Epoll error: Epoll_ctl failed in read done\n");
         return -1;
     }
@@ -257,7 +252,7 @@ int epoll_after_write_request(connection_t* connection) {
         connection->switch_to_protocol = NULL;
     }
 
-    if (epoll_control_mod(connection, EPOLLIN) == -1) {
+    if (epoll_control_mod(connection, EPOLLIN | EPOLLRDHUP) == -1) {
         log_error("Epoll error: Epoll_ctl failed in write done\n");
         return -1;
     }
@@ -277,7 +272,7 @@ int epoll_queue_push(connection_t* connection) {
 }
 
 int epoll_queue_pop(connection_t* connection) {
-    if (epoll_control_mod(connection, EPOLLOUT) == -1) {
+    if (epoll_control_mod(connection, EPOLLOUT | EPOLLRDHUP) == -1) {
         log_error("Epoll error: Epoll_ctl failed epollout\n");
         return -1;
     }
