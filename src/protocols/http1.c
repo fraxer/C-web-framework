@@ -12,6 +12,8 @@
     #include <stdio.h>
 
 void http1_handle(connection_t*);
+int http1_write_head(connection_t*);
+int http1_write_body(connection_t*, char*, size_t, size_t);
 int http1_get_resource(connection_t*);
 int http1_get_file(connection_t*);
 int http1_get_redirect(connection_t*);
@@ -20,7 +22,6 @@ char* http1_get_fullpath(connection_t*);
 
 void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
     http1parser_t parser;
-
     http1parser_init(&parser, connection, buffer);
 
     while (1) {
@@ -65,48 +66,40 @@ void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
 void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
     http1response_t* response = (http1response_t*)connection->response;
 
-    if (response->body.data == NULL) {
-        connection->after_write_request(connection);
-        return;
-    }
+    if (http1_write_head(connection) == -1) goto write;
 
     // body
     if (response->body.pos < response->body.size) {
-        size_t size = response->body.size - response->body.pos;
+        buffer = &response->body.data[response->body.pos];
 
-        if (size > buffer_size) {
-            size = buffer_size;
-        }
+        size_t payload_size = response->body.size - response->body.pos;
+        size_t size = payload_size > buffer_size ? buffer_size : payload_size;
+        ssize_t writed = http1_write_body(connection, buffer, payload_size, size);
 
-        ssize_t writed = http1_write_internal(connection, &response->body.data[response->body.pos], size);
-
-        if (writed == -1) return;
+        if (writed < 0) goto write;
 
         response->body.pos += writed;
 
-        if ((size_t)writed == buffer_size) return;
+        if (response->body.pos < response->body.size) return;
     }
 
     // file
     if (response->file_.fd > 0 && response->file_.pos < response->file_.size) {
         lseek(response->file_.fd, response->file_.pos, SEEK_SET);
+        ssize_t readed = read(response->file_.fd, buffer, buffer_size);
+        if (readed < 0) goto write;
 
-        size_t size = response->file_.size - response->file_.pos;
+        size_t payload_size = response->file_.size - response->file_.pos;
+        ssize_t writed = http1_write_body(connection, buffer, payload_size, readed);
 
-        if (size > buffer_size) {
-            size = buffer_size;
-        }
-
-        size_t readed = read(response->file_.fd, buffer, size);
-
-        ssize_t writed = http1_write_internal(connection, buffer, readed);
-
-        if (writed == -1) return;
+        if (writed < 0) goto write;
 
         response->file_.pos += writed;
 
         if (response->file_.pos < response->file_.size) return;
     }
+
+    write:
 
     connection->after_write_request(connection);
 }
@@ -114,23 +107,80 @@ void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
 ssize_t http1_read_internal(connection_t* connection, char* buffer, size_t size) {
     return connection->ssl_enabled ?
         openssl_read(connection->ssl, buffer, size) :
-        read(connection->fd, buffer, size);
+        recv(connection->fd, buffer, size, 0);
 }
 
 ssize_t http1_write_internal(connection_t* connection, const char* response, size_t size) {
-    if (connection->ssl_enabled) {
-        ssize_t sended = openssl_write(connection->ssl, response, size);
+    return connection->ssl_enabled ?
+        openssl_write(connection->ssl, response, size) :
+        send(connection->fd, response, size, MSG_NOSIGNAL);
+}
 
-        // if (sended == -1) {
-        //     int err = openssl_get_status(connection->ssl, sended);
+ssize_t http1_write_chunked(connection_t* connection, const char* data, size_t length, int end) {
+    size_t buf_length = 10 + length + 2 + 5;
+    char* buf = malloc(buf_length);
 
-        //     // printf("%d\n", err);
-        // }
+    int pos = 0;
+    pos = snprintf(buf, buf_length, "%x\r\n", (unsigned int)length);
+    memcpy(buf + pos, data, length); pos += length;
+    memcpy(buf + pos, "\r\n", 2); pos += 2;
 
-        return sended;
+    if (end) {
+        memcpy(buf + pos, "0\r\n\r\n", 5); pos += 5;
     }
-        
-    return write(connection->fd, response, size);
+
+    ssize_t writed = http1_write_internal(connection, buf, pos);
+
+    free(buf);
+
+    if (writed < 0) return -1;
+
+    return length;
+}
+
+int http1_write_head(connection_t* connection) {
+    http1response_t* response = (http1response_t*)connection->response;
+    if (response->head_writed) return 0;
+
+    http1response_head_t head = http1response_create_head(response);
+    if (head.data == NULL) return -1;
+
+    ssize_t writed = http1_write_internal(connection, head.data, head.size);
+
+    free(head.data);
+
+    response->head_writed = 1;
+    
+    return writed;
+}
+
+int http1_write_body(connection_t* connection, char* buffer, size_t payload_size, size_t size) {
+    http1response_t* response = (http1response_t*)connection->response;
+    ssize_t writed = -1;
+
+    if (response->transfer_encoding == TE_CHUNKED) {
+        if (response->content_encoding == CE_GZIP) {
+            size_t source_size = size;
+            int end = payload_size <= source_size;
+
+            if (response->deflate(response, &buffer, (ssize_t*)&size, end) == -1) goto failed;
+
+            writed = http1_write_chunked(connection, buffer, size, end);
+
+            free(buffer);
+
+            writed = source_size;
+        } else {
+            writed = http1_write_chunked(connection, buffer, size, payload_size <= size);
+        }
+    }
+    else {
+        writed = http1_write_internal(connection, buffer, size);
+    }
+
+    failed:
+
+    return writed;
 }
 
 void http1_handle(connection_t* connection) {
@@ -200,7 +250,6 @@ int http1_get_resource(connection_t* connection) {
 
             connection->handle = route->handler[request->method];
             connection->queue_push(connection);
-
             // route->handler[request->method](connection->request, connection->response);
             // connection->after_read_request(connection);
 

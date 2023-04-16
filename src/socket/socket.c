@@ -147,6 +147,9 @@ int socket_set_keepalive(int socket) {
 }
 
 int socket_set_options(int socket) {
+    int nodelay = 1;
+    if (setsockopt(socket, SOL_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) == -1) return -1;
+
     int enableaddr = 1;
     if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, &enableaddr, sizeof(enableaddr)) == -1) return -1;
 
@@ -155,9 +158,6 @@ int socket_set_options(int socket) {
 
     int enablecpu = 1;
     if (setsockopt(socket, SOL_SOCKET, SO_INCOMING_CPU, &enablecpu, sizeof(enablecpu)) == -1) return -1;
-
-    int defer_accept = 1;
-    if (setsockopt(socket, SOL_SOCKET, TCP_DEFER_ACCEPT, &defer_accept, sizeof(defer_accept)) == -1) return -1;
 
     return 0;
 }

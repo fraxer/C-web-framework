@@ -762,7 +762,6 @@ int http1parser_host_not_found(http1parser_t* parser) {
 
 void http1parser_try_set_keepalive(http1parser_t* parser) {
     http1request_t* request = (http1request_t*)parser->connection->request;
-
     http1_header_t* header = request->last_header;
 
     const char* connection_key = "connection";
@@ -775,6 +774,8 @@ void http1parser_try_set_keepalive(http1parser_t* parser) {
     for (size_t i = 0, j = 0; i < header->key_length && j < connection_key_length; i++, j++) {
         if (tolower(header->key[i]) != tolower(connection_key[j])) return;
     }
+
+    parser->connection->keepalive_enabled = 0;
 
     for (size_t i = 0, j = 0; i < header->value_length && j < connection_value_length; i++, j++) {
         if (tolower(header->value[i]) != tolower(connection_value[j])) return;

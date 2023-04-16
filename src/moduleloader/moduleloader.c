@@ -797,7 +797,7 @@ server_info_t* module_loader_server_info_load() {
 
     const jsmntok_t* token_root = config_get_section("main");
 
-    enum fields { HEAD_BUFFER = 0, CLIENT, ENV, TMP, FIELDS_COUNT };
+    enum fields { HEAD_BUFFER = 0, CLIENT, ENV, TMP, GZIP, FIELDS_COUNT };
 
     int finded_fields[FIELDS_COUNT] = {0};
 
@@ -844,6 +844,31 @@ server_info_t* module_loader_server_info_load() {
             if (server_info->tmp_dir == NULL) goto failed;
 
             strcpy(server_info->tmp_dir, value);
+        }
+        else if (strcmp(key, "gzip") == 0) {
+            finded_fields[GZIP] = 1;
+
+            jsmntok_t* token_array = token->child;
+
+            if (token_array->type != JSMN_ARRAY) goto failed;
+
+            gzip_mimetype_t* last_gzip = NULL;
+
+            for (jsmntok_t* token_item = token_array->child; token_item; token_item = token_item->sibling) {
+                if (token_item->type != JSMN_STRING) goto failed;
+
+                gzip_mimetype_t* gzip_mimetype = server_gzip_mimetype_create(jsmn_get_value(token_item));
+                if (gzip_mimetype == NULL) goto failed;
+
+                if (last_gzip == NULL) {
+                    server_info->gzip_mimetype = gzip_mimetype;
+                }
+                else {
+                    last_gzip->next = gzip_mimetype;
+                }
+
+                last_gzip = gzip_mimetype;
+            }
         }
     }
 

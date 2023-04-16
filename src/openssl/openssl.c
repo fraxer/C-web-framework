@@ -52,6 +52,7 @@ int openssl_context_init(openssl_t* openssl) {
     }
 
     SSL_CTX_set_options(openssl->ctx, SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_RENEGOTIATION);
+    SSL_CTX_set_quiet_shutdown(openssl->ctx, 1);
 
     int dh_enable = 1;
 

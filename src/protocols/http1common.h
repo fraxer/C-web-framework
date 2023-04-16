@@ -2,6 +2,7 @@
 #define __HTTP1COMMON__
 
 #include <stddef.h>
+#include <zlib.h>
 
 typedef struct http1_header {
     const char* key;
@@ -34,6 +35,17 @@ typedef struct http1_file {
     size_t pos;
     int fd;
 } http1_file_t;
+
+typedef enum http1_content_encoding {
+    CE_NONE = 0,
+    CE_GZIP
+} http1_content_encoding_t;
+
+typedef enum http1_trunsfer_encoding {
+    TE_NONE = 0,
+    TE_CHUNKED,
+    TE_GZIP
+} http1_trunsfer_encoding_t;
 
 http1_header_t* http1_header_create(const char*, size_t, const char*, size_t);
 

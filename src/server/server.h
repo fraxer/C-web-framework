@@ -14,11 +14,18 @@ typedef struct index {
     int length;
 } index_t;
 
+typedef struct gzip_mimetype {
+    char* value;
+    int length;
+    struct gzip_mimetype* next;
+} gzip_mimetype_t;
+
 typedef struct server_info {
     int read_buffer;
     int client_max_body_size;
     enum { ENV_DEV, ENV_PROD } environment;
     char* tmp_dir;
+    gzip_mimetype_t* gzip_mimetype;
 } server_info_t;
 
 typedef struct server_http {
@@ -79,5 +86,7 @@ void server_chain_destroy(server_chain_t*);
 server_info_t* server_info_alloc();
 
 void server_info_free(server_info_t*);
+
+gzip_mimetype_t* server_gzip_mimetype_create(const char*);
 
 #endif
