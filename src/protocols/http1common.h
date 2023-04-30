@@ -47,6 +47,13 @@ typedef enum http1_trunsfer_encoding {
     TE_GZIP
 } http1_trunsfer_encoding_t;
 
+typedef struct http1_ranges {
+    ssize_t start;
+    ssize_t end;
+    ssize_t pos;
+    struct http1_ranges* next;
+} http1_ranges_t;
+
 http1_header_t* http1_header_create(const char*, size_t, const char*, size_t);
 
 void http1_header_free(http1_header_t*);

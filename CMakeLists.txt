@@ -51,7 +51,6 @@ add_compile_definitions(CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
 
 
 add_executable(main src/main.c)
-add_executable(range src/range.c)
 
 add_library(log STATIC src/log/log.c)
 

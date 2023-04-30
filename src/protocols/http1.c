@@ -18,6 +18,7 @@ int http1_get_resource(connection_t*);
 int http1_get_file(connection_t*);
 int http1_get_redirect(connection_t*);
 char* http1_get_fullpath(connection_t*);
+void http1_prepare_range(http1response_t*, ssize_t*, ssize_t*, size_t*, const size_t);
 
 
 void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
@@ -70,33 +71,59 @@ void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
 
     // body
     if (response->body.pos < response->body.size) {
-        buffer = &response->body.data[response->body.pos];
-
         size_t payload_size = response->body.size - response->body.pos;
+
+        ssize_t end = 0;
+        ssize_t pos = response->body.pos;
+        if (response->ranges) {
+            http1_prepare_range(response, &pos, &end, &payload_size, response->body.size);
+        }
+
         size_t size = payload_size > buffer_size ? buffer_size : payload_size;
+        buffer = &response->body.data[pos];
+
         ssize_t writed = http1_write_body(connection, buffer, payload_size, size);
 
         if (writed < 0) goto write;
 
-        response->body.pos += writed;
-
-        if (response->body.pos < response->body.size) return;
+        if (response->ranges) {
+            response->ranges->pos += writed;
+            if (response->ranges->pos < end) return;
+        }
+        else {
+            response->body.pos += writed;
+            if (response->body.pos < response->body.size) return;
+        }
     }
 
     // file
     if (response->file_.fd > 0 && response->file_.pos < response->file_.size) {
-        lseek(response->file_.fd, response->file_.pos, SEEK_SET);
-        ssize_t readed = read(response->file_.fd, buffer, buffer_size);
+        size_t payload_size = response->file_.size - response->file_.pos;
+
+        ssize_t end = 0;
+        ssize_t pos = response->file_.pos;
+        if (response->ranges) {
+            http1_prepare_range(response, &pos, &end, &payload_size, response->file_.size);
+        }
+
+        size_t size = payload_size > buffer_size ? buffer_size : payload_size;
+        lseek(response->file_.fd, pos, SEEK_SET);
+
+        ssize_t readed = read(response->file_.fd, buffer, size);
         if (readed < 0) goto write;
 
-        size_t payload_size = response->file_.size - response->file_.pos;
         ssize_t writed = http1_write_body(connection, buffer, payload_size, readed);
 
         if (writed < 0) goto write;
 
-        response->file_.pos += writed;
-
-        if (response->file_.pos < response->file_.size) return;
+        if (response->ranges) {
+            response->ranges->pos += writed;
+            if (response->ranges->pos < end) return;
+        }
+        else {
+            response->file_.pos += writed;
+            if (response->file_.pos < response->file_.size) return;
+        }
     }
 
     write:
@@ -332,4 +359,15 @@ int http1_get_redirect(connection_t* connection) {
     }
 
     return find_new_location ? REDIRECT_FOUND : REDIRECT_NOT_FOUND;
+}
+
+void http1_prepare_range(http1response_t* response, ssize_t* pos, ssize_t* end, size_t* payload_size, const size_t size) {
+    *end = response->ranges->end > (ssize_t)size ? (ssize_t)size : response->ranges->end;
+    if (response->ranges->end == -1) *end = size;
+
+    ssize_t start = response->ranges->start == -1 ? (ssize_t)size - *end : response->ranges->start;
+    if (response->ranges->pos < start) response->ranges->pos = start;
+
+    *pos = response->ranges->pos;
+    *payload_size = *end + 1 - response->ranges->pos;
 }
