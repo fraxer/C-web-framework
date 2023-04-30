@@ -19,7 +19,7 @@ int http1response_headern_add(http1response_t*, const char*, size_t, const char*
 const char* http1response_status_string(int);
 size_t http1response_status_length(int);
 size_t http1response_head_size(http1response_t*);
-int http1response_create_body(http1response_t*, const char*, size_t);
+int http1response_alloc_body(http1response_t*, const char*, size_t);
 int http1response_header_add_content_length(http1response_t*, size_t);
 int http1response_header_add_content_type(http1response_t*, const char*, size_t);
 const char* http1response_get_mimetype(const char*);
@@ -32,6 +32,7 @@ void http1response_try_enable_te(http1response_t*, const char*);
 int http1response_deflate(http1response_t*, char**, ssize_t*, int);
 int http1response_cmpstr(const char*, const char*);
 int http1response_cmpsubstr(const char*, const char*);
+int http1response_prepare_body(http1response_t*, int, int, size_t);
 
 
 void http1response_header_free(http1_header_t* header) {
@@ -77,6 +78,7 @@ http1response_t* http1response_create(connection_t* connection) {
     response->file_.size = 0;
     response->header = NULL;
     response->last_header = NULL;
+    response->ranges = NULL;
     response->connection = connection;
     response->defstream = malloc(sizeof(z_stream));
     response->defstream_init = 0;
@@ -122,6 +124,9 @@ void http1response_reset(http1response_t* response) {
     http1response_header_free(response->header);
     response->header = NULL;
     response->last_header = NULL;
+
+    http1response_free_ranges(response->ranges);
+    response->ranges = NULL;
 }
 
 size_t http1response_head_size(http1response_t* response) {
@@ -166,16 +171,9 @@ void http1response_datan(http1response_t* response, const char* data, size_t len
     if (response->header_add(response, "Connection", http1response_keepalive_enabled(response) ? "keep-alive" : "Close") == -1) return;
     if (response->header_add(response, "Cache-Control", "no-store, no-cache") == -1) return;
 
-    if (response->content_encoding == CE_GZIP) {
-        if (!chunked_enabled && response->header_add(response, "Transfer-Encoding", "chunked") == -1) return;
-        if (!gzip_enabled && response->header_add(response, "Content-Encoding", "gzip") == -1) return;
-    }
+    if (http1response_prepare_body(response, gzip_enabled, chunked_enabled, length) == -1) return;
 
-    if (response->transfer_encoding != TE_CHUNKED) {
-        if (http1response_header_add_content_length(response, length) == -1) return;
-    }
-
-    http1response_create_body(response, data, length);
+    http1response_alloc_body(response, data, length);
 }
 
 int http1response_file(http1response_t* response, const char* path) {
@@ -190,7 +188,7 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
     if (path[0] != '/') fullpath_length++;
 
     char fullpath[fullpath_length + 1];
-    
+
     index_t* index = response->connection->server->index;
 
     size_t indexpath_length = fullpath_length;
@@ -264,17 +262,11 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
     const char* mimetype = http1response_get_mimetype(ext);
 
     int gzip_enabled = response->content_encoding == CE_GZIP;
+    int chunked_enabled = response->transfer_encoding == TE_CHUNKED;
     if (response->header_add(response, "Connection", http1response_keepalive_enabled(response) ? "keep-alive" : "Close") == -1) return -1;
     if (response->header_add_content_type(response, mimetype, strlen(mimetype)) == -1) return -1;
 
-    if (response->content_encoding == CE_GZIP) {
-        response->header_add(response, "Transfer-Encoding", "chunked");
-        if (!gzip_enabled && response->header_add(response, "Content-Encoding", "gzip") == -1) return -1;
-    }
-
-    if (response->transfer_encoding != TE_CHUNKED) {
-        if (http1response_header_add_content_length(response, response->file_.size) == -1) return -1;
-    }
+    if (http1response_prepare_body(response, gzip_enabled, chunked_enabled, response->file_.size) == -1) return -1;
 
     return 0;
 }
@@ -284,6 +276,13 @@ int http1response_header_add(http1response_t* response, const char* key, const c
 }
 
 int http1response_headern_add(http1response_t* response, const char* key, size_t key_length, const char* value, size_t value_length) {
+    if (response->ranges &&
+        (http1response_cmpstr(key, "Transfer-Encoding") ||
+         http1response_cmpstr(key, "Content-Encoding")
+    )) {
+        return 0;
+    }
+    
     http1_header_t* header = http1_header_create(key, key_length, value, value_length);
 
     if (header == NULL) return -1;
@@ -300,15 +299,20 @@ int http1response_headern_add(http1response_t* response, const char* key, size_t
 
     if (header->key == NULL || header->value == NULL) return -1;
 
-    if (http1response_cmpstr(header->key, "Content-Type")) {
-        http1response_try_enable_gzip(response, header->value);
+    if (!response->ranges) {
+        if (http1response_cmpstr(header->key, "Content-Type")) {
+            http1response_try_enable_gzip(response, header->value);
+        }
+        else if (http1response_cmpstr(header->key, "Transfer-Encoding")) {
+            http1response_try_enable_te(response, header->value);
+        }
+        else if (http1response_cmpstr(header->key, "Content-Encoding") &&
+            http1response_cmpstr(header->value, "gzip")) {
+            response->content_encoding = CE_GZIP;
+        }
     }
-    else if (http1response_cmpstr(header->key, "Transfer-Encoding")) {
-        http1response_try_enable_te(response, header->value);
-    }
-    else if (http1response_cmpstr(header->key, "Content-Encoding") &&
-        http1response_cmpstr(header->value, "gzip")) {
-        response->content_encoding = CE_GZIP;
+    else {
+
     }
 
     return 0;
@@ -496,6 +500,7 @@ const char* http1response_get_extention(const char* path, size_t length) {
 
 void http1response_default_response(http1response_t* response, int status_code) {
     http1response_reset(response);
+    response->status_code = status_code;
 
     const char* str1 = "<html><head></head><body style=\"text-align:center;margin:20px\"><h1>";
     size_t str1_length = strlen(str1);
@@ -617,7 +622,7 @@ int http1response_deflate(http1response_t* response, char** data, ssize_t* lengt
     return result;
 }
 
-int http1response_create_body(http1response_t* response, const char* data, size_t length) {
+int http1response_alloc_body(http1response_t* response, const char* data, size_t length) {
     response->body.data = malloc(length);
     if (response->body.data == NULL) return -1;
 
@@ -668,4 +673,74 @@ int http1response_cmpsubstr(const char* a, const char* b) {
     }
 
     return 1;
+}
+
+http1_ranges_t* http1response_init_ranges() {
+    http1_ranges_t* range = malloc(sizeof* range);
+
+    if (range == NULL) return NULL;
+
+    range->start = -1;
+    range->end = -1;
+    range->pos = 0;
+    range->next = NULL;
+
+    return range;
+}
+
+void http1response_free_ranges(http1_ranges_t* ranges) {
+    while (ranges) {
+        http1_ranges_t* next = ranges->next;
+
+        free(ranges);
+
+        ranges = next;
+    }
+}
+
+int http1response_prepare_body(http1response_t* response, int gzip_enabled, int chunked_enabled, size_t length) {
+    if (response->header_add(response, "Accept-Ranges", "bytes") == -1) return -1;
+
+    if (!response->ranges) {
+        if (response->content_encoding == CE_GZIP) {
+            if (!chunked_enabled && response->header_add(response, "Transfer-Encoding", "chunked") == -1) return -1;
+            if (!gzip_enabled && response->header_add(response, "Content-Encoding", "gzip") == -1) return -1;
+        }
+
+        if (response->transfer_encoding != TE_CHUNKED) {
+            if (http1response_header_add_content_length(response, length) == -1) return -1;
+        }
+    }
+    // one range
+    else if (!response->ranges->next) {
+        if (response->ranges->start > (ssize_t)length) {
+            http1response_free_ranges(response->ranges);
+            response->ranges = NULL;
+            http1response_default_response(response, 416);
+            return -1;
+        }
+
+        response->status_code = 206;
+
+        ssize_t end = response->ranges->end > (ssize_t)length ? (ssize_t)length : response->ranges->end + 1;
+        if (response->ranges->end == -1) end = length;
+
+        ssize_t start = response->ranges->start;
+        if (response->ranges->start == -1) {
+            end = length;
+            start = (ssize_t)length - response->ranges->end;
+        }
+
+        char bytes[70] = {0};
+        snprintf(bytes, 70, "bytes %ld-%ld/%ld", start, end - 1, length);
+
+        if (response->header_add(response, "Content-Range", bytes) == -1) return -1;
+        if (http1response_header_add_content_length(response, end - start) == -1) return -1;
+    }
+    // many ranges
+    else if (response->ranges->next) {
+        // TODO
+    }
+
+    return 0;
 }

@@ -15,9 +15,9 @@ typedef struct http1response {
 
     http1_body_t body;
     http1_file_t file_;
-
     http1_header_t* header;
     http1_header_t* last_header;
+    http1_ranges_t* ranges;
 
     connection_t* connection;
     z_stream* defstream;
@@ -53,5 +53,9 @@ void http1response_redirect(http1response_t*, const char*, int);
 int http1response_data_append(char*, size_t*, const char*, size_t);
 
 int http1response_deflate(http1response_t*, char**, ssize_t*, int);
+
+http1_ranges_t* http1response_init_ranges();
+
+void http1response_free_ranges(http1_ranges_t*);
 
 #endif

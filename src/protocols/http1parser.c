@@ -2,6 +2,7 @@
 #include <ctype.h>
 #include "../connection/connection.h"
 #include "../request/http1request.h"
+#include "../response/http1response.h"
 #include "../domain/domain.h"
 #include "../log/log.h"
 #include "http1common.h"
@@ -25,6 +26,8 @@ int http1parser_set_ext(http1request_t*, const char*, size_t);
 int http1parser_set_query(http1request_t*, const char*, size_t, size_t);
 int http1parser_host_not_found(http1parser_t*);
 void http1parser_try_set_keepalive(http1parser_t*);
+void http1parser_try_set_range(http1parser_t*);
+int http1parser_cmplower(const char*, ssize_t, const char*, ssize_t);
 
 void http1parser_init(http1parser_t* parser, connection_t* connection, char* buffer) {
     parser->stage = METHOD;
@@ -292,14 +295,12 @@ int http1parser_parse_headers_value(http1parser_t* parser) {
 
 int http1parser_parse_header_key(http1parser_t* parser) {
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
-        // printf("hkch %d\n", parser->buffer[parser->pos], parser->buffer[parser->pos]);
 
         char ch = parser->buffer[parser->pos];
 
         if (ch < 32 && !(ch == '\r' || ch == '\n')) return HTTP1PARSER_ERROR;
 
         if (ch == ' ') {
-            // printf("asd %.*s\n", parser->pos - parser->pos_start, &parser->buffer[parser->pos_start]);
             if (parser->buffer[parser->pos - 1] == ':') {
                 parser->carriage_return = 1;
             }
@@ -352,8 +353,6 @@ int http1parser_parse_header_key(http1parser_t* parser) {
         if (result != HTTP1PARSER_SUCCESS) return result;
     }
 
-    // printf("KK %s\n", parser->string);
-
     parser->pos_start = parser->pos + 1;
 
     parser->string = NULL;
@@ -370,7 +369,6 @@ int http1parser_parse_header_key(http1parser_t* parser) {
 }
 
 int http1parser_parse_header_value(http1parser_t* parser) {
-    // printf("hvch %c %d\n", parser->buffer[parser->pos_start], parser->buffer[parser->pos_start]);
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
         char ch = parser->buffer[parser->pos];
 
@@ -414,8 +412,6 @@ int http1parser_parse_header_value(http1parser_t* parser) {
     request->last_header->value = parser->string;
     request->last_header->value_length = parser->string_len;
 
-    // printf("VV %s\n", parser->string);
-
     parser->pos_start = parser->pos + 1;
 
     parser->string = NULL;
@@ -429,6 +425,7 @@ int http1parser_parse_header_value(http1parser_t* parser) {
     if (http1parser_host_not_found(parser) == HTTP1PARSER_BAD_REQUEST) return HTTP1PARSER_BAD_REQUEST;
 
     http1parser_try_set_keepalive(parser);
+    http1parser_try_set_range(parser);
 
     if (parser->pos + 1 == parser->bytes_readed) return HTTP1PARSER_CONTINUE;
 
@@ -765,21 +762,143 @@ void http1parser_try_set_keepalive(http1parser_t* parser) {
     http1_header_t* header = request->last_header;
 
     const char* connection_key = "connection";
-    size_t connection_key_length = 10;
+    ssize_t connection_key_length = 10;
     const char* connection_value = "keep-alive";
-    size_t connection_value_length = 10;
+    ssize_t connection_value_length = 10;
 
-    if (header->key_length != connection_key_length) return;
-
-    for (size_t i = 0, j = 0; i < header->key_length && j < connection_key_length; i++, j++) {
-        if (tolower(header->key[i]) != tolower(connection_key[j])) return;
-    }
+    if ((ssize_t)header->key_length != connection_key_length) return;
+    if (!http1parser_cmplower(header->key, header->key_length, connection_key, connection_key_length)) return;
 
     parser->connection->keepalive_enabled = 0;
+    if (http1parser_cmplower(header->value, header->value_length, connection_value, connection_value_length)) {
+        parser->connection->keepalive_enabled = 1;
+    }
+}
 
-    for (size_t i = 0, j = 0; i < header->value_length && j < connection_value_length; i++, j++) {
-        if (tolower(header->value[i]) != tolower(connection_value[j])) return;
+void http1parser_try_set_range(http1parser_t* parser) {
+    http1request_t* request = (http1request_t*)parser->connection->request;
+    http1response_t* response = (http1response_t*)parser->connection->response;
+
+    if (http1parser_cmplower(request->last_header->key, request->last_header->key_length, "range", 5)) {
+        response->ranges = http1parser_parse_range((char*)request->last_header->value, request->last_header->value_length);
+    }
+}
+
+int http1parser_cmplower(const char* a, ssize_t a_length, const char* b, ssize_t b_length) {
+    for (ssize_t i = 0, j = 0; i < a_length && j < b_length; i++, j++) {
+        if (tolower(a[i]) != tolower(b[j])) return 0;
     }
 
-    parser->connection->keepalive_enabled = 1;
+    return 1;
+}
+
+http1_ranges_t* http1parser_parse_range(char* str, size_t length) {
+    int result = -1;
+    int max = 2147483647;
+    long long int start_finded = 0;
+    size_t start_position = 6;
+    http1_ranges_t* ranges = NULL;
+    http1_ranges_t* last_range = NULL;
+
+    if (!(str[0] == 'b' && str[1] == 'y' && str[2] == 't' && str[3] == 'e' && str[4] == 's' && str[5] == '=')) return NULL;
+
+    for (size_t i = start_position; i <= length; i++) {
+        long long int end = -1;
+
+        if (isdigit(str[i])) continue;
+        else if (str[i] == '-') {
+            if (last_range && last_range->end == -1) goto failed;
+            if (last_range && last_range->start == -1) goto failed;
+
+            long long int start = -1;
+
+            start_finded = 1;
+            if (i > start_position) {
+                if (i - start_position > 10) goto failed;
+
+                str[i] = 0;
+                start = atoll(&str[start_position]);
+                str[i] = '-';
+
+                if (start > max) goto failed;
+
+                if (last_range && last_range->start > start) goto failed;
+
+                if (last_range && last_range->start > -1 && last_range->end >= start) {
+                    start_position = i + 1;
+                    continue;
+                }
+            }
+
+            http1_ranges_t* range = http1response_init_ranges();
+            if (range == NULL) goto failed;
+
+            if (ranges == NULL) ranges = range;
+
+            if (last_range != NULL) {
+                last_range->next = range;
+            }
+            last_range = range;
+
+            if (i > start_position) {
+                range->start = start;
+            }
+
+            start_position = i + 1;
+        }
+        else if (str[i] == ',') {
+            if (i > start_position) {
+                if (i - start_position > 10) goto failed;
+
+                str[i] = 0;
+                end = atoll(&str[start_position]);
+                str[i] = ',';
+
+                if (end > max) goto failed;
+                if (end < last_range->start) goto failed;
+                if (start_finded == 0) goto failed;
+
+                if (last_range->end <= end) {
+                    last_range->end = end;
+                }
+            }
+
+            start_finded = 0;
+            start_position = i + 1;
+        }
+        else if (str[i] == 0) {
+            if (i > start_position) {
+                if (i - start_position > 10) goto failed;
+
+                end = atoll(&str[start_position]);
+
+                if (end > max) goto failed;
+                if (end < last_range->start) goto failed;
+                if (start_finded == 0) goto failed;
+
+                if (last_range->end <= end) {
+                    last_range->end = end;
+                }
+            }
+            else if (last_range && start_finded) {
+                last_range->end = -1;
+            }
+        }
+        else if (str[i] == ' ') {
+            if (!(i > 0 && str[i - 1] == ',')) goto failed;
+            start_position = i + 1;
+        }
+        else goto failed;
+    }
+
+    result = 0;
+
+    failed:
+
+    if (result == -1) {
+        http1response_free_ranges(ranges);
+        return NULL;
+    }
+
+    return ranges;
 }

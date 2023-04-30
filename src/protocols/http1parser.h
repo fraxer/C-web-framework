@@ -47,4 +47,6 @@ int http1parser_set_uri(http1request_t*, const char*, size_t);
 
 void http1parser_append_query(http1request_t*, http1_query_t*);
 
+http1_ranges_t* http1parser_parse_range(char*, size_t);
+
 #endif
