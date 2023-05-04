@@ -54,6 +54,11 @@ typedef struct http1_ranges {
     struct http1_ranges* next;
 } http1_ranges_t;
 
+typedef struct http1_payload {
+    int fd;
+    char* path;
+} http1_payload_t;
+
 http1_header_t* http1_header_create(const char*, size_t, const char*, size_t);
 
 void http1_header_free(http1_header_t*);

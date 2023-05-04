@@ -838,12 +838,15 @@ server_info_t* module_loader_server_info_load() {
             finded_fields[TMP] = 1;
 
             const char* value = jsmn_get_value(token->child);
+            size_t value_length = strlen(value);
+            if (value[value_length - 1] == '/') {
+                value_length--;
+            }
 
-            server_info->tmp_dir = (char*)malloc(strlen(value) + 1);
-
+            server_info->tmp_dir = (char*)malloc(value_length + 1);
             if (server_info->tmp_dir == NULL) goto failed;
 
-            strcpy(server_info->tmp_dir, value);
+            strncpy(server_info->tmp_dir, value, value_length);
         }
         else if (strcmp(key, "gzip") == 0) {
             finded_fields[GZIP] = 1;
@@ -870,6 +873,15 @@ server_info_t* module_loader_server_info_load() {
                 last_gzip = gzip_mimetype;
             }
         }
+    }
+
+    if (finded_fields[TMP] == 0) {
+        const char* value = "/tmp";
+
+        server_info->tmp_dir = (char*)malloc(strlen(value) + 1);
+        if (server_info->tmp_dir == NULL) goto failed;
+
+        strcpy(server_info->tmp_dir, value);
     }
 
     for (int i = 0; i < FIELDS_COUNT; i++) {

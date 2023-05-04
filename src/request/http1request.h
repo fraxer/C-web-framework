@@ -10,6 +10,7 @@ typedef struct http1request {
     request_t base;
     route_methods_e method;
     http1_version_e version;
+    http1_payload_t payload;
 
     size_t uri_length;
     size_t path_length;
@@ -18,8 +19,6 @@ typedef struct http1request {
     const char* uri;
     const char* path;
     const char* ext;
-
-    char* payload;
 
     int* keepalive_enabled;
 

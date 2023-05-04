@@ -1,5 +1,7 @@
 #include <string.h>
 #include <ctype.h>
+#include <fcntl.h>
+#include <stdlib.h>
 #include "../connection/connection.h"
 #include "../request/http1request.h"
 #include "../response/http1response.h"
@@ -448,17 +450,47 @@ int http1parser_parse_endhead(http1parser_t* parser) {
 
     parser->carriage_return = 0;
 
-    if (parser->pos + 1 == parser->bytes_readed) return HTTP1PARSER_CONTINUE;
+    if (parser->pos + 1 == parser->bytes_readed) return HTTP1PARSER_SUCCESS;
 
-    return HTTP1PARSER_SUCCESS;
+    return HTTP1PARSER_CONTINUE;
 }
 
 int http1parser_parse_payload(http1parser_t* parser) {
-    // printf("payload\n");
+    http1request_t* request = (http1request_t*)parser->connection->request;
 
-    for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
-        // printf("%c %d\n", parser->buffer[parser->pos], parser->buffer[parser->pos]);
+    switch (request->method) {
+    case ROUTE_POST:
+    case ROUTE_PUT:
+    case ROUTE_PATCH:
+        break;
+    default:
+        return HTTP1PARSER_BAD_REQUEST;
     }
+
+    parser->pos = parser->bytes_readed;
+
+    if (request->payload.fd <= 0) {
+        const char* template = "tmp.XXXXXX";
+        const char* tmp_dir = parser->connection->server->info->tmp_dir;
+
+        size_t payload_length = strlen(tmp_dir) + strlen(template) + 2; // "/", "\0"
+        request->payload.path = malloc(payload_length);
+        snprintf(request->payload.path, payload_length, "%s/%s", tmp_dir, template);
+
+        request->payload.fd = mkstemp(request->payload.path);
+        if (request->payload.fd == -1) return HTTP1PARSER_ERROR;
+    }
+
+    size_t string_len = (parser->pos - parser->carriage_return) - parser->pos_start;
+    off_t payload_length = lseek(request->payload.fd, 0, SEEK_END);
+
+    if (payload_length + string_len > parser->connection->server->info->client_max_body_size) {
+        return HTTP1PARSER_PAYLOAD_LARGE;
+    }
+
+    int r = write(request->payload.fd, &parser->buffer[parser->pos_start], string_len);
+    lseek(request->payload.fd, 0, SEEK_SET);
+    if (r <= 0) return HTTP1PARSER_ERROR;
 
     return HTTP1PARSER_CONTINUE;
 }
