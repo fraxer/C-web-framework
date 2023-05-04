@@ -22,7 +22,7 @@ typedef struct gzip_mimetype {
 
 typedef struct server_info {
     int read_buffer;
-    int client_max_body_size;
+    size_t client_max_body_size;
     enum { ENV_DEV, ENV_PROD } environment;
     char* tmp_dir;
     gzip_mimetype_t* gzip_mimetype;

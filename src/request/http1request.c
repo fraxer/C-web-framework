@@ -2,12 +2,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <fcntl.h>
+#include <linux/limits.h>
+#include <unistd.h>
 #include "http1request.h"
 
 void http1request_reset(http1request_t*);
 http1_header_t* http1request_header(http1request_t*, const char*);
 http1_header_t* http1request_headern(http1request_t*, const char*, size_t);
 db_t* http1request_database_list(http1request_t*);
+void http1request_payload_free(http1_payload_t*);
 
 http1request_t* http1request_alloc() {
     return (http1request_t*)malloc(sizeof(http1request_t));
@@ -50,13 +54,14 @@ http1request_t* http1request_create(connection_t* connection) {
 
     request->method = ROUTE_NONE;
     request->version = HTTP1_VER_NONE;
+    request->payload.fd = 0;
+    request->payload.path = NULL;
     request->uri_length = 0;
     request->path_length = 0;
     request->ext_length = 0;
     request->uri = NULL;
     request->path = NULL;
     request->ext = NULL;
-    request->payload = NULL;
     request->query = NULL;
     request->last_query = NULL;
     request->header_ = NULL;
@@ -87,8 +92,7 @@ void http1request_reset(http1request_t* request) {
     if (request->ext) free((void*)request->ext);
     request->ext = NULL;
 
-    if (request->payload) free(request->payload);
-    request->payload = NULL;
+    http1request_payload_free(&request->payload);
 
     http1request_query_free(request->query);
     request->query = NULL;
@@ -123,4 +127,16 @@ http1_header_t* http1request_headern(http1request_t* request, const char* key, s
 
 db_t* http1request_database_list(http1request_t* request) {
     return request->connection->server->database;
+}
+
+void http1request_payload_free(http1_payload_t* payload) {
+    if (payload->fd <= 0) return;
+
+    close(payload->fd);
+    unlink(payload->path);
+
+    payload->fd = 0;
+
+    free(payload->path);
+    payload->path = NULL;
 }

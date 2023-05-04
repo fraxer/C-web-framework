@@ -46,6 +46,11 @@ void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
                 http1response_default_response((http1response_t*)connection->response, 500);
                 connection->after_read_request(connection);
                 return;
+            case HTTP1PARSER_PAYLOAD_LARGE:
+                http1parser_free(&parser);
+                http1response_default_response((http1response_t*)connection->response, 413);
+                connection->after_read_request(connection);
+                return;
             case HTTP1PARSER_BAD_REQUEST:
                 http1parser_free(&parser);
                 http1response_default_response((http1response_t*)connection->response, 400);

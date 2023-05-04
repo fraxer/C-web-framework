@@ -9,6 +9,35 @@
 #include "../src/database/dbresult.h"
     #include <stdio.h>
 
+void payload(http1request_t* request, http1response_t* response) {
+    char buffer[8192];
+
+    read(request->payload.fd, &buffer, 8192);
+
+    response->data(response, "done");
+
+    // char* payload = request->payload(request);
+    // char* payload = request->payloadf(request, "field"); // from multipart
+
+    // char* payload = request->payload_urlencoded(request, "field");
+
+    // file_t* file = request->payload_file(request);
+    // file_t* file = request->payload_filef(request, "field"); // from multipart
+
+    // file->save(file, "/path/to/dir");
+    // file_save(file, "/path/to/dir");
+    //  |
+    // \|/
+    // int fd = open(file_name(file), O_CREAT | O_TRUNC);
+    // write(fd, file_body(file), file_size(file));
+    // close(fd);
+
+    // jsmn_token* payload = request->payload_json(request);
+    // jsmn_token* payload = request->payload_jsonf(request, "field"); // from multipart
+
+    // if (payload) free(payload);
+}
+
 void view(http1request_t* request, http1response_t* response) {
     const char* data = 
     "Response"
