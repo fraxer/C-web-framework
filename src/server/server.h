@@ -83,7 +83,7 @@ int server_chain_append(server_t*, routeloader_lib_t*, server_info_t*, int);
 
 void server_chain_destroy(server_chain_t*);
 
-server_info_t* server_info_alloc();
+server_info_t* server_info_create();
 
 void server_info_free(server_info_t*);
 

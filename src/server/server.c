@@ -10,6 +10,7 @@ static server_chain_t* last_server_chain = NULL;
 
 server_t* server_alloc();
 server_chain_t* server_chain_alloc();
+server_info_t* server_info_alloc();
 gzip_mimetype_t* server_gzip_mimetype_alloc();
 void server_gzip_mimetype_free(gzip_mimetype_t*);
 
@@ -194,6 +195,20 @@ void server_chain_destroy(server_chain_t* _server_chain) {
 
 server_info_t* server_info_alloc() {
     return malloc(sizeof(server_info_t));
+}
+
+server_info_t* server_info_create() {
+    server_info_t* info = malloc(sizeof(server_info_t));
+
+    if (info == NULL) return NULL;
+
+    info->read_buffer = 0;
+    info->client_max_body_size = 0;
+    info->environment = ENV_DEV;
+    info->tmp_dir = NULL;
+    info->gzip_mimetype = NULL;
+
+    return info;
 }
 
 void server_info_free(server_info_t* server_info) {

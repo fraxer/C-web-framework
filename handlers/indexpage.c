@@ -12,7 +12,7 @@
 void payload(http1request_t* request, http1response_t* response) {
     char buffer[8192];
 
-    read(request->payload.fd, &buffer, 8192);
+    read(request->payload_.fd, &buffer, 8192);
 
     response->data(response, "done");
 
@@ -21,19 +21,138 @@ void payload(http1request_t* request, http1response_t* response) {
 
     // char* payload = request->payload_urlencoded(request, "field");
 
-    // file_t* file = request->payload_file(request);
-    // file_t* file = request->payload_filef(request, "field"); // from multipart
+    // http1_pldfile* file = request->payload_file(request);
+    // http1_pldfile* file = request->payload_filef(request, "field"); // from multipart
 
-    // file->save(file, "/path/to/dir");
-    // file_save(file, "/path/to/dir");
+    // file->save(file, "/path/to/dir", file->name);
+    // file_save(file, "/path/to/dir", file->name);
     //  |
     // \|/
     // int fd = open(file_name(file), O_CREAT | O_TRUNC);
     // write(fd, file_body(file), file_size(file));
     // close(fd);
 
-    // jsmn_token* payload = request->payload_json(request);
-    // jsmn_token* payload = request->payload_jsonf(request, "field"); // from multipart
+    // -------------------
+
+    // jsmntok_t* token = NULL;
+    // if (!jsmn_parse("{}", &token)) {
+    //     response->data(response, "json error");
+    //     return;
+    // }
+
+    // {
+    //     "a": 1,
+    //     "b": true,
+    //     "c": [
+    //         0,
+    //         { "a": null },
+    //         [0, true],
+    //         true
+    //     ]
+    // }
+
+    // jsmntok_t* token_key1_value = jsmn_object_value(token, "key1");
+    // jsmntok_t* token_key1 = jsmn_object_key(token, "key1");
+
+
+    // jsmnit_t obit = {
+    //     .type = OBJ | ARR,
+    //     .end = 0,
+    //     .key = token,
+    //     .value = NULL
+    // };
+    // jsmnit_t it = jsmn_init_it(token);
+
+    // do {
+        // jsmntok_t* token_value = it.key;
+        // jsmntok_t* token_value = it.value;
+    // } while (it = jsmn_next_it(it));
+
+    // for (jsmnit_t it = jsmn_init_it(token); !it.end; it = jsmn_next_it(it)) {}
+
+
+    // jsmntok_t* token_index0_value = jsmn_array_value(token, 0);
+
+    // for (int i = 0; i < jsmn_array_size(token); i++) {
+    //     jsmntok_t* token_value = jsmn_array_value(token, i);
+    // }
+
+
+    // jsmn_bool(token_value);
+    // jsmn_null(token_value);
+    // jsmn_string(token_value);
+    // jsmn_number(token_value);
+    // jsmn_int(token_value);
+    // jsmn_uint(token_value);
+    // jsmn_double(token_value);
+    // jsmn_udouble(token_value);
+
+    // if (jsmn_is_bool(token_value)) {}
+    // if (jsmn_is_null(token_value)) {}
+    // if (jsmn_is_string(token_value)) {}
+    // if (jsmn_is_number(token_value)) {}
+    // if (jsmn_is_int(token_value)) {}
+    // if (jsmn_is_uint(token_value)) {}
+    // if (jsmn_is_double(token_value)) {}
+    // if (jsmn_is_udouble(token_value)) {}
+    // if (jsmn_is_object(token_value)) {}
+    // if (jsmn_is_array(token_value)) {}
+
+    // jsmn_free(token);
+
+    // jsmntok_t* json = request->payload_json(request);
+    // jsmntok_t* json = request->payload_jsonf(request, "field"); // from multipart
+
+    // jsmntok_t* token_array = jsmn_create_array();
+    // jsmntok_t* token_object = jsmn_create_object();
+    // jsmntok_t* token_bool = jsmn_create_bool(1);
+    // jsmntok_t* token_null = jsmn_create_null();
+    // jsmntok_t* token_string = jsmn_create_string("");
+    // jsmntok_t* token_int = jsmn_create_int(123);
+    // jsmntok_t* token_double = jsmn_create_double(123.5);
+
+    // this method create internal document
+    // jsmndoc_t* doc = jsmn_document();
+    // jsmntok_t* token_array = jsmn_create_array(document);
+    // jsmntok_t* token_object = jsmn_create_object(document);
+    // jsmntok_t* token_bool = jsmn_create_bool(document, 1);
+    // jsmntok_t* token_null = jsmn_create_null(document);
+    // jsmntok_t* token_string = jsmn_create_string(document, "");
+    // jsmntok_t* token_int = jsmn_create_int(document, 123);
+    // jsmntok_t* token_double = jsmn_create_double(document, 123.5);
+
+    // int jsmn_array_prepend(token_array, token_bool);
+    // int jsmn_array_append(token_array, token_null);
+    // int jsmn_array_append(token_array, token_string);
+    // int jsmn_array_append_to(token_array, 1, token_string);
+    // int jsmn_array_slice(token_array, 1, 5);
+    // int jsmn_array_clear(token_array);
+
+    // int jsmn_object_set(token_object, "key", token_array);
+    // int jsmn_object_remove(token_object, "key");
+    // int jsmn_object_clear(token_object);
+
+    // char* jsmn_stringify(doc);
+
+    // void jsmn_free(doc);
+
+    // -------------------
+
+    // jsmn_parser_t parser;
+    // if (jsmn_init(&parser, payload) == -1) {
+    //     return;
+    // }
+
+    // if (jsmn_parse(&parser) < 0) {
+    //     return;
+    // }
+
+    // jsmntok_t* token = jsmn_get_root_token(&parser);
+
+    // jsmntok_t* payload = request->payload_json(request, &parser);
+    // jsmntok_t* json = request->payload_jsonf(request, "field", &parser); // from multipart
+
+    // jsmn_free(&parser);
 
     // if (payload) free(payload);
 }

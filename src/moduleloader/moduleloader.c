@@ -791,7 +791,7 @@ int module_loader_mimetype_load() {
 server_info_t* module_loader_server_info_load() {
     server_info_t* result = NULL;
 
-    server_info_t* server_info = server_info_alloc();
+    server_info_t* server_info = server_info_create();
 
     if (server_info == NULL) return NULL;
 

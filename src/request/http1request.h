@@ -4,13 +4,14 @@
 #include "../route/route.h"
 #include "../connection/connection.h"
 #include "../protocols/http1common.h"
+#include "../jsmn/jsmn.h"
 #include "request.h"
 
 typedef struct http1request {
     request_t base;
     route_methods_e method;
     http1_version_e version;
-    http1_payload_t payload;
+    http1_payload_t payload_;
 
     size_t uri_length;
     size_t path_length;
@@ -33,8 +34,24 @@ typedef struct http1request {
     http1_header_t*(*headern)(struct http1request*, const char*, size_t);
 
     db_t*(*database_list)(struct http1request*);
+
+    char*(*payload)(struct http1request*);
+    char*(*payloadf)(struct http1request*, const char*);
+    char*(*payload_urlencoded)(struct http1request*, const char*);
+    http1_payloadfile_t*(*payload_file)(struct http1request*);
+    http1_payloadfile_t*(*payload_filef)(struct http1request*, const char*);
+    jsmntok_t*(*payload_json)(struct http1request*);
+    jsmntok_t*(*payload_jsonf)(struct http1request*, const char*);
 } http1request_t;
 
 http1request_t* http1request_create(connection_t*);
+
+char* http1request_payload(http1request_t*);
+char* http1request_payloadf(http1request_t*, const char*);
+char* http1request_payload_urlencoded(http1request_t*, const char*);
+http1_payloadfile_t* http1request_payload_file(http1request_t*);
+http1_payloadfile_t* http1request_payload_filef(http1request_t*, const char*);
+jsmntok_t* http1request_payload_json(http1request_t*);
+jsmntok_t* http1request_payload_jsonf(http1request_t*, const char*);
 
 #endif
