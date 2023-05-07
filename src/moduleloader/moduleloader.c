@@ -524,187 +524,187 @@ int module_loader_servers_load(int reload_is_hard) {
 
     if (server_info == NULL) goto failed;
 
-    jsmntok_t* token_key = token_object->child;
+    for (jsmntok_t* token_key = token_object->child; token_key; token_key = token_key->sibling) {
+        for (jsmntok_t* token_item = token_key->child; token_item; token_item = token_item->sibling) {
+            enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
+            enum fields { DOMAINS = 0, IP, PORT, ROOT, INDEX, HTTP, WEBSOCKETS, DATABASE, OPENSSL, FIELDS_COUNT };
 
-    for (jsmntok_t* token_item = token_key->child; token_item; token_item = token_item->sibling) {
-        enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
-        enum fields { DOMAINS = 0, IP, PORT, ROOT, INDEX, HTTP, WEBSOCKETS, DATABASE, OPENSSL, FIELDS_COUNT };
+            int finded_fields[FIELDS_COUNT] = {0};
 
-        int finded_fields[FIELDS_COUNT] = {0};
+            const jsmntok_t* token_server = token_item;
 
-        const jsmntok_t* token_server = token_item;
+            server_t* server = server_create();
 
-        server_t* server = server_create();
+            if (server == NULL) goto failed;
 
-        if (server == NULL) goto failed;
+            server->info = server_info;
 
-        server->info = server_info;
+            if (first_server == NULL) {
+                first_server = server;
+            }
 
-        if (first_server == NULL) {
-            first_server = server;
-        }
+            if (last_server) {
+                last_server->next = server;
+            }
 
-        if (last_server) {
-            last_server->next = server;
-        }
+            last_server = server;
 
-        last_server = server;
+            if (token_server->type != JSMN_OBJECT) return -1;
 
-        if (token_server->type != JSMN_OBJECT) return -1;
+            for (jsmntok_t* token_key = token_server->child; token_key; token_key = token_key->sibling) {
+                const char* key = jsmn_get_value(token_key);
 
-        for (jsmntok_t* token_key = token_server->child; token_key; token_key = token_key->sibling) {
-            const char* key = jsmn_get_value(token_key);
+                if (strcmp(key, "domains") == 0) {
+                    finded_fields[DOMAINS] = 1;
 
-            if (strcmp(key, "domains") == 0) {
-                finded_fields[DOMAINS] = 1;
+                    if (token_key->child->type != JSMN_ARRAY) goto failed;
 
-                if (token_key->child->type != JSMN_ARRAY) goto failed;
+                    server->domain = module_loader_domains_load(token_key->child);
 
-                server->domain = module_loader_domains_load(token_key->child);
+                    if (server->domain == NULL) {
+                        log_error("Error: Can't load domains\n");
+                        goto failed;
+                    }
+                }
+                else if (strcmp(key, "ip") == 0) {
+                    finded_fields[IP] = 1;
 
-                if (server->domain == NULL) {
-                    log_error("Error: Can't load domains\n");
+                    if (token_key->child->type != JSMN_STRING) goto failed;
+
+                    const char* value = jsmn_get_value(token_key->child);
+
+                    server->ip = inet_addr(value);
+                }
+                else if (strcmp(key, "port") == 0) {
+                    finded_fields[PORT] = 1;
+
+                    if (token_key->child->type != JSMN_PRIMITIVE) goto failed;
+
+                    const char* value = jsmn_get_value(token_key->child);
+
+                    server->port = atoi(value);
+                }
+                else if (strcmp(key, "root") == 0) {
+                    finded_fields[ROOT] = 1;
+
+                    if (token_key->child->type != JSMN_STRING) goto failed;
+
+                    const char* value = jsmn_get_value(token_key->child);
+
+                    size_t value_length = strlen(value);
+
+                    if (value[value_length - 1] == '/') {
+                        value_length--;
+                    }
+                    server->root = (char*)malloc(value_length + 1);
+
+                    if (server->root == NULL) {
+                        log_error("Error: Can't alloc memory for root path\n");
+                        goto failed;
+                    }
+
+                    strncpy(server->root, value, value_length);
+
+                    server->root[value_length] = 0;
+
+                    server->root_length = value_length;
+
+                    struct stat stat_obj;
+
+                    stat(server->root, &stat_obj);
+
+                    if (!S_ISDIR(stat_obj.st_mode)) {
+                        log_error("Error: Webroot dir not found\n");
+                        goto failed;
+                    }
+                }
+                else if (strcmp(key, "index") == 0) {
+                    finded_fields[INDEX] = 1;
+
+                    if (token_key->child->type != JSMN_STRING) goto failed;
+
+                    const char* value = jsmn_get_value(token_key->child);
+
+                    server->index = server_create_index(value);
+
+                    if (server->index == NULL) {
+                        log_error("Error: Can't alloc memory for index file\n");
+                        goto failed;
+                    }
+                }
+                else if (strcmp(key, "http") == 0) {
+                    if (token_key->child->type != JSMN_OBJECT) goto failed;
+
+                    finded_fields[HTTP] = 1;
+
+                    server->http.route = module_loader_http_routes_load(&first_lib, jsmn_object_get_field(token_key->child, "routes"));
+                    server->http.redirect = module_loader_http_redirects_load(jsmn_object_get_field(token_key->child, "redirects"));
+
+                    if (server->http.route == NULL) {
+                        log_error("Error: Can't load http routes\n");
+                        goto failed;
+                    }
+                }
+                else if (strcmp(key, "websockets") == 0) {
+                    if (token_key->child->type != JSMN_OBJECT) goto failed;
+
+                    finded_fields[WEBSOCKETS] = 1;
+
+                    server->websockets.route = module_loader_websockets_routes_load(&first_lib, jsmn_object_get_field(token_key->child, "routes"));
+
+                    if (server->websockets.route == NULL) {
+                        log_error("Error: Can't load websockets routes\n");
+                        goto failed;
+                    }
+                }
+                else if (strcmp(key, "databases") == 0) {
+                    finded_fields[DATABASE] = 1;
+
+                    if (token_key->child->type != JSMN_OBJECT) goto failed;
+
+                    server->database = module_loader_databases_load(token_key->child);
+
+                    if (server->database == NULL) {
+                        log_error("Error: Can't load database\n");
+                        goto failed;
+                    }
+                }
+                else if (strcmp(key, "openssl") == 0) {
+                    finded_fields[OPENSSL] = 1;
+
+                    if (token_key->child->type != JSMN_OBJECT) goto failed;
+
+                    server->openssl = module_loader_openssl_load(token_key->child);
+
+                    if (server->openssl == NULL) {
+                        goto failed;
+                    }
+                }
+            }
+
+            for (int i = 0; i < R_FIELDS_COUNT; i++) {
+                if (finded_fields[i] == 0) {
+                    log_error("Error: Fill config\n");
                     goto failed;
                 }
             }
-            else if (strcmp(key, "ip") == 0) {
-                finded_fields[IP] = 1;
 
-                if (token_key->child->type != JSMN_STRING) goto failed;
-
-                const char* value = jsmn_get_value(token_key->child);
-
-                server->ip = inet_addr(value);
-            }
-            else if (strcmp(key, "port") == 0) {
-                finded_fields[PORT] = 1;
-
-                if (token_key->child->type != JSMN_PRIMITIVE) goto failed;
-
-                const char* value = jsmn_get_value(token_key->child);
-
-                server->port = atoi(value);
-            }
-            else if (strcmp(key, "root") == 0) {
-                finded_fields[ROOT] = 1;
-
-                if (token_key->child->type != JSMN_STRING) goto failed;
-
-                const char* value = jsmn_get_value(token_key->child);
-
-                size_t value_length = strlen(value);
-
-                if (value[value_length - 1] == '/') {
-                    value_length--;
-                }
-                server->root = (char*)malloc(value_length + 1);
-
-                if (server->root == NULL) {
-                    log_error("Error: Can't alloc memory for root path\n");
-                    goto failed;
-                }
-
-                strncpy(server->root, value, value_length);
-
-                server->root[value_length] = 0;
-
-                server->root_length = value_length;
-
-                struct stat stat_obj;
-
-                stat(server->root, &stat_obj);
-
-                if (!S_ISDIR(stat_obj.st_mode)) {
-                    log_error("Error: Webroot dir not found\n");
-                    goto failed;
-                }
-            }
-            else if (strcmp(key, "index") == 0) {
-                finded_fields[INDEX] = 1;
-
-                if (token_key->child->type != JSMN_STRING) goto failed;
-
-                const char* value = jsmn_get_value(token_key->child);
-
-                server->index = server_create_index(value);
+            if (finded_fields[INDEX] == 0) {
+                server->index = server_create_index("index.html");
 
                 if (server->index == NULL) {
                     log_error("Error: Can't alloc memory for index file\n");
                     goto failed;
                 }
             }
-            else if (strcmp(key, "http") == 0) {
-                if (token_key->child->type != JSMN_OBJECT) goto failed;
 
-                finded_fields[HTTP] = 1;
-
-                server->http.route = module_loader_http_routes_load(&first_lib, jsmn_object_get_field(token_key->child, "routes"));
-                server->http.redirect = module_loader_http_redirects_load(jsmn_object_get_field(token_key->child, "redirects"));
-
-                if (server->http.route == NULL) {
-                    log_error("Error: Can't load http routes\n");
-                    goto failed;
-                }
-            }
-            else if (strcmp(key, "websockets") == 0) {
-                if (token_key->child->type != JSMN_OBJECT) goto failed;
-
-                finded_fields[WEBSOCKETS] = 1;
-
-                server->websockets.route = module_loader_websockets_routes_load(&first_lib, jsmn_object_get_field(token_key->child, "routes"));
-
-                if (server->websockets.route == NULL) {
-                    log_error("Error: Can't load websockets routes\n");
-                    goto failed;
-                }
-            }
-            else if (strcmp(key, "databases") == 0) {
-                finded_fields[DATABASE] = 1;
-
-                if (token_key->child->type != JSMN_OBJECT) goto failed;
-
-                server->database = module_loader_databases_load(token_key->child);
-
-                if (server->database == NULL) {
-                    log_error("Error: Can't load database\n");
-                    goto failed;
-                }
-            }
-            else if (strcmp(key, "openssl") == 0) {
-                finded_fields[OPENSSL] = 1;
-
-                if (token_key->child->type != JSMN_OBJECT) goto failed;
-
-                server->openssl = module_loader_openssl_load(token_key->child);
-
-                if (server->openssl == NULL) {
-                    goto failed;
-                }
-            }
-        }
-
-        for (int i = 0; i < R_FIELDS_COUNT; i++) {
-            if (finded_fields[i] == 0) {
-                log_error("Error: Fill config\n");
+            if (finded_fields[HTTP] == 0 && finded_fields[WEBSOCKETS] == 0) {
+                log_error("Error: Missing section http and websockets\n");
                 goto failed;
             }
+
+            if (module_loader_check_unique_domains(first_server) == -1) goto failed;
         }
-
-        if (finded_fields[INDEX] == 0) {
-            server->index = server_create_index("index.html");
-
-            if (server->index == NULL) {
-                log_error("Error: Can't alloc memory for index file\n");
-                goto failed;
-            }
-        }
-
-        if (finded_fields[HTTP] == 0 && finded_fields[WEBSOCKETS] == 0) {
-            log_error("Error: Missing section http and websockets\n");
-            goto failed;
-        }
-
-        if (module_loader_check_unique_domains(first_server) == -1) goto failed;
     }
 
     if (first_server == NULL) {

@@ -32,7 +32,7 @@ void view(http1request_t* request, http1response_t* response) {
 }
 
 void user(http1request_t* request, http1response_t* response) {
-    // printf("run user handler\n");
+    response->data(response, "Response");
 }
 
 void websocket(http1request_t* request, http1response_t* response) {

@@ -7,6 +7,7 @@
 #include <dlfcn.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <stdlib.h>
 #include "../src/database/database.h"
 #ifdef MySQL_FOUND
     #include "../src/database/mysql.h"
