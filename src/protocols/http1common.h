@@ -54,9 +54,28 @@ typedef struct http1_ranges {
     struct http1_ranges* next;
 } http1_ranges_t;
 
+typedef struct http1_payloadpart {
+    size_t offset;
+    size_t size;
+    char* field;
+
+    struct http1_payloadpart* next;
+} http1_payloadpart_t;
+
+typedef struct http1_payloadfile {
+    int payload_fd;
+    size_t offset;
+    size_t size;
+    const char* rootdir;
+    char* name;
+    int(*save)(struct http1_payloadfile*, const char*, const char*);
+    char*(*read)(struct http1_payloadfile*, size_t, size_t);
+} http1_payloadfile_t;
+
 typedef struct http1_payload {
     int fd;
     char* path;
+    http1_payloadpart_t* part;
 } http1_payload_t;
 
 http1_header_t* http1_header_create(const char*, size_t, const char*, size_t);

@@ -469,27 +469,27 @@ int http1parser_parse_payload(http1parser_t* parser) {
 
     parser->pos = parser->bytes_readed;
 
-    if (request->payload.fd <= 0) {
+    if (request->payload_.fd <= 0) {
         const char* template = "tmp.XXXXXX";
         const char* tmp_dir = parser->connection->server->info->tmp_dir;
 
         size_t payload_length = strlen(tmp_dir) + strlen(template) + 2; // "/", "\0"
-        request->payload.path = malloc(payload_length);
-        snprintf(request->payload.path, payload_length, "%s/%s", tmp_dir, template);
+        request->payload_.path = malloc(payload_length);
+        snprintf(request->payload_.path, payload_length, "%s/%s", tmp_dir, template);
 
-        request->payload.fd = mkstemp(request->payload.path);
-        if (request->payload.fd == -1) return HTTP1PARSER_ERROR;
+        request->payload_.fd = mkstemp(request->payload_.path);
+        if (request->payload_.fd == -1) return HTTP1PARSER_ERROR;
     }
 
     size_t string_len = (parser->pos - parser->carriage_return) - parser->pos_start;
-    off_t payload_length = lseek(request->payload.fd, 0, SEEK_END);
+    off_t payload_length = lseek(request->payload_.fd, 0, SEEK_END);
 
     if (payload_length + string_len > parser->connection->server->info->client_max_body_size) {
         return HTTP1PARSER_PAYLOAD_LARGE;
     }
 
-    int r = write(request->payload.fd, &parser->buffer[parser->pos_start], string_len);
-    lseek(request->payload.fd, 0, SEEK_SET);
+    int r = write(request->payload_.fd, &parser->buffer[parser->pos_start], string_len);
+    lseek(request->payload_.fd, 0, SEEK_SET);
     if (r <= 0) return HTTP1PARSER_ERROR;
 
     return HTTP1PARSER_CONTINUE;

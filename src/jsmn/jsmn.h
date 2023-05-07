@@ -10,10 +10,17 @@
  */
 typedef enum {
   JSMN_UNDEFINED = 0,
-  JSMN_OBJECT = 1,
-  JSMN_ARRAY = 2,
-  JSMN_STRING = 3,
-  JSMN_PRIMITIVE = 4
+  JSMN_OBJECT,
+  JSMN_ARRAY,
+  JSMN_STRING,
+  JSMN_PRIMITIVE,
+  JSMN_BOOL,
+  JSMN_NULL,
+  JSMN_NUMBER,
+  JSMN_INT,
+  JSMN_UINT,
+  JSMN_DOUBLE,
+  JSMN_UDOUBLE
 } jsmntype_t;
 
 enum jsmnerr {
@@ -60,6 +67,12 @@ typedef struct jsmn_parser {
   char* string_internal;
   jsmntok_t* tokens;
 } jsmn_parser_t;
+
+typedef struct jsmndoc {
+  unsigned int toknext;      /* next token to allocate */
+  unsigned int tokens_count; /* tokens count */
+  jsmntok_t* tokens;
+} jsmndoc_t;
 
 /**
  * Create JSON parser over an array of tokens

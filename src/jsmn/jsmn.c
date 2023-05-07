@@ -90,9 +90,48 @@ int jsmn_parse_primitive(jsmn_parser_t *parser) {
 
   start = parser->dirty_pos;
   start_internal = parser->pos;
+  jsmntype_t type = JSMN_PRIMITIVE;
+  // int is_signed = 0;
+  // int is_double = 0;
 
   for (; parser->dirty_pos < parser->string_len && parser->string[parser->dirty_pos] != '\0'; parser->dirty_pos++) {
-    switch (parser->string[parser->dirty_pos]) {
+    char ch = parser->string[parser->dirty_pos];
+    // switch (ch) {
+    // case '-':
+    //   if (parser->dirty_pos != start) {
+    //     parser->dirty_pos = start;
+    //     return JSMN_ERROR_INVAL;
+    //   }
+    //   is_signed = 1;
+    //   break;
+    // case '0':
+    // case '1':
+    // case '2':
+    // case '3':
+    // case '4':
+    // case '5':
+    // case '6':
+    // case '7':
+    // case '8':
+    // case '9':
+    //   type = JSMN_INT;
+    //   break;
+    // case '.':
+    //   is_double = 1;
+    //   break;
+    // case 't':
+    // case 'f':
+    //   type = JSMN_BOOL;
+    //   break;
+    // case 'n':
+    //   type = JSMN_NULL;
+    //   break;
+    // default:
+    //   // to quiet a warning from gcc
+    //   break;
+    // }
+
+    switch (ch) {
     /* In strict mode primitive must be followed by "," or "}" or "]" */
     case ':':
     case '\t':
@@ -104,10 +143,10 @@ int jsmn_parse_primitive(jsmn_parser_t *parser) {
     case '}':
       goto found;
     default:
-                   /* to quiet a warning from gcc*/
+      // to quiet a warning from gcc
       break;
     }
-    if (parser->string[parser->dirty_pos] < 32 || parser->string[parser->dirty_pos] >= 127) {
+    if (ch < 32 || ch >= 127) {
       parser->dirty_pos = start;
       return JSMN_ERROR_INVAL;
     }
@@ -119,6 +158,12 @@ int jsmn_parse_primitive(jsmn_parser_t *parser) {
   return JSMN_ERROR_PART;
 
   found:
+  // if (is_double) {
+  //   type = JSMN_DOUBLE;
+  // }
+  // if (is_signed) {
+    
+  // }
   if (parser->tokens == NULL) {
     parser->dirty_pos--;
     return 0;
@@ -128,7 +173,7 @@ int jsmn_parse_primitive(jsmn_parser_t *parser) {
     parser->dirty_pos = start;
     return JSMN_ERROR_NOMEM;
   }
-  jsmn_fill_token(token, JSMN_PRIMITIVE, start_internal, parser);
+  jsmn_fill_token(token, type, start_internal, parser);
   token->parent = parser->toksuper;
   parser->dirty_pos--;
 
