@@ -112,6 +112,12 @@ add_library(dbquery STATIC src/database/dbquery.c)
 
 add_library(dbresult STATIC src/database/dbresult.c)
 
+add_library(urlencodedparser STATIC src/utils/urlencodedparser.c)
+
+add_library(multipartparser STATIC src/utils/multipartparser.c)
+
+add_library(formdataparser STATIC src/utils/formdataparser.c)
+
 if(MySQL_FOUND AND INCLUDE_MYSQL STREQUAL yes)
 	add_library(mysql STATIC src/database/mysql.c)
 endif()
@@ -173,6 +179,9 @@ target_link_libraries(
 	http1request
 	http1response
 	http1common
+	urlencodedparser
+	formdataparser
+	multipartparser
 
 	websockets
 	websocketsparser

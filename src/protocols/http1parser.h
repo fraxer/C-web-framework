@@ -4,6 +4,8 @@
 #include "../connection/connection.h"
 #include "../request/http1request.h"
 
+#define HTTP1PARSER_BUFSIZ 1024
+
 enum http1parser_status {
     HTTP1PARSER_ERROR = 0,
     HTTP1PARSER_SUCCESS,
@@ -18,22 +20,39 @@ typedef enum http1_request_stage {
     METHOD = 0,
     URI,
     PROTOCOL,
+    NEWLINE1,
     HEADER_KEY,
+    HEADER_SPACE,
     HEADER_VALUE,
+    NEWLINE2,
+    NEWLINE3,
     PAYLOAD
 } http1_request_stage_e;
+
+typedef enum http1parser_buffer_type {
+    STATIC = 0,
+    DYNAMIC,
+} http1parser_buffer_type_e;
+
+typedef struct http1parser_buffer {
+    char static_buffer[HTTP1PARSER_BUFSIZ];
+    char* dynamic_buffer;
+    size_t offset_sbuffer;
+    size_t offset_dbuffer;
+    size_t dbuffer_size;
+    http1parser_buffer_type_e type;
+} http1parser_buffer_t;
 
 typedef struct http1parser {
     http1_request_stage_e stage;
     int host_found;
-    int carriage_return;
     size_t bytes_readed;
     size_t pos_start;
     size_t pos;
-    size_t string_len;
-    char* string;
     char* buffer;
     connection_t* connection;
+
+    http1parser_buffer_t buf;
 } http1parser_t;
 
 void http1parser_init(http1parser_t*, connection_t*, char*);
@@ -49,5 +68,19 @@ int http1parser_set_uri(http1request_t*, const char*, size_t);
 void http1parser_append_query(http1request_t*, http1_query_t*);
 
 http1_ranges_t* http1parser_parse_range(char*, size_t);
+
+int http1parser_buffer_push(http1parser_t*, char);
+
+void http1parser_buffer_reset(http1parser_t*);
+
+size_t http1parser_buffer_writed(http1parser_t*);
+
+int http1parser_buffer_complete(http1parser_t*);
+
+int http1parser_buffer_move(http1parser_t*);
+
+char* http1parser_buffer_get(http1parser_t*);
+
+char* http1parser_buffer_copy(http1parser_t*);
 
 #endif

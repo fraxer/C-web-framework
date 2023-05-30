@@ -196,12 +196,11 @@ int redirect_fill_param(redirect_parser_t* parser) {
         return -1;
     }
 
-    char string_number[3] = {0,0,0};
+    char string_number[4] = {0,0,0,0};
 
     strncpy(string_number, &parser->string[start + 1], string_number_length);
 
     int number = atoi(string_number);
-
     if (number < 0) {
         log_error(REDIRECT_ERROR_VALUE_PARAM, &parser->string[start]);
         return -1;

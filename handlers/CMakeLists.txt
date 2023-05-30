@@ -13,5 +13,6 @@ foreach(FILEPATH ${FILEPATHS})
 		base64
 		dbquery
 		dbresult
+		database
 	)
 endforeach()

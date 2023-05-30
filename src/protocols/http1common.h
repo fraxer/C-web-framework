@@ -5,8 +5,8 @@
 #include <zlib.h>
 
 typedef struct http1_header {
-    const char* key;
-    const char* value;
+    char* key;
+    char* value;
     size_t key_length;
     size_t value_length;
     struct http1_header* next;
@@ -54,29 +54,45 @@ typedef struct http1_ranges {
     struct http1_ranges* next;
 } http1_ranges_t;
 
+typedef struct http1_payloadfield {
+    char* key;
+    char* value;
+    size_t key_length;
+    size_t value_length;
+    struct http1_payloadfield* next;
+} http1_payloadfield_t;
+
 typedef struct http1_payloadpart {
     size_t offset;
     size_t size;
-    char* field;
+    http1_payloadfield_t* field;
+    http1_header_t* header;
 
     struct http1_payloadpart* next;
 } http1_payloadpart_t;
 
 typedef struct http1_payloadfile {
+    int ok;
     int payload_fd;
     size_t offset;
     size_t size;
     const char* rootdir;
     char* name;
     int(*save)(struct http1_payloadfile*, const char*, const char*);
-    char*(*read)(struct http1_payloadfile*, size_t, size_t);
+    char*(*read)(struct http1_payloadfile*);
 } http1_payloadfile_t;
 
 typedef struct http1_payload {
     int fd;
     char* path;
+    char* boundary;
     http1_payloadpart_t* part;
 } http1_payload_t;
+
+typedef struct http1_urlendec {
+    char* string;
+    size_t length;
+} http1_urlendec_t;
 
 http1_header_t* http1_header_create(const char*, size_t, const char*, size_t);
 
@@ -86,6 +102,18 @@ http1_query_t* http1_query_create(const char*, size_t, const char*, size_t);
 
 void http1_query_free(http1_query_t*);
 
-const char* http1_set_field(const char*, size_t);
+char* http1_set_field(const char*, size_t);
+
+http1_payloadpart_t* http1_payloadpart_create();
+
+void http1_payloadpart_free(http1_payloadpart_t*);
+
+http1_payloadfield_t* http1_payloadfield_create();
+
+void http1_payloadfield_free(http1_payloadfield_t*);
+
+http1_urlendec_t http1_urlencode(const char*, size_t);
+
+http1_urlendec_t http1_urldecode(const char*, size_t);
 
 #endif

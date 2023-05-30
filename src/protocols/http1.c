@@ -9,7 +9,6 @@
 #include "../response/http1response.h"
 #include "http1parser.h"
 #include "http1.h"
-    #include <stdio.h>
 
 void http1_handle(connection_t*);
 int http1_write_head(connection_t*);
@@ -30,9 +29,11 @@ void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
 
         switch (bytes_readed) {
         case -1:
+            http1parser_free(&parser);
             http1_handle(connection);
             return;
         case 0:
+            http1parser_free(&parser);
             connection->keepalive_enabled = 0;
             connection->after_read_request(connection);
             return;
@@ -74,10 +75,14 @@ void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
 
     if (http1_write_head(connection) == -1) goto write;
 
+    if (response->body.size == 0 && response->file_.size == 0) {
+        http1_write_body(connection, buffer, 0, 0);
+        goto write;
+    }
+
     // body
     if (response->body.pos < response->body.size) {
         size_t payload_size = response->body.size - response->body.pos;
-
         ssize_t end = 0;
         ssize_t pos = response->body.pos;
         if (response->ranges) {
@@ -104,7 +109,6 @@ void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
     // file
     if (response->file_.fd > 0 && response->file_.pos < response->file_.size) {
         size_t payload_size = response->file_.size - response->file_.pos;
-
         ssize_t end = 0;
         ssize_t pos = response->file_.pos;
         if (response->ranges) {
@@ -137,13 +141,13 @@ void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
 }
 
 ssize_t http1_read_internal(connection_t* connection, char* buffer, size_t size) {
-    return connection->ssl_enabled ?
+    return connection->ssl ?
         openssl_read(connection->ssl, buffer, size) :
         recv(connection->fd, buffer, size, 0);
 }
 
 ssize_t http1_write_internal(connection_t* connection, const char* response, size_t size) {
-    return connection->ssl_enabled ?
+    return connection->ssl ?
         openssl_write(connection->ssl, response, size) :
         send(connection->fd, response, size, MSG_NOSIGNAL);
 }
@@ -195,11 +199,12 @@ int http1_write_body(connection_t* connection, char* buffer, size_t payload_size
             size_t source_size = size;
             int end = payload_size <= source_size;
 
-            if (response->deflate(response, &buffer, (ssize_t*)&size, end) == -1) goto failed;
+            http1response_string_t string = response->deflate(response, buffer, size, end);
+            if (string.data == NULL) goto failed;
 
-            writed = http1_write_chunked(connection, buffer, size, end);
+            writed = http1_write_chunked(connection, string.data, string.size, end);
 
-            free(buffer);
+            free(string.data);
 
             writed = source_size;
         } else {

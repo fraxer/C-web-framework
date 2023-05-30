@@ -29,7 +29,7 @@ int http1response_keepalive_enabled(http1response_t*);
 void http1response_switch_to_websockets(http1response_t*);
 void http1response_try_enable_gzip(http1response_t*, const char*);
 void http1response_try_enable_te(http1response_t*, const char*);
-int http1response_deflate(http1response_t*, char**, ssize_t*, int);
+http1response_string_t http1response_deflate(http1response_t*, const char*, size_t, int);
 int http1response_cmpstr(const char*, const char*);
 int http1response_cmpsubstr(const char*, const char*);
 int http1response_prepare_body(http1response_t*, int, int, size_t);
@@ -168,7 +168,7 @@ void http1response_datan(http1response_t* response, const char* data, size_t len
     int gzip_enabled = response->content_encoding == CE_GZIP;
     int chunked_enabled = response->transfer_encoding == TE_CHUNKED;
     if (response->header_add_content_type(response, "text/html; charset=utf-8", 24) == -1) return;
-    if (response->header_add(response, "Connection", http1response_keepalive_enabled(response) ? "keep-alive" : "Close") == -1) return;
+    if (response->header_add(response, "Connection", http1response_keepalive_enabled(response) ? "keep-alive" : "close") == -1) return;
     if (response->header_add(response, "Cache-Control", "no-store, no-cache") == -1) return;
 
     if (http1response_prepare_body(response, gzip_enabled, chunked_enabled, length) == -1) return;
@@ -310,9 +310,6 @@ int http1response_headern_add(http1response_t* response, const char* key, size_t
             http1response_cmpstr(header->value, "gzip")) {
             response->content_encoding = CE_GZIP;
         }
-    }
-    else {
-
     }
 
     return 0;
@@ -569,17 +566,21 @@ http1response_head_t http1response_create_head(http1response_t* response) {
     return head;
 }
 
-int http1response_deflate(http1response_t* response, char** data, ssize_t* length, int end) {
-    int result = -1;
-    ssize_t buffer_length = *length < 8192 ? 8192 : *length;
+http1response_string_t http1response_deflate(http1response_t* response, const char* data, size_t length, int end) {
+    const size_t max_buffer_size = 32768;
+    size_t buffer_length = length < max_buffer_size ? max_buffer_size : length;
     unsigned char buffer[buffer_length];
+    http1response_string_t result = {
+        .data = NULL,
+        .size = 0
+    };
 
     char* string = malloc(buffer_length);
-    if (string == NULL) return -1;
+    if (string == NULL) return result;
 
     z_stream* defstream = response->defstream;
-    defstream->avail_in = (uInt)(*length);
-    defstream->next_in = (Bytef*)*data;
+    defstream->avail_in = (uInt)(length);
+    defstream->next_in = (Bytef*)data;
     defstream->avail_out = buffer_length;
     defstream->next_out = buffer;
 
@@ -588,35 +589,31 @@ int http1response_deflate(http1response_t* response, char** data, ssize_t* lengt
         defstream->zalloc = Z_NULL;
         defstream->zfree = Z_NULL;
         defstream->opaque = Z_NULL;
-        if (deflateInit2(defstream, Z_BEST_SPEED, Z_DEFLATED, MAX_WBITS + 16, MAX_MEM_LEVEL, Z_DEFAULT_STRATEGY) != Z_OK) goto failed;
+
+        if (deflateInit2(defstream, Z_BEST_SPEED, Z_DEFLATED, MAX_WBITS + 16, MAX_MEM_LEVEL, Z_DEFAULT_STRATEGY) != Z_OK)
+            goto failed;
     }
 
-    size_t new_length = 0;
     int flush = end ? Z_FINISH : Z_SYNC_FLUSH;
-    
+
     if (deflate(defstream, flush) == Z_STREAM_ERROR) goto failed;
 
     size_t writed = buffer_length - defstream->avail_out;
 
-    memcpy(string + new_length, buffer, writed);
+    memcpy(string, buffer, writed);
 
-    new_length += writed;
+    result.data = string;
+    result.size = writed;
+
+    failed:
 
     if (end) {
         int r = deflateEnd(defstream);
         if (r == Z_STREAM_END || r == Z_ERRNO) goto failed;
     }
 
-    *length = new_length;
-    *data = string;
-
-    result = 0;
-
-    failed:
-
-    if (result == -1) {
+    if (result.data == NULL) {
         free(string);
-        deflateEnd(defstream);
     }
 
     return result;

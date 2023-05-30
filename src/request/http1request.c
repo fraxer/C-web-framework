@@ -5,17 +5,36 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <linux/limits.h>
+#include <sys/stat.h>
 #include <sys/sendfile.h>
 #include <unistd.h>
 #include "http1request.h"
+#include "../utils/urlencodedparser.h"
+#include "../utils/formdataparser.h"
+#include "../utils/multipartparser.h"
 
+void http1request_init_payload(http1request_t*);
 void http1request_reset(http1request_t*);
 http1_header_t* http1request_header(http1request_t*, const char*);
 http1_header_t* http1request_headern(http1request_t*, const char*, size_t);
 db_t* http1request_database_list(http1request_t*);
 void http1request_payload_free(http1_payload_t*);
 int http1request_file_save(http1_payloadfile_t*, const char*, const char*);
-char* http1request_file_read(http1_payloadfile_t*, size_t, size_t);
+char* http1request_file_read(http1_payloadfile_t*);
+void http1request_payload_parse(http1request_t*);
+
+void http1request_init_payload(http1request_t* request) {
+    request->payload_.fd = 0;
+    request->payload_.path = NULL;
+    request->payload_.part = NULL;
+    request->payload_.boundary = NULL;
+
+    request->payload = http1request_payload;
+    request->payloadf = http1request_payloadf;
+    request->payload_urlencoded = http1request_payload_urlencoded;
+    request->payload_file = http1request_payload_file;
+    request->payload_filef = http1request_payload_filef;
+}
 
 http1request_t* http1request_alloc() {
     return (http1request_t*)malloc(sizeof(http1request_t));
@@ -58,9 +77,6 @@ http1request_t* http1request_create(connection_t* connection) {
 
     request->method = ROUTE_NONE;
     request->version = HTTP1_VER_NONE;
-    request->payload_.fd = 0;
-    request->payload_.path = NULL;
-    request->payload_.part = NULL;
     request->uri_length = 0;
     request->path_length = 0;
     request->ext_length = 0;
@@ -78,13 +94,7 @@ http1request_t* http1request_create(connection_t* connection) {
     request->base.reset = (void(*)(void*))http1request_reset;
     request->base.free = (void(*)(void*))http1request_free;
 
-    request->payload = http1request_payload;
-    request->payloadf = http1request_payloadf;
-    request->payload_urlencoded = http1request_payload_urlencoded;
-    request->payload_file = http1request_payload_file;
-    request->payload_filef = http1request_payload_filef;
-    request->payload_json = http1request_payload_json;
-    request->payload_jsonf = http1request_payload_jsonf;
+    http1request_init_payload(request);
 
     return request;
 }
@@ -152,6 +162,12 @@ void http1request_payload_free(http1_payload_t* payload) {
 
     free(payload->path);
     payload->path = NULL;
+
+    free(payload->boundary);
+    payload->boundary = NULL;
+
+    http1_payloadpart_free(payload->part);
+    payload->part = NULL;
 }
 
 char* http1request_payload(http1request_t* request) {
@@ -159,23 +175,35 @@ char* http1request_payload(http1request_t* request) {
 }
 
 char* http1request_payloadf(http1request_t* request, const char* field) {
-    http1_payloadpart_t* part = request->payload_.part;
+    http1request_payload_parse(request);
 
+    char* buffer = NULL;
+    http1_payloadpart_t* part = request->payload_.part;
     if (part == NULL) return NULL;
 
     while (field != NULL && part) {
-        if (strcmp(part->field, field) == 0)
-            break;
-
+        http1_payloadfield_t* pfield = part->field;
+        while (pfield) {
+            if (strcmp(pfield->key, "name") == 0 && strcmp(pfield->value, field) == 0) {
+                goto next;
+            }
+            pfield = pfield->next;
+        }
         part = part->next;
     }
 
-    char* buffer = malloc(part->size + 1);
+    if (part == NULL) return NULL;
+
+    next:
+
+    buffer = malloc(part->size + 1);
     if (buffer == NULL) return NULL;
 
     lseek(request->payload_.fd, part->offset, SEEK_SET);
     int r = read(request->payload_.fd, buffer, part->size);
     lseek(request->payload_.fd, 0, SEEK_SET);
+
+    buffer[part->size] = 0;
 
     if (r <= 0) {
         free(buffer);
@@ -186,12 +214,14 @@ char* http1request_payloadf(http1request_t* request, const char* field) {
 }
 
 char* http1request_payload_urlencoded(http1request_t* request, const char* field) {
+    http1request_payload_parse(request);
+
     http1_payloadpart_t* part = request->payload_.part;
 
     if (part == NULL) return NULL;
 
     while (field != NULL && part) {
-        if (strcmp(part->field, field) == 0) {
+        if (part->field && strcmp(part->field->value, field) == 0) {
             part = part->next;
             break;
         }
@@ -208,7 +238,9 @@ char* http1request_payload_urlencoded(http1request_t* request, const char* field
     int r = read(request->payload_.fd, buffer, part->size);
     lseek(request->payload_.fd, 0, SEEK_SET);
 
-    if (r <= 0) {
+    buffer[part->size] = 0;
+
+    if (r < 0) {
         free(buffer);
         return NULL;
     }
@@ -216,76 +248,61 @@ char* http1request_payload_urlencoded(http1request_t* request, const char* field
     return buffer;
 }
 
-http1_payloadfile_t* http1request_payload_file(http1request_t* request) {
+http1_payloadfile_t http1request_payload_file(http1request_t* request) {
     return http1request_payload_filef(request, NULL);
 }
 
-http1_payloadfile_t* http1request_payload_filef(http1request_t* request, const char* field) {
-    http1_payloadpart_t* part = request->payload_.part;
+http1_payloadfile_t http1request_payload_filef(http1request_t* request, const char* field) {
+    http1request_payload_parse(request);
 
-    if (part == NULL) return NULL;
+    http1_payloadfile_t file = {
+        .ok = 0,
+        .payload_fd = 0,
+        .offset = 0,
+        .size = 0,
+        .rootdir = NULL,
+        .name = NULL,
+        .save = http1request_file_save,
+        .read = http1request_file_read
+    };
+
+    http1_payloadpart_t* part = request->payload_.part;
+    if (part == NULL) return file;
 
     while (field != NULL && part) {
-        if (strcmp(part->field, field) == 0)
-            break;
-
+        http1_payloadfield_t* pfield = part->field;
+        while (pfield) {
+            if (strcmp(pfield->key, "name") == 0 && strcmp(pfield->value, field) == 0) {
+                goto next;
+            }
+            pfield = pfield->next;
+        }
         part = part->next;
     }
 
-    http1_payloadfile_t* file = malloc(sizeof *file);
-    if (file == NULL) return NULL;
+    if (part == NULL) return file;
 
-    file->payload_fd = request->payload_.fd;
-    file->offset = part->offset;
-    file->size = part->size;
-    file->rootdir = request->connection->server->root;
-    file->name = NULL;
-    file->save = http1request_file_save;
-    file->read = http1request_file_read;
+    char* filename = NULL;
+    http1_payloadfield_t* pfield = part->field;
+
+    next:
+
+    while (pfield) {
+        if (strcmp(pfield->key, "filename") == 0) {
+            filename = pfield->key;
+            break;
+        }
+        pfield = pfield->next;
+    }
+
+    file.ok = 1;
+    file.payload_fd = request->payload_.fd;
+    file.offset = part->offset;
+    file.size = part->size;
+    file.rootdir = request->connection->server->root;
+    file.name = filename;
 
     return file;
-}
-
-jsmntok_t* http1request_payload_json(http1request_t* request) {
-    return http1request_payload_jsonf(request, NULL);
-}
-
-jsmntok_t* http1request_payload_jsonf(http1request_t* request, const char* field) {
-    http1_payloadpart_t* part = request->payload_.part;
-
-    if (part == NULL) return NULL;
-
-    while (field != NULL && part) {
-        if (strcmp(part->field, field) == 0)
-            break;
-
-        part = part->next;
-    }
-
-    char* buffer = malloc(part->size + 1);
-    if (buffer == NULL) return NULL;
-
-    lseek(request->payload_.fd, part->offset, SEEK_SET);
-    int r = read(request->payload_.fd, buffer, part->size);
-    lseek(request->payload_.fd, 0, SEEK_SET);
-
-    if (r <= 0) {
-        free(buffer);
-        return NULL;
-    }
-
-    jsmn_parser_t parser;
-
-    if (jsmn_init(&parser, buffer) == -1) {
-        free(buffer);
-        return NULL;
-    }
-    if (jsmn_parse(&parser) < 0) {
-        free(buffer);
-        return NULL;
-    }
-
-    return jsmn_get_root_token(&parser);
 }
 
 int http1request_file_save(http1_payloadfile_t* file, const char* dir, const char* filename) {
@@ -301,7 +318,7 @@ int http1request_file_save(http1_payloadfile_t* file, const char* dir, const cha
     if (dir[dir_length - 1] != '/') strcat(path, "/");
     strcat(path, filename);
 
-    int fd = open(path, O_CREAT | O_TRUNC);
+    int fd = open(path, O_CREAT | O_TRUNC, S_IRWXU);
     if (fd < 0) return 0;
 
     off_t offset = file->offset;
@@ -311,12 +328,12 @@ int http1request_file_save(http1_payloadfile_t* file, const char* dir, const cha
     return 1;
 }
 
-char* http1request_file_read(http1_payloadfile_t* file, size_t offset, size_t size) {
+char* http1request_file_read(http1_payloadfile_t* file) {
     char* buffer = malloc(file->size + 1);
     if (buffer == NULL) return NULL;
 
-    lseek(file->payload_fd, offset, SEEK_SET);
-    int r = read(file->payload_fd, buffer, size);
+    lseek(file->payload_fd, 0, SEEK_SET);
+    int r = read(file->payload_fd, buffer, file->size);
     lseek(file->payload_fd, 0, SEEK_SET);
 
     if (r <= 0) {
@@ -324,5 +341,139 @@ char* http1request_file_read(http1_payloadfile_t* file, size_t offset, size_t si
         return NULL;
     }
 
+    buffer[file->size] = 0;
+
     return buffer;
+}
+
+int cmpstr(const char* a, const char* b) {
+    size_t a_length = strlen(a);
+    size_t b_length = strlen(b);
+
+    for (size_t i = 0, j = 0; i < a_length && j < b_length; i++, j++) {
+        if (tolower(a[i]) != tolower(b[j])) return 0;
+    }
+
+    return 1;
+}
+
+int cmpsubstr(const char* a, const char* b) {
+    size_t a_length = strlen(a);
+    size_t b_length = strlen(b);
+
+    for (size_t i = 0, j = 0; i < a_length && j < b_length; i++, j++) {
+        if (tolower(a[i]) != tolower(b[j])) return 0;
+        if (i + 1 == a_length || j + 1 == b_length) return 1;
+    }
+
+    return 1;
+}
+
+void http1request_payload_parse_multipart(http1request_t* request, const char* header_value) {
+    size_t payload_size = strlen(header_value);
+    formdataparser_t fdparser;
+    formdataparser_init(&fdparser, payload_size);
+    formdataparser_parse(&fdparser, header_value, payload_size);
+
+    formdatalocation_t boundary_field = formdataparser_field(&fdparser, "boundary");
+
+    formdataparser_free(&fdparser);
+
+    if (!boundary_field.ok) return;
+
+    char* boundary = malloc(boundary_field.size + 1);
+    if (boundary == NULL) return;
+    if (boundary_field.size == 0) {
+        free(boundary);
+        return;
+    }
+    strncpy(boundary, &header_value[boundary_field.offset], boundary_field.size);
+    boundary[boundary_field.size] = 0;
+
+    multipartparser_t mparser;
+    multipartparser_init(&mparser, request->payload_.fd, boundary);
+
+    size_t buffer_size = request->connection->server->info->read_buffer;
+    char* buffer = malloc(buffer_size);
+    if (buffer == NULL) {
+        free(boundary);
+        return;
+    }
+
+    lseek(request->payload_.fd, 0, SEEK_SET);
+
+    while (1) {
+        int r = read(request->payload_.fd, buffer, buffer_size);
+        if (r <= 0) break;
+
+        multipartparser_parse(&mparser, buffer, r);
+    }
+
+    free(boundary);
+    free(buffer);
+
+    lseek(request->payload_.fd, 0, SEEK_SET);
+
+    request->payload_.part = multipartparser_part(&mparser);
+}
+
+void http1request_payload_parse_urlencoded(http1request_t* request) {
+    size_t buffer_size = request->connection->server->info->read_buffer;
+    char* buffer = malloc(buffer_size);
+    if (buffer == NULL) return;
+
+    off_t payload_size = lseek(request->payload_.fd, 0, SEEK_END);
+    lseek(request->payload_.fd, 0, SEEK_SET);
+
+    urlencodedparser_t parser;
+    urlencodedparser_init(&parser, request->payload_.fd, payload_size);
+
+    while (1) {
+        int r = read(request->payload_.fd, buffer, buffer_size);
+        if (r <= 0) break;
+
+        urlencodedparser_parse(&parser, buffer, r);
+    }
+
+    free(buffer);
+
+    lseek(request->payload_.fd, 0, SEEK_SET);
+
+    request->payload_.part = urlencodedparser_part(&parser);
+}
+
+void http1request_payload_parse_plain(http1request_t* request) {
+    http1_payloadpart_t* part = http1_payloadpart_create();
+    if (part == NULL) return;
+
+    part->size = lseek(request->payload_.fd, 0, SEEK_END);
+    lseek(request->payload_.fd, 0, SEEK_SET);
+
+    request->payload_.part = part;
+}
+
+void http1request_payload_parse(http1request_t* request) {
+    if (request->payload_.fd == 0) return;
+    if (request->payload_.part != NULL) return;
+
+    http1_header_t* header = request->header_;
+
+    while (header) {
+        if (cmpstr(header->key, "content-type"))
+            break;
+
+        header = header->next;
+    }
+
+    if (header == NULL) return;
+
+    if (cmpsubstr(header->value, "multipart/form-data")) {
+        http1request_payload_parse_multipart(request, header->value);
+    }
+    else if (cmpstr(header->value, "application/x-www-form-urlencoded")) {
+        http1request_payload_parse_urlencoded(request);
+    }
+    else {
+        http1request_payload_parse_plain(request);
+    }
 }

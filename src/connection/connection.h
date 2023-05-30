@@ -10,7 +10,6 @@
 typedef struct connection {
     int fd;
     int basefd;
-    int ssl_enabled;
     int keepalive_enabled;
     int timeout;
     atomic_bool locked;
