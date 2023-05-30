@@ -18,7 +18,7 @@ static thread_handler_item_t** thread_handlers = NULL;
 
 
 void* thread_handler(void* arg) {
-    thread_handler_item_t* thread_handler = (thread_handler_item_t*)arg;
+    thread_handler_item_t* thread_handler = arg;
 
     while (1) {
         connection_t* connection = connection_queue_guard_pop();

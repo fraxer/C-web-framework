@@ -283,7 +283,7 @@ int epoll_queue_pop(connection_t* connection) {
 int epoll_connection_close(connection_t* connection) {
     if (epoll_control_del(connection) == -1) return -1;
 
-    if (connection->ssl_enabled) {
+    if (connection->ssl) {
         SSL_shutdown(connection->ssl);
         SSL_clear(connection->ssl);
     }

@@ -49,46 +49,29 @@ void tls_handshake(connection_t* connection) {
         }
 
         SSL_set_accept_state(connection->ssl);
-
         SSL_set_shutdown(connection->ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
     }
 
     result = SSL_do_handshake(connection->ssl);
 
     if (result == 1) {
-        connection->ssl_enabled = 1;
-
         protmgr_set_http1(connection);
 
         return;
     }
 
     switch (SSL_get_error(connection->ssl, result)) {
+    case SSL_ERROR_SYSCALL:
+    case SSL_ERROR_SSL:
+        epoll_ssl_error:
+        connection->close(connection);
+        return;
 
-        case SSL_ERROR_SYSCALL:
-        case SSL_ERROR_SSL:
-            epoll_ssl_error:
-            connection->close(connection);
-            return;
-
-        case SSL_ERROR_WANT_READ:
-            // log_error(TLS_ERROR_WANT_READ);
-            return;
-
-        case SSL_ERROR_WANT_WRITE:
-            // log_error(TLS_ERROR_WANT_WRITE);
-            return;
-
-        case SSL_ERROR_WANT_ACCEPT:
-            // log_error(TLS_ERROR_WANT_ACCEPT);
-            return;
-
-        case SSL_ERROR_WANT_CONNECT:
-            // log_error(TLS_ERROR_WANT_CONNECT);
-            return;
-
-        case SSL_ERROR_ZERO_RETURN:
-            // log_error(TLS_ERROR_ZERO_RETURN);
-            return;
+    case SSL_ERROR_WANT_READ:
+    case SSL_ERROR_WANT_WRITE:
+    case SSL_ERROR_WANT_ACCEPT:
+    case SSL_ERROR_WANT_CONNECT:
+    case SSL_ERROR_ZERO_RETURN:
+        return;
     }
 }

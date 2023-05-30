@@ -847,6 +847,7 @@ server_info_t* module_loader_server_info_load() {
             if (server_info->tmp_dir == NULL) goto failed;
 
             strncpy(server_info->tmp_dir, value, value_length);
+            server_info->tmp_dir[value_length] = 0;
         }
         else if (strcmp(key, "gzip") == 0) {
             finded_fields[GZIP] = 1;

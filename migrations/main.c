@@ -575,7 +575,10 @@ int mg_create_template(const char* source_directory, mgconfig_t* config) {
         return -1;
     }
 
-    write(fd, data, strlen(data));
+    int r = write(fd, data, strlen(data));
+    if (r <= 0) {
+        printf("Error: can't write tot file %s", &tmp[0]);
+    }
     close(fd);
 
     return 0;

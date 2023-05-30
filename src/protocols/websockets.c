@@ -95,13 +95,13 @@ void websockets_write(connection_t* connection, char* buffer, size_t buffer_size
 }
 
 ssize_t websockets_read_internal(connection_t* connection, char* buffer, size_t size) {
-    return connection->ssl_enabled ?
+    return connection->ssl ?
         openssl_read(connection->ssl, buffer, size) :
         read(connection->fd, buffer, size);
 }
 
 ssize_t websockets_write_internal(connection_t* connection, const char* response, size_t size) {
-    if (connection->ssl_enabled) {
+    if (connection->ssl) {
         size_t sended = openssl_write(connection->ssl, response, size);
 
         // if (sended == -1) {

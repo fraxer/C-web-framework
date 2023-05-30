@@ -233,6 +233,7 @@ gzip_mimetype_t* server_gzip_mimetype_create(const char* string) {
     gzip_mimetype_t* gzip_mimetype = server_gzip_mimetype_alloc();
     if (gzip_mimetype == NULL) return NULL;
 
+    gzip_mimetype->next = NULL;
     gzip_mimetype->length = strlen(string);
     gzip_mimetype->value = malloc(gzip_mimetype->length + 1);
     if (gzip_mimetype->value == NULL) {

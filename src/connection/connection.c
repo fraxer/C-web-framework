@@ -55,7 +55,6 @@ connection_t* connection_alloc(int fd, int basefd) {
 
     connection->fd = fd;
     connection->basefd = basefd;
-    connection->ssl_enabled = 0;
     connection->keepalive_enabled = 0;
     connection->timeout = 0;
     connection->locked = 0;
@@ -81,7 +80,7 @@ connection_t* connection_alloc(int fd, int basefd) {
 void connection_free(connection_t* connection) {
     if (connection == NULL) return;
 
-    if (connection->ssl_enabled) {
+    if (connection->ssl) {
         SSL_free_buffers(connection->ssl);
         SSL_free(connection->ssl);
     }
