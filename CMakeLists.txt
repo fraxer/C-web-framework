@@ -118,6 +118,8 @@ add_library(multipartparser STATIC src/utils/multipartparser.c)
 
 add_library(formdataparser STATIC src/utils/formdataparser.c)
 
+add_library(cookieparser STATIC src/utils/cookieparser.c)
+
 if(MySQL_FOUND AND INCLUDE_MYSQL STREQUAL yes)
 	add_library(mysql STATIC src/database/mysql.c)
 endif()
@@ -182,6 +184,7 @@ target_link_libraries(
 	urlencodedparser
 	formdataparser
 	multipartparser
+	cookieparser
 
 	websockets
 	websocketsparser

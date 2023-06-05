@@ -5,6 +5,7 @@
 #include "../connection/connection.h"
 #include "../request/http1request.h"
 #include "../response/http1response.h"
+#include "../utils/cookieparser.h"
 #include "../domain/domain.h"
 #include "../log/log.h"
 #include "http1common.h"
@@ -21,6 +22,7 @@ int http1parser_set_query(http1request_t*, const char*, size_t, size_t);
 int http1parser_host_not_found(http1parser_t*);
 void http1parser_try_set_keepalive(http1parser_t*);
 void http1parser_try_set_range(http1parser_t*);
+void http1parser_try_set_cookie(http1parser_t*);
 int http1parser_cmplower(const char*, ssize_t, const char*, ssize_t);
 int http1parser_is_ctl(int);
 
@@ -528,6 +530,23 @@ void http1parser_try_set_range(http1parser_t* parser) {
     }
 }
 
+void http1parser_try_set_cookie(http1parser_t* parser) {
+    http1request_t* request = (http1request_t*)parser->connection->request;
+    http1_header_t* header = request->last_header;
+
+    const char* key = "cookie";
+    ssize_t key_length = 6;
+
+    if ((ssize_t)header->key_length != key_length) return;
+    if (!http1parser_cmplower(header->key, header->key_length, key, key_length)) return;
+
+    cookieparser_t cparser;
+    cookieparser_init(&cparser);
+    cookieparser_parse(&cparser, header->value, header->value_length);
+
+    request->cookie_ = cookieparser_cookie(&cparser);
+}
+
 int http1parser_cmplower(const char* a, ssize_t a_length, const char* b, ssize_t b_length) {
     for (ssize_t i = 0, j = 0; i < a_length && j < b_length; i++, j++) {
         if (tolower(a[i]) != tolower(b[j])) return 0;
@@ -768,6 +787,7 @@ int http1parser_set_header_value(http1request_t* request, http1parser_t* parser)
 
     http1parser_try_set_keepalive(parser);
     http1parser_try_set_range(parser);
+    http1parser_try_set_cookie(parser);
 
     return HTTP1PARSER_SUCCESS;
 }

@@ -25,11 +25,14 @@ typedef struct http1request {
     http1_query_t* last_query;
     http1_header_t* header_;
     http1_header_t* last_header;
+    http1_cookie_t* cookie_;
 
     connection_t* connection;
 
     http1_header_t*(*header)(struct http1request*, const char*);
     http1_header_t*(*headern)(struct http1request*, const char*, size_t);
+
+    const char*(*cookie)(struct http1request*, const char*);
 
     db_t*(*database_list)(struct http1request*);
 

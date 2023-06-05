@@ -10,7 +10,7 @@ typedef struct http1_header {
     size_t key_length;
     size_t value_length;
     struct http1_header* next;
-} http1_header_t;
+} http1_header_t, http1_cookie_t;
 
 typedef enum http1_version {
     HTTP1_VER_NONE = 0,
@@ -115,5 +115,9 @@ void http1_payloadfield_free(http1_payloadfield_t*);
 http1_urlendec_t http1_urlencode(const char*, size_t);
 
 http1_urlendec_t http1_urldecode(const char*, size_t);
+
+http1_cookie_t* http1_cookie_create(const char*, size_t, const char*, size_t);
+
+void http1_cookie_free(http1_cookie_t*);
 
 #endif

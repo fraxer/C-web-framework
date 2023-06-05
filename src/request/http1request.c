@@ -17,6 +17,7 @@ void http1request_init_payload(http1request_t*);
 void http1request_reset(http1request_t*);
 http1_header_t* http1request_header(http1request_t*, const char*);
 http1_header_t* http1request_headern(http1request_t*, const char*, size_t);
+const char* http1request_cookie(http1request_t*, const char*);
 db_t* http1request_database_list(http1request_t*);
 void http1request_payload_free(http1_payload_t*);
 int http1request_file_save(http1_payloadfile_t*, const char*, const char*);
@@ -87,9 +88,11 @@ http1request_t* http1request_create(connection_t* connection) {
     request->last_query = NULL;
     request->header_ = NULL;
     request->last_header = NULL;
+    request->cookie_ = NULL;
     request->connection = connection;
     request->header = http1request_header;
     request->headern = http1request_headern;
+    request->cookie = http1request_cookie;
     request->database_list = http1request_database_list;
     request->base.reset = (void(*)(void*))http1request_reset;
     request->base.free = (void(*)(void*))http1request_free;
@@ -124,6 +127,9 @@ void http1request_reset(http1request_t* request) {
     http1request_header_free(request->header_);
     request->header_ = NULL;
     request->last_header = NULL;
+
+    http1_cookie_free(request->cookie_);
+    request->cookie_ = NULL;
 }
 
 http1_header_t* http1request_header(http1request_t* request, const char* key) {
@@ -143,6 +149,25 @@ http1_header_t* http1request_headern(http1request_t* request, const char* key, s
         next:
 
         header = header->next;
+    }
+
+    return NULL;
+}
+
+const char* http1request_cookie(http1request_t* request, const char* key) {
+    http1_cookie_t* cookie = request->cookie_;
+    size_t key_length = strlen(key);
+
+    while (cookie) {
+        for (size_t i = 0, j = 0; i < cookie->key_length && j < key_length; i++, j++) {
+            if (tolower(cookie->key[i]) != tolower(key[j])) goto next;
+        }
+
+        return cookie->value;
+
+        next:
+
+        cookie = cookie->next;
     }
 
     return NULL;

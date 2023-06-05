@@ -6,6 +6,7 @@
 
 http1_header_t* http1_header_alloc();
 http1_query_t* http1_query_alloc();
+http1_cookie_t* http1_cookie_alloc();
 char http1_from_hex(char);
 char http1_to_hex(char);
 
@@ -57,6 +58,8 @@ void http1_query_free(http1_query_t* query) {
 }
 
 char* http1_set_field(const char* string, size_t length) {
+    if (length == 0) return NULL;
+
     char* value = malloc(length + 1);
     if (value == NULL) return value;
 
@@ -182,5 +185,35 @@ void http1_payloadfield_free(http1_payloadfield_t* field) {
         free(field);
 
         field = next;
+    }
+}
+
+http1_cookie_t* http1_cookie_alloc() {
+    return malloc(sizeof(http1_cookie_t));
+}
+
+http1_cookie_t* http1_cookie_create(const char* key, size_t key_length, const char* value, size_t value_length) {
+    http1_cookie_t* cookie = http1_cookie_alloc();
+
+    if (cookie == NULL) return NULL;
+
+    cookie->key = http1_set_field(key, key_length);
+    cookie->key_length = key_length;
+    cookie->value = http1_set_field(value, value_length);
+    cookie->value_length = value_length;
+    cookie->next = NULL;
+
+    return cookie;
+}
+
+void http1_cookie_free(http1_cookie_t* cookie) {
+    while (cookie) {
+        http1_cookie_t* next = cookie->next;
+
+        if (cookie->key) free(cookie->key);
+        if (cookie->value) free(cookie->value);
+        if (cookie) free(cookie);
+
+        cookie = next;
     }
 }

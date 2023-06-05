@@ -92,12 +92,12 @@ void multipartparser_parse(multipartparser_t* parser, char* buffer, size_t buffe
             else if (ch == '\r')
                 parser->stage = BOUNDARY_SN;
             else
-                goto end;
+                return;
             break;
         case BOUNDARY_SD:
             if (ch == '-') {
                 parser->stage = BODY;
-                goto end;
+                return;
             }
             break;
         case HEADER_KEY:
@@ -141,10 +141,6 @@ void multipartparser_parse(multipartparser_t* parser, char* buffer, size_t buffe
         parser->payload_offset++;
         parser->size++;
     }
-
-    end:
-
-    parser->size++;
 }
 
 http1_payloadpart_t* multipartparser_part(multipartparser_t* parser) {

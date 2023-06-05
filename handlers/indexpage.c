@@ -216,6 +216,17 @@ void payload_(http1request_t* request, http1response_t* response) {
     // if (payload) free(payload);
 }
 
+void cookie(http1request_t* request, http1response_t* response) {
+    const char* cookie = request->cookie(request, "test");
+
+    if (!cookie) {
+        response->data(response, "cookie not found");
+        return;
+    }
+
+    response->data(response, cookie);
+}
+
 void view(http1request_t* request, http1response_t* response) {
     (void)request;
 
