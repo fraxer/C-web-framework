@@ -56,6 +56,8 @@ add_library(log STATIC src/log/log.c)
 
 add_library(jsmn STATIC src/jsmn/jsmn.c)
 
+add_library(json STATIC src/json/json.c)
+
 add_library(config STATIC src/config/config.c)
 
 add_library(moduleloader STATIC src/moduleloader/moduleloader.c)
@@ -145,6 +147,7 @@ add_library(base64 STATIC src/base64/base64.c)
 target_link_libraries(
 	config
 	jsmn
+	json
 	log
 	helpers
 )
@@ -152,6 +155,11 @@ target_link_libraries(
 target_link_libraries(
 	routeloader
 	${CMAKE_DL_LIBS}
+)
+
+target_link_libraries(
+	http1request
+	json
 )
 
 target_link_libraries(
@@ -185,7 +193,7 @@ target_link_libraries(
 	formdataparser
 	multipartparser
 	cookieparser
-
+	
 	websockets
 	websocketsparser
 	websocketsrequest

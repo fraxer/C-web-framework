@@ -14,5 +14,6 @@ foreach(FILEPATH ${FILEPATHS})
 		dbquery
 		dbresult
 		database
+		json
 	)
 endforeach()

@@ -5,6 +5,7 @@
 #include "../connection/connection.h"
 #include "../protocols/http1common.h"
 #include "../jsmn/jsmn.h"
+#include "../json/json.h"
 #include "request.h"
 
 typedef struct http1request {
@@ -41,6 +42,8 @@ typedef struct http1request {
     char*(*payload_urlencoded)(struct http1request*, const char*);
     http1_payloadfile_t(*payload_file)(struct http1request*);
     http1_payloadfile_t(*payload_filef)(struct http1request*, const char*);
+    jsondoc_t(*payload_json)(struct http1request*);
+    jsondoc_t(*payload_jsonf)(struct http1request*, const char*);
 } http1request_t;
 
 http1request_t* http1request_create(connection_t*);
@@ -50,5 +53,7 @@ char* http1request_payloadf(http1request_t*, const char*);
 char* http1request_payload_urlencoded(http1request_t*, const char*);
 http1_payloadfile_t http1request_payload_file(http1request_t*);
 http1_payloadfile_t http1request_payload_filef(http1request_t*, const char*);
+jsondoc_t http1request_payload_json(http1request_t*);
+jsondoc_t http1request_payload_jsonf(http1request_t*, const char*);
 
 #endif

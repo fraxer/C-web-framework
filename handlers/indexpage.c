@@ -7,6 +7,7 @@
 #include "../src/response/websocketsresponse.h"
 #include "../src/database/dbquery.h"
 #include "../src/database/dbresult.h"
+#include "../src/json/json.h"
     #include <stdio.h>
 
 void payload(http1request_t* request, http1response_t* response) {
@@ -75,54 +76,83 @@ void payload_filef(http1request_t* request, http1response_t* response) {
     free(data);
 }
 
-void payload_(http1request_t* request, http1response_t* response) {
-    char* payload = request->payloadf(request, "asd");
+void payload_json(http1request_t* request, http1response_t* response) {
+    const char* payload = "{\"c\":4000000123000000,\"name\":\"alex\",\"number\":165.230000,\"bool\":true,\"array\":[\"string\",145,{\"asd\":[]}]}";
 
-    if (!payload) {
-        response->data(response, "field not found");
-    }
-    else {
-        response->data(response, payload);
-        free(payload);
+    jsondoc_t document;
+    if (!json_init(&document)) {
+        response->data(response, "json init error");
+        return;
     }
 
-    // char* payload = request->payloadf(request, "field"); // from multipart
+    // при повторном парсинге, выдавать ошибку если документ не был освобожден
+    if (json_parse(&document, payload) < 0) {
+        response->data(response, "json parse error");
+        return;
+    }
 
-    // char* payload = request->payload_urlencoded(request, "field");
+    jsontok_t* object = json_doc_token(&document);
+    if (!json_is_object(object)) {
+        response->data(response, "is not object");
+        return;
+    }
 
-    // http1_pldfile* file = request->payload_file(request);
-    // http1_pldfile* file = request->payload_filef(request, "field"); // from multipart
+    json_object_set(object, "mykey", json_create_null(&document));
 
-    // file->save(file, "/path/to/dir", file->name);
-    // file_save(file, "/path/to/dir", file->name);
-    //  |
-    // \|/
-    // int fd = open(file_name(file), O_CREAT | O_TRUNC);
-    // write(fd, file_body(file), file_size(file));
-    // close(fd);
+    jsontok_t* array = json_create_array(&document);
+    json_object_set(object, "prop1", array);
 
-    // -------------------
+    json_array_append(array, json_create_bool(&document, 1));
+    json_array_append(array, json_create_string(&document, "hello kitty"));
+    json_array_append_to(array, 0, json_create_number(&document, 123));
+    json_array_append_to(array, 2, json_create_number(&document, -4096));
+    json_array_append_to(array, 30, json_create_double(&document, -409.6));
 
-    // jsmntok_t* token = NULL;
-    // if (!jsmn_parse("{}", &token)) {
-    //     response->data(response, "json error");
-    //     return;
-    // }
+    json_array_erase(array, 2, 2);
+    json_array_erase(array, 1, 1);
 
-    // {
-    //     "a": 1,
-    //     "b": true,
-    //     "c": [
-    //         0,
-    //         { "a": null },
-    //         [0, true],
-    //         true
-    //     ]
-    // }
+    json_array_prepend(array, json_create_string(&document, "Daddy"));
+    jsontok_t* token_double = json_array_get(array, 2);
 
-    // jsmntok_t* token_key1_value = jsmn_object_value(token, "key1");
-    // jsmntok_t* token_key1 = jsmn_object_key(token, "key1");
+    json_token_set_double(token_double, 152834534563.132);
 
+    // json_array_clear(array);
+
+    jsontok_t* obj = json_create_object(&document);
+    json_array_append(array, obj);
+
+    json_object_set(obj, "key1", json_create_double(&document, 432.9640545));
+    json_object_set(obj, "key2", json_create_number(&document, 432765656659640545));
+    json_object_set(obj, "key3", json_create_bool(&document, 0));
+    json_object_set(obj, "key4", json_create_null(&document));
+    json_object_set(obj, "key5", json_create_object(&document));
+    json_object_set(obj, "key6", json_create_array(&document));
+
+    jsontok_t* array2 = json_object_get(obj, "key6");
+    if (array2)
+        json_array_prepend(array2, json_create_string(&document, "Ops"));
+
+    json_object_remove(obj, "key5");
+    // json_object_clear(obj);
+
+    for (jsonit_t it = json_init_it(object); !json_end_it(&it); it = json_next_it(&it)) {
+        if (strcmp(json_it_key(&it), "number") == 0) {
+            const jsontok_t* token = json_it_value(&it);
+            if (json_is_double(token)) {
+                double bl = json_double(token);
+                (void)bl;
+            }
+        }
+    }
+
+    char* string = json_stringify(&document);
+
+    response->data(response, string);
+    response->header_add(response, "Content-Type", "application/json");
+
+    free(string);
+
+    json_free(&document);
 
     // jsmnit_t obit = {
     //     .type = OBJ | ARR,
@@ -145,75 +175,38 @@ void payload_(http1request_t* request, http1response_t* response) {
     // for (int i = 0; i < jsmn_array_size(token); i++) {
     //     jsmntok_t* token_value = jsmn_array_value(token, i);
     // }
+}
 
+void payload_json_post(http1request_t* request, http1response_t* response) {
+    jsondoc_t document = request->payload_json(request);
+    // jsondoc_t document = request->payload_jsonf(request, "json"); // from multipart
 
-    // jsmn_bool(token_value);
-    // jsmn_null(token_value);
-    // jsmn_string(token_value);
-    // jsmn_number(token_value);
-    // jsmn_int(token_value);
-    // jsmn_uint(token_value);
-    // jsmn_double(token_value);
-    // jsmn_udouble(token_value);
+    jsontok_t* object = json_doc_token(&document);
+    if (!json_is_object(object)) {
+        response->data(response, "is not object");
+        return;
+    }
 
-    // if (jsmn_is_bool(token_value)) {}
-    // if (jsmn_is_null(token_value)) {}
-    // if (jsmn_is_string(token_value)) {}
-    // if (jsmn_is_number(token_value)) {}
-    // if (jsmn_is_int(token_value)) {}
-    // if (jsmn_is_uint(token_value)) {}
-    // if (jsmn_is_double(token_value)) {}
-    // if (jsmn_is_udouble(token_value)) {}
-    // if (jsmn_is_object(token_value)) {}
-    // if (jsmn_is_array(token_value)) {}
+    json_object_set(object, "mykey", json_create_null(&document));
 
-    // jsmn_free(token);
+    for (jsonit_t it = json_init_it(object); !json_end_it(&it); it = json_next_it(&it)) {
+        if (strcmp(json_it_key(&it), "number") == 0) {
+            const jsontok_t* token = json_it_value(&it);
+            if (json_is_double(token)) {
+                double bl = json_double(token);
+                (void)bl;
+            }
+        }
+    }
 
-    // jsmntok_t* json = request->payload_json(request);
-    // jsmntok_t* json = request->payload_jsonf(request, "field"); // from multipart
+    char* string = json_stringify(&document);
 
-    // jsmntok_t* token_array = jsmn_create_array();
-    // jsmntok_t* token_object = jsmn_create_object();
-    // jsmntok_t* token_bool = jsmn_create_bool(1);
-    // jsmntok_t* token_null = jsmn_create_null();
-    // jsmntok_t* token_string = jsmn_create_string("");
-    // jsmntok_t* token_int = jsmn_create_int(123);
-    // jsmntok_t* token_double = jsmn_create_double(123.5);
+    response->data(response, string);
+    response->header_add(response, "Content-Type", "application/json");
 
-    // int jsmn_array_prepend(token_array, token_bool);
-    // int jsmn_array_append(token_array, token_null);
-    // int jsmn_array_append(token_array, token_string);
-    // int jsmn_array_append_to(token_array, 1, token_string);
-    // int jsmn_array_slice(token_array, 1, 5);
-    // int jsmn_array_clear(token_array);
+    free(string);
 
-    // int jsmn_object_set(token_object, "key", token_array);
-    // int jsmn_object_remove(token_object, "key");
-    // int jsmn_object_clear(token_object);
-
-    // char* jsmn_stringify(token_object);
-
-    // void jsmn_free(token_object);
-
-    // -------------------
-
-    // jsmn_parser_t parser;
-    // if (jsmn_init(&parser, payload) == -1) {
-    //     return;
-    // }
-
-    // if (jsmn_parse(&parser) < 0) {
-    //     return;
-    // }
-
-    // jsmntok_t* token = jsmn_get_root_token(&parser);
-
-    // jsmntok_t* payload = request->payload_json(request, &parser);
-    // jsmntok_t* json = request->payload_jsonf(request, "field", &parser); // from multipart
-
-    // jsmn_free(&parser);
-
-    // if (payload) free(payload);
+    json_free(&document);
 }
 
 void cookie(http1request_t* request, http1response_t* response) {
