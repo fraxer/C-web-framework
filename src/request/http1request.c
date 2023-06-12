@@ -35,6 +35,8 @@ void http1request_init_payload(http1request_t* request) {
     request->payload_urlencoded = http1request_payload_urlencoded;
     request->payload_file = http1request_payload_file;
     request->payload_filef = http1request_payload_filef;
+    request->payload_json = http1request_payload_json;
+    request->payload_jsonf = http1request_payload_jsonf;
 }
 
 http1request_t* http1request_alloc() {
@@ -328,6 +330,25 @@ http1_payloadfile_t http1request_payload_filef(http1request_t* request, const ch
     file.name = filename;
 
     return file;
+}
+
+jsondoc_t http1request_payload_json(http1request_t* request) {
+    return http1request_payload_jsonf(request, NULL);
+}
+
+jsondoc_t http1request_payload_jsonf(http1request_t* request, const char* field) {
+    jsondoc_t document;
+    char* payload = http1request_payloadf(request, field);
+    if (payload == NULL) return document;
+
+    if (!json_init(&document)) goto failed;
+    if (json_parse(&document, payload) < 0) goto failed;
+
+    failed:
+
+    free(payload);
+
+    return document;
 }
 
 int http1request_file_save(http1_payloadfile_t* file, const char* dir, const char* filename) {

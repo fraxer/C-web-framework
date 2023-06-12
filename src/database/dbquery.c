@@ -63,7 +63,7 @@ dbresult_t dbquery(dbinstance_t* instance, const char* format, ...) {
 
             if (connection == NULL) {
                 result.error_message = "Database query: error connection create";
-                return result;
+                goto exit;
             }
 
             db_connection_trylock(connection);
@@ -88,6 +88,10 @@ dbresult_t dbquery(dbinstance_t* instance, const char* format, ...) {
 
         break;
     }
+
+    exit:
+
+    free(string);
 
     return result;
 }
