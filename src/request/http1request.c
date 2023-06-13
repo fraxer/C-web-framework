@@ -332,17 +332,17 @@ http1_payloadfile_t http1request_payload_filef(http1request_t* request, const ch
     return file;
 }
 
-jsondoc_t http1request_payload_json(http1request_t* request) {
+jsondoc_t* http1request_payload_json(http1request_t* request) {
     return http1request_payload_jsonf(request, NULL);
 }
 
-jsondoc_t http1request_payload_jsonf(http1request_t* request, const char* field) {
-    jsondoc_t document;
+jsondoc_t* http1request_payload_jsonf(http1request_t* request, const char* field) {
     char* payload = http1request_payloadf(request, field);
-    if (payload == NULL) return document;
+    if (payload == NULL) return NULL;
 
-    if (!json_init(&document)) goto failed;
-    if (json_parse(&document, payload) < 0) goto failed;
+    jsondoc_t* document = json_init();
+    if (!document) goto failed;
+    if (json_parse(document, payload) < 0) goto failed;
 
     failed:
 

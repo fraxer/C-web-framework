@@ -21,7 +21,11 @@ void __json_free_stringify(jsonstr_t*);
 int __json_stringify_insert(jsondoc_t*, const char*, size_t);
 void __json_set_error(jsondoc_t*, const char*);
 
-int json_init(jsondoc_t* document) {
+jsondoc_t* json_init() {
+    jsondoc_t* document = malloc(sizeof * document);
+    if (document == NULL) return NULL;
+
+    document->ok = 0;
     document->toknext = 0;
     document->tokens_count = 0;
     document->tokens = NULL;
@@ -29,15 +33,16 @@ int json_init(jsondoc_t* document) {
     document->stringify.length = 0;
     document->stringify.pos = 0;
     document->stringify.string = NULL;
+    document->stringify.detached = 0;
 
     __json_init_parser(document);
 
-    if (__json_alloc_tokens(document) == -1) {
+    if (!__json_alloc_tokens(document)) {
         __json_set_error(document, "Json init error");
         return 0;
     }
 
-    return 1;
+    return document;
 }
 
 int json_parse(jsondoc_t* document, const char* string) {
@@ -79,6 +84,7 @@ int json_parse(jsondoc_t* document, const char* string) {
                 if (t->type == JSON_OBJECT)
                     return JSON_ERROR_INVAL;
 
+                token->size++;
                 token->parent = parser->toksuper;
 
                 __json_set_child_or_sibling(t, token);
@@ -196,6 +202,8 @@ int json_parse(jsondoc_t* document, const char* string) {
         }
     }
 
+    document->ok = 1;
+
     return count;
 }
 
@@ -226,6 +234,14 @@ void json_free(jsondoc_t* document) {
     document->toknext = 0;
     document->tokens_count = 0;
     document->tokens = NULL;
+
+    if (!document->stringify.detached && document->stringify.string)
+        free(document->stringify.string);
+
+    document->stringify.length = 0;
+    document->stringify.pos = 0;
+    document->stringify.string = NULL;
+    document->stringify.detached = 0;
 }
 
 jsontok_t* json_doc_token(jsondoc_t* document) {
@@ -233,6 +249,16 @@ jsontok_t* json_doc_token(jsondoc_t* document) {
         return document->tokens[0];
 
     return NULL;
+}
+
+int json_ok(jsondoc_t* document) {
+    if (document == NULL) return 0;
+
+    return document->ok;
+}
+
+const char* json_error(jsondoc_t* document) {
+    return document->error;
 }
 
 int json_bool(const jsontok_t* token) {
@@ -651,40 +677,37 @@ void json_token_set_array(jsontok_t* token, jsontok_t* token_array) {
 
 jsonit_t json_init_it(jsontok_t* token) {
     jsonit_t it = {
-        .ok = 0,
-        .size = 0,
+        .ok = 1,
         .index = 0,
         .type = token->type,
-        .key._int = 0,
+        .key = token->child,
         .value = NULL,
-        .parent = NULL
+        .parent = token
     };
 
     if (token->type == JSON_OBJECT) {
-        it.ok = 1;
-        it.key.string = token->child->value.string;
         it.value = token->child->child;
     }
     else if (token->type == JSON_ARRAY) {
-        it.ok = 1;
-        it.key._int = 0;
         it.value = token->child;
     }
-    it.parent = token->child;
-    it.size = token->size;
+    else {
+        it.ok = 0;
+    }
 
     return it;
 }
 
 int json_end_it(jsonit_t* iterator) {
-    return iterator->index == iterator->size;
+    return iterator->index == iterator->parent->size;
 }
 
 const void* json_it_key(jsonit_t* iterator) {
     if (iterator->type == JSON_OBJECT)
-        return iterator->key.string;
-    else if (iterator->type == JSON_ARRAY)
-        return &iterator->key._int;
+        return iterator->key->value.string;
+    else if (iterator->type == JSON_ARRAY) {
+        return &iterator->index;
+    }
 
     return NULL;
 }
@@ -698,21 +721,30 @@ jsonit_t json_next_it(jsonit_t* iterator) {
 
     if (json_end_it(iterator)) return *iterator;
 
-    iterator->parent = iterator->parent->sibling;
+    iterator->key = iterator->key->sibling;
 
     if (iterator->type == JSON_OBJECT) {
-        iterator->key.string = iterator->parent->value.string;
-        iterator->value = iterator->parent->child;
+        iterator->value = iterator->key->child;
     }
     else if (iterator->type == JSON_ARRAY) {
-        iterator->key._int = 0;
-        iterator->value = iterator->parent;
+        iterator->value = iterator->key;
     }
 
     return *iterator;
 }
 
-char* json_stringify(jsondoc_t* document) {
+void json_it_erase(jsonit_t* iterator) {
+    if (iterator->type == JSON_OBJECT) {
+        json_object_remove(iterator->parent, iterator->key->value.string);
+    }
+    else if (iterator->type == JSON_ARRAY) {
+        json_array_erase(iterator->parent, iterator->index, 1);
+    }
+
+    iterator->index--;
+}
+
+const char* json_stringify(jsondoc_t* document) {
     jsontok_t* token = document->tokens[0];
 
     __json_free_stringify(&document->stringify);
@@ -727,6 +759,12 @@ char* json_stringify(jsondoc_t* document) {
     document->stringify.string[document->stringify.pos] = 0;
 
     return document->stringify.string;
+}
+
+char* json_stringify_detach(jsondoc_t* document) {
+    document->stringify.detached = 1;
+
+    return (char*)json_stringify(document);
 }
 
 void __json_set_error(jsondoc_t* document, const char* string) {
@@ -777,9 +815,8 @@ int __json_alloc_tokens(jsondoc_t *document) {
     jsontok_t** tokens = realloc(document->tokens, sizeof(jsontok_t*) * tokens_count);
     if (tokens == NULL) return 0;
 
-    for (size_t i = document->tokens_count; i < tokens_count; i++) {
+    for (size_t i = document->tokens_count; i < tokens_count; i++)
         tokens[i] = NULL;
-    }
 
     document->tokens = tokens;
     document->tokens_count = tokens_count;
@@ -792,7 +829,7 @@ int __json_alloc_tokens(jsondoc_t *document) {
  */
 jsontok_t* __json_alloc_token(jsondoc_t* document) {
     if (document->toknext >= document->tokens_count)
-        if (__json_alloc_tokens(document) == -1)
+        if (!__json_alloc_tokens(document))
             return NULL;
 
     jsontok_t* token = malloc(sizeof * token);
@@ -809,6 +846,7 @@ void __json_init_token(jsondoc_t* document, jsontok_t* token) {
     token->end = -1;
     token->size = 0;
     token->parent = -1;
+    token->type = JSON_UNDEFINED;
     token->child = NULL;
     token->sibling = NULL;
     token->last_sibling = NULL;
