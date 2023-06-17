@@ -778,6 +778,8 @@ int module_loader_mimetype_load() {
 
     result = 0;
 
+    mimetype_update();
+
     failed:
 
     if (result == -1) {

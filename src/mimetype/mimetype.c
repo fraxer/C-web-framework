@@ -3,23 +3,31 @@
 #include <stdatomic.h>
 #include <search.h>
 #include <stdlib.h>
+#include <string.h>
 #include "mimetype.h"
 
 static hsearch_data_t* table_ext = NULL;
 static hsearch_data_t* table_type = NULL;
+static mimetypelist_t* list = NULL;
+static mimetypelist_t* newlist = NULL;
+static mimetypelist_t* last_list = NULL;
 
-static atomic_flag flag = ATOMIC_FLAG_INIT;
+static atomic_bool flag = 0;
 
 hsearch_data_t* mimetype_alloc();
 hsearch_data_t* mimetype_create();
+void mimetype_free(mimetypelist_t*);
 
 
 void mimetype_lock() {
-    while (atomic_flag_test_and_set(&flag));
+    _Bool expected = 0;
+    _Bool desired = 1;
+
+    if (atomic_compare_exchange_strong(&flag, &expected, desired)) return;
 }
 
 void mimetype_unlock() {
-    atomic_flag_clear(&flag);
+    atomic_store(&flag, 0);
 }
 
 int mimetype_init_ext(size_t size) {
@@ -81,17 +89,37 @@ hsearch_data_t* mimetype_get_table_type() {
 }
 
 int mimetype_add(hsearch_data_t* table, const char* mimetype, const char* extension) {
+    int result = -1;
     if (table == NULL) return -1;
 
     ENTRY item;
-    ENTRY* result = NULL;
+    ENTRY* res = NULL;
 
-    item.key = (char*)mimetype;
-    item.data = (void*)extension;
+    mimetype_lock();
 
-    if (hsearch_r(item, ENTER, &result, table) == 0) return -1;
+    mimetypelist_t* listitem_key = mimetype_get_item(mimetype);
+    if (listitem_key == NULL) goto failed;
 
-    return 0;
+    item.key = listitem_key->value;
+
+    mimetypelist_t* listitem_value = mimetype_get_item(extension);
+    if (listitem_value == NULL) goto failed;
+
+    item.data = (void*)listitem_value->value;
+
+    if (hsearch_r(item, ENTER, &res, table) == 0) goto failed;
+
+    result = 0;
+
+    failed:
+
+    if (result == -1) {
+        mimetype_free(newlist);
+    }
+
+    mimetype_unlock();
+
+    return result;
 }
 
 const char* mimetype_find_ext(const char* mimetype) {
@@ -142,4 +170,83 @@ const char* mimetype_find_type(const char* extension) {
     mimetype_unlock();
 
     return result;
+}
+
+mimetypelist_t* mimetype_create_item(const char* string) {
+    mimetypelist_t* item = malloc(sizeof * item);
+    if (item == NULL) return NULL;
+
+    item->value = malloc(strlen(string) + 1);
+    if (item->value == NULL) {
+        free(item);
+        return NULL;
+    }
+
+    strcpy(item->value, string);
+
+    item->next = NULL;
+
+    mimetype_append_listitem(item);
+
+    return item;
+}
+
+mimetypelist_t* mimetype_find_item(const char* string) {
+    mimetypelist_t* item = newlist;
+
+    while (item) {
+        if (strcmp(item->value, string) == 0)
+            return item;
+
+        item = item->next;
+    }
+
+    return NULL;
+}
+
+mimetypelist_t* mimetype_get_item(const char* string) {
+    mimetypelist_t* item = mimetype_find_item(string);
+
+    if (item) return item;
+
+    return mimetype_create_item(string);
+}
+
+void mimetype_append_listitem(mimetypelist_t* item) {
+    if (last_list == NULL)
+        newlist = item;
+    else
+        last_list->next = item;
+
+    last_list = item;
+}
+
+void mimetype_free_listitem(mimetypelist_t* item) {
+    if (item == NULL) return;
+
+    if (item->value) free(item->value);
+
+    item->value = NULL;
+    item->next = NULL;
+
+    free(item);
+}
+
+void mimetype_update() {
+    mimetype_free(list);
+
+    list = newlist;
+
+    newlist = NULL;
+    last_list = NULL;
+}
+
+void mimetype_free(mimetypelist_t* list) {
+    while (list) {
+        mimetypelist_t* next = list->next;
+
+        mimetype_free_listitem(list);
+
+        list = next;
+    }
 }

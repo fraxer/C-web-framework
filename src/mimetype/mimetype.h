@@ -5,6 +5,11 @@
 
 typedef struct hsearch_data hsearch_data_t;
 
+typedef struct mimetypelist {
+    char* value;
+    struct mimetypelist* next;
+} mimetypelist_t;
+
 void mimetype_lock();
 
 void mimetype_unlock();
@@ -24,5 +29,17 @@ int mimetype_add(hsearch_data_t*, const char*, const char*);
 const char* mimetype_find_ext(const char*);
 
 const char* mimetype_find_type(const char*);
+
+mimetypelist_t* mimetype_create_item(const char*);
+
+mimetypelist_t* mimetype_find_item(const char*);
+
+mimetypelist_t* mimetype_get_item(const char*);
+
+void mimetype_append_listitem(mimetypelist_t*);
+
+void mimetype_free_listitem(mimetypelist_t*);
+
+void mimetype_update();
 
 #endif
