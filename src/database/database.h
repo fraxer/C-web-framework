@@ -2,7 +2,7 @@
 #define __DATABASE__
 
 #include <stdatomic.h>
-#include "../jsmn/jsmn.h"
+#include "../json/json.h"
 
 typedef enum transaction_level {
     READ_UNCOMMITTED,

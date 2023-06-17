@@ -262,7 +262,7 @@ MYSQL* my_connect(dbhosts_t* hosts, int with_loop) {
     return connection;
 }
 
-db_t* my_load(const char* database_id, const jsmntok_t* token_array) {
+db_t* my_load(const char* database_id, const jsontok_t* token_array) {
     db_t* result = NULL;
     db_t* database = db_create(database_id);
     if (database == NULL) goto failed;
@@ -275,23 +275,27 @@ db_t* my_load(const char* database_id, const jsmntok_t* token_array) {
     int finded_fields[FIELDS_COUNT] = {0};
     dbhost_t* host_last = NULL;
 
-    for (jsmntok_t* token_object = token_array->child; token_object; token_object = token_object->sibling) {
+    for (jsonit_t it_array = json_init_it(token_array); !json_end_it(&it_array); json_next_it(&it_array)) {
+        jsontok_t* token_object = json_it_value(&it_array);
         myhost_t* host = my_host_create();
 
-        for (jsmntok_t* token = token_object->child; token; token = token->sibling) {
-            const char* key = jsmn_get_value(token);
+        for (jsonit_t it_object = json_init_it(token_object); !json_end_it(&it_object); json_next_it(&it_object)) {
+            const char* key = json_it_key(&it_object);
+            jsontok_t* token_value = json_it_value(&it_object);
 
             if (strcmp(key, "port") == 0) {
+                if (!json_is_int(token_value)) goto failed;
+
                 finded_fields[PORT] = 1;
 
-                const char* value = jsmn_get_value(token->child);
-
-                host->base.port = atoi(value);
+                host->base.port = json_int(token_value);
             }
             else if (strcmp(key, "ip") == 0) {
+                if (!json_is_string(token_value)) goto failed;
+
                 finded_fields[IP] = 1;
 
-                const char* value = jsmn_get_value(token->child);
+                const char* value = json_string(token_value);
 
                 host->base.ip = (char*)malloc(strlen(value) + 1);
 
@@ -300,9 +304,11 @@ db_t* my_load(const char* database_id, const jsmntok_t* token_array) {
                 strcpy(host->base.ip, value);
             }
             else if (strcmp(key, "dbname") == 0) {
+                if (!json_is_string(token_value)) goto failed;
+
                 finded_fields[DBNAME] = 1;
 
-                const char* value = jsmn_get_value(token->child);
+                const char* value = json_string(token_value);
 
                 host->dbname = (char*)malloc(strlen(value) + 1);
 
@@ -311,9 +317,11 @@ db_t* my_load(const char* database_id, const jsmntok_t* token_array) {
                 strcpy(host->dbname, value);
             }
             else if (strcmp(key, "user") == 0) {
+                if (!json_is_string(token_value)) goto failed;
+
                 finded_fields[USER] = 1;
 
-                const char* value = jsmn_get_value(token->child);
+                const char* value = json_string(token_value);
 
                 host->user = (char*)malloc(strlen(value) + 1);
 
@@ -322,9 +330,11 @@ db_t* my_load(const char* database_id, const jsmntok_t* token_array) {
                 strcpy(host->user, value);
             }
             else if (strcmp(key, "password") == 0) {
+                if (!json_is_string(token_value)) goto failed;
+
                 finded_fields[PASSWORD] = 1;
 
-                const char* value = jsmn_get_value(token->child);
+                const char* value = json_string(token_value);
 
                 host->password = (char*)malloc(strlen(value) + 1);
 
@@ -333,11 +343,11 @@ db_t* my_load(const char* database_id, const jsmntok_t* token_array) {
                 strcpy(host->password, value);
             }
             else if (strcmp(key, "migration") == 0) {
+                if (!json_is_bool(token_value)) goto failed;
+
                 finded_fields[MIGRATION] = 1;
 
-                const char* value = jsmn_get_value(token->child);
-
-                host->base.migration = strcmp(value, "true") == 0;
+                host->base.migration = json_bool(token_value);
             }
         }
 

@@ -2,7 +2,7 @@
 #define __POSTGRESQL__
 
 #include <libpq-fe.h>
-#include "../jsmn/jsmn.h"
+#include "../json/json.h"
 #include "database.h"
 
 typedef struct postgresqlhost {
@@ -30,6 +30,6 @@ const char* postgresql_table_exist_sql(const char*);
 
 const char* postgresql_table_migration_create_sql();
 
-db_t* postgresql_load(const char*, const jsmntok_t*);
+db_t* postgresql_load(const char*, const jsontok_t*);
 
 #endif

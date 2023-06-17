@@ -54,8 +54,6 @@ add_executable(main src/main.c)
 
 add_library(log STATIC src/log/log.c)
 
-add_library(jsmn STATIC src/jsmn/jsmn.c)
-
 add_library(json STATIC src/json/json.c)
 
 add_library(config STATIC src/config/config.c)
@@ -146,7 +144,6 @@ add_library(base64 STATIC src/base64/base64.c)
 
 target_link_libraries(
 	config
-	jsmn
 	json
 	log
 	helpers

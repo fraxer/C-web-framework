@@ -2,7 +2,7 @@
 #define __CMYSQL__
 
 #include <mysql.h>
-#include "../jsmn/jsmn.h"
+#include "../json/json.h"
 #include "database.h"
 
 typedef struct myhost {
@@ -29,6 +29,6 @@ const char* my_table_exist_sql(const char*);
 
 const char* my_table_migration_create_sql();
 
-db_t* my_load(const char*, const jsmntok_t*);
+db_t* my_load(const char*, const jsontok_t*);
 
 #endif

@@ -18,7 +18,7 @@
 #ifdef Redis_FOUND
     #include "../src/database/redis.h"
 #endif
-#include "../src/jsmn/jsmn.h"
+#include "../src/json/json.h"
 #include "../src/moduleloader/moduleloader.h"
 #include "../src/database/dbquery.h"
 #include "../src/database/dbresult.h"
@@ -166,29 +166,16 @@ const char* mg_config_read(const char* config_path) {
     return result;
 }
 
-int mg_json_parse(jsmn_parser_t* parser, const char* data) {
-    if (jsmn_init(parser, data) == -1) return -1;
-    if (jsmn_parse(parser) < 0) return -1;
-    if (!jsmn_is_object(jsmn_get_root_token(parser))) return -1;
-
-    return 0;
-}
-
-const jsmntok_t* mg_config_section(jsmn_parser_t* parser, const char* section) {
-    jsmntok_t* token = jsmn_object_get_field(jsmn_get_root_token(parser), section);
-    if (!token) return NULL;
-
-    return token;
-}
-
-int mg_database_parse(mgconfig_t* config, const jsmntok_t* token_object) {
+int mg_database_parse(mgconfig_t* config, const jsontok_t* token_object) {
     if (token_object == NULL) return -1;
 
-    const jsmntok_t* token_key = jsmn_object_find_key(token_object, config->server);
-    if (token_key == NULL) return -1;
+    const jsontok_t* token_server = json_object_get(token_object, config->server);
+    if (token_server == NULL) return -1;
+    if (!json_is_object(token_server)) return -1;
 
-    const jsmntok_t* token_databases = jsmn_object_find_key(token_key, "databases");
+    const jsontok_t* token_databases = json_object_get(token_server, "databases");
     if (token_databases == NULL) return -1;
+    if (!json_is_object(token_databases)) return -1;
 
     config->database = module_loader_databases_load(token_databases);
     if (config->database == NULL) return -1;
@@ -584,15 +571,15 @@ int mg_create_template(const char* source_directory, mgconfig_t* config) {
     return 0;
 }
 
-int mg_migration_create(jsmn_parser_t* parser, mgconfig_t* config) {
-    const jsmntok_t* token_object = mg_config_section(parser, "migrations");
-    if (token_object == NULL) return -1;
+int mg_migration_create(const jsontok_t* token_root, mgconfig_t* config) {
+    const jsontok_t* token_migrations = json_object_get(token_root, "migrations");
+    if (token_migrations == NULL) return -1;
 
-    const jsmntok_t* token_string = jsmn_object_find_key(token_object, "source_directory");
+    const jsontok_t* token_string = json_object_get(token_migrations, "source_directory");
     if (token_string == NULL) return -1;
+    if (!json_is_string(token_string)) return -1;
 
-    const char* source_directory = jsmn_get_value(token_string);
-    if (source_directory == NULL) return -1;
+    const char* source_directory = json_string(token_string);
 
     if (mg_make_directory(config->server, source_directory) == -1) return -1;
     if (mg_create_template(source_directory, config) == -1) return -1;
@@ -601,29 +588,36 @@ int mg_migration_create(jsmn_parser_t* parser, mgconfig_t* config) {
 }
 
 int main(int argc, char* argv[]) {
-    jsmn_parser_t parser = {0};
     const char* data = NULL;
+    jsondoc_t* document = NULL;
     mgconfig_t config = mg_args_parse(argc, argv);
     if (!config.ok) goto failed;
 
     data = mg_config_read(config.config_path);
     if (data == NULL) goto failed;
-    if (mg_json_parse(&parser, data) == -1) goto failed;
 
-    const jsmntok_t* token_object = mg_config_section(&parser, "servers");
-    if (token_object == NULL) goto failed;
+    document = json_init();
+    if (!document) goto failed;
 
-    if (mg_database_parse(&config, token_object) == -1) goto failed;
+    if (!json_parse(document, data)) goto failed;
+
+    jsontok_t* token_object = json_root(document);
+    if (!json_is_object(token_object)) goto failed;
+
+    const jsontok_t* token_servers = json_object_get(token_object, "servers");
+    if (token_servers == NULL) goto failed;
+
+    if (mg_database_parse(&config, token_servers) == -1) goto failed;
 
     if (config.action == CREATE) {
-        if (mg_migration_create(&parser, &config) == -1) goto failed;
+        if (mg_migration_create(token_object, &config) == -1) goto failed;
     }
     else if (mg_migrations_process(&config) == -1) goto failed;
 
     failed:
 
     mg_config_free(&config);
-    jsmn_free(&parser);
+    json_free(document);
     if (data) free((void*)data);
 
     return EXIT_SUCCESS;

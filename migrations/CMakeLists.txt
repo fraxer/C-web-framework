@@ -22,12 +22,13 @@ foreach(DIR ${SUBDIRS})
 		get_filename_component(FILENAME ${FILEPATH} NAME_WE)
 
 		add_library(${FILENAME} SHARED ${FILEPATH})
+		target_link_libraries(${FILENAME} dbquery dbresult database)
 	endforeach()
 endforeach()
 
 add_executable(migrate main.c)
 
-target_link_libraries(migrate jsmn config moduleloader database ${CMAKE_DL_LIBS})
+target_link_libraries(migrate json config moduleloader database ${CMAKE_DL_LIBS})
 
 if(MySQL_FOUND AND INCLUDE_MYSQL STREQUAL yes)
 	target_link_libraries(
