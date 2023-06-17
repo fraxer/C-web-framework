@@ -4,6 +4,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#define JSON_OUT_OF_MEMORY "Json error: out of memory"
+#define JSON_CANT_ALLOC_TOKENS "Json error: can't alloc tokens"
+#define JSON_ALREADY_PARSED "Json error: document already parsed"
+#define JSON_INVALID_VALUE "Json error: invalid value"
+#define JSON_DOCUMENT_ERROR "Json error: document error"
+
 static const size_t TOKENS_BUFFER_SIZE = 4096;
 
 void __json_init_parser(jsondoc_t*);
@@ -38,25 +44,23 @@ jsondoc_t* json_init() {
     __json_init_parser(document);
 
     if (!__json_alloc_tokens(document)) {
-        __json_set_error(document, "Json init error");
-        return 0;
+        __json_set_error(document, JSON_CANT_ALLOC_TOKENS);
     }
 
     return document;
 }
 
 int json_parse(jsondoc_t* document, const char* string) {
-    // if document already init, then return 0
-    // if (document->parsed) return 0;
-
-    if (!__json_prepare_parser(document, string)) {
-        __json_set_error(document, "json parse error");
-        return JSON_ERROR_NOMEM;
+    if (document->toknext > 0) {
+        __json_set_error(document, JSON_ALREADY_PARSED);
+        return 0;
     }
 
-    int r;
-    int i;
-    int count = document->toknext;
+    if (!__json_prepare_parser(document, string)) {
+        __json_set_error(document, JSON_OUT_OF_MEMORY);
+        return 0;
+    }
+
     jsontok_t* token;
     jsonparser_t* parser = &document->parser;
     size_t len = strlen(parser->string);
@@ -68,23 +72,25 @@ int json_parse(jsondoc_t* document, const char* string) {
         switch (c) {
         case '{':
         case '[':
-            count++;
             if (document->tokens == NULL)
                 break;
 
             token = __json_alloc_token(document);
-            if (token == NULL)
-                return JSON_ERROR_NOMEM;
+            if (token == NULL) {
+                __json_set_error(document, JSON_CANT_ALLOC_TOKENS);
+                return 0;
+            }
 
             token->type = (c == '{' ? JSON_OBJECT : JSON_ARRAY);
 
             if (parser->toksuper != -1) {
                 jsontok_t* t = document->tokens[parser->toksuper];
                 /* In strict mode an object or array can't become a key */
-                if (t->type == JSON_OBJECT)
-                    return JSON_ERROR_INVAL;
+                if (t->type == JSON_OBJECT) {
+                    __json_set_error(document, JSON_INVALID_VALUE);
+                    return 0;
+                }
 
-                token->size++;
                 token->parent = parser->toksuper;
 
                 __json_set_child_or_sibling(t, token);
@@ -100,22 +106,28 @@ int json_parse(jsondoc_t* document, const char* string) {
 
             type = (c == '}' ? JSON_OBJECT : JSON_ARRAY);
 
-            if (document->toknext < 1)
-                return JSON_ERROR_INVAL;
+            if (document->toknext < 1) {
+                __json_set_error(document, JSON_INVALID_VALUE);
+                return 0;
+            }
 
             token = document->tokens[document->toknext - 1];
             for (;;) {
                 if (token->start != -1 && token->end == -1) {
-                    if (token->type != type)
-                        return JSON_ERROR_INVAL;
+                    if (token->type != type) {
+                        __json_set_error(document, JSON_INVALID_VALUE);
+                        return 0;
+                    }
 
                     token->end = parser->dirty_pos + 1;
                     parser->toksuper = token->parent;
                     break;
                 }
                 if (token->parent == -1) {
-                    if (token->type != type || parser->toksuper == -1)
-                        return JSON_ERROR_INVAL;
+                    if (token->type != type || parser->toksuper == -1) {
+                        __json_set_error(document, JSON_INVALID_VALUE);
+                        return 0;
+                    }
 
                     break;
                 }
@@ -125,15 +137,7 @@ int json_parse(jsondoc_t* document, const char* string) {
 
             break;
         case '\"':
-            r = __json_parse_string(parser);
-            if (r < 0) return r;
-
-            count++;
-            if (parser->toksuper != -1 && document->tokens != NULL) {
-                jsontok_t* tok = document->tokens[parser->toksuper];
-                if (tok->type == JSON_OBJECT || tok->type == JSON_ARRAY)
-                    tok->size++;
-            }
+            if (!__json_parse_string(parser)) return 0;
 
             break;
         case '\t':
@@ -172,42 +176,42 @@ int json_parse(jsondoc_t* document, const char* string) {
             if (document->tokens != NULL && parser->toksuper != -1) {
                 const jsontok_t* t = document->tokens[parser->toksuper];
                 if (t->type == JSON_OBJECT) {
-                    return JSON_ERROR_INVAL;
+                    __json_set_error(document, JSON_INVALID_VALUE);
+                    return 0;
                 }
             }
 
-            int r = __json_parse_primitive(parser);
-            if (r < 0) return r;
-
-            count++;
-            if (parser->toksuper != -1 && document->tokens != NULL) {
-                jsontok_t* tok = document->tokens[parser->toksuper];
-                if (tok->type == JSON_OBJECT || tok->type == JSON_ARRAY)
-                    tok->size++;
-            }
+            if (!__json_parse_primitive(parser)) return 0;
 
             break;
 
         /* Unexpected char in strict mode */
         default:
-            return JSON_ERROR_INVAL;
+            {
+                __json_set_error(document, JSON_INVALID_VALUE);
+                return 0;
+            }
         }
     }
 
     if (parser->doc->tokens != NULL) {
-        for (i = parser->doc->toknext - 1; i >= 0; i--) {
+        for (int i = parser->doc->toknext - 1; i >= 0; i--) {
             /* Unmatched opened object or array */
-            if (document->tokens[i]->start != -1 && document->tokens[i]->end == -1)
-                return JSON_ERROR_PART;
+            if (document->tokens[i]->start != -1 && document->tokens[i]->end == -1) {
+                __json_set_error(document, JSON_DOCUMENT_ERROR);
+                return 0;
+            }
         }
     }
 
     document->ok = 1;
 
-    return count;
+    return 1;
 }
 
 void json_free(jsondoc_t* document) {
+    if (document == NULL) return;
+
     jsonparser_t* parser = &document->parser;
 
     if (document->tokens) {
@@ -242,9 +246,11 @@ void json_free(jsondoc_t* document) {
     document->stringify.pos = 0;
     document->stringify.string = NULL;
     document->stringify.detached = 0;
+
+    free(document);
 }
 
-jsontok_t* json_doc_token(jsondoc_t* document) {
+jsontok_t* json_root(jsondoc_t* document) {
     if (document->tokens)
         return document->tokens[0];
 
@@ -258,70 +264,104 @@ int json_ok(jsondoc_t* document) {
 }
 
 const char* json_error(jsondoc_t* document) {
+    if (document == NULL) return NULL;
+
     return document->error;
 }
 
 int json_bool(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
     return token->value._int;
 }
 
 int json_int(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
     return token->value._int;
 }
 
 double json_double(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
     return token->value._double;
 }
 
-long long json_number(const jsontok_t* token) {
-    return token->value._long;
+long long json_llong(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
+    return token->value._llong;
 }
 
 const char* json_string(const jsontok_t* token) {
+    if (token == NULL) return NULL;
+
     return token->value.string;
 }
 
 unsigned int json_uint(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
     return token->value._uint;
 }
 
 int json_is_bool(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
     return token->type == JSON_BOOL;
 }
 
 int json_is_null(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
     return token->type == JSON_NULL;
 }
 
 int json_is_string(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
     return token->type == JSON_STRING;
 }
 
-int json_is_number(const jsontok_t* token) {
-    return token->type == JSON_NUMBER;
+int json_is_llong(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
+    return token->type == JSON_LLONG;
 }
 
 int json_is_int(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
     return token->type == JSON_INT;
 }
 
 int json_is_uint(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
     return token->type == JSON_UINT;
 }
 
 int json_is_double(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
     return token->type == JSON_DOUBLE;
 }
 
 int json_is_object(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
     return token->type == JSON_OBJECT;
 }
 
 int json_is_array(const jsontok_t* token) {
+    if (token == NULL) return 0;
+
     return token->type == JSON_ARRAY;
 }
 
 jsontok_t* json_create_bool(jsondoc_t* document, int value) {
+    if (document == NULL) return NULL;
+
     jsontok_t* token = __json_alloc_token(document);
     if (token == NULL) return NULL;
 
@@ -332,6 +372,8 @@ jsontok_t* json_create_bool(jsondoc_t* document, int value) {
 }
 
 jsontok_t* json_create_null(jsondoc_t* document) {
+    if (document == NULL) return NULL;
+
     jsontok_t* token = __json_alloc_token(document);
     if (token == NULL) return NULL;
 
@@ -342,6 +384,8 @@ jsontok_t* json_create_null(jsondoc_t* document) {
 }
 
 jsontok_t* json_create_string(jsondoc_t* document, const char* string) {
+    if (document == NULL) return NULL;
+
     jsontok_t* token = __json_alloc_token(document);
     if (token == NULL) return NULL;
 
@@ -356,17 +400,21 @@ jsontok_t* json_create_string(jsondoc_t* document, const char* string) {
     return token;
 }
 
-jsontok_t* json_create_number(jsondoc_t* document, long long value) {
+jsontok_t* json_create_llong(jsondoc_t* document, long long value) {
+    if (document == NULL) return NULL;
+
     jsontok_t* token = __json_alloc_token(document);
     if (token == NULL) return NULL;
 
-    token->type = JSON_NUMBER;
-    token->value._long = value;
+    token->type = JSON_LLONG;
+    token->value._llong = value;
 
     return token;
 }
 
 jsontok_t* json_create_int(jsondoc_t* document, int value) {
+    if (document == NULL) return NULL;
+
     jsontok_t* token = __json_alloc_token(document);
     if (token == NULL) return NULL;
 
@@ -377,6 +425,8 @@ jsontok_t* json_create_int(jsondoc_t* document, int value) {
 }
 
 jsontok_t* json_create_uint(jsondoc_t* document, unsigned int value) {
+    if (document == NULL) return NULL;
+
     jsontok_t* token = __json_alloc_token(document);
     if (token == NULL) return NULL;
 
@@ -387,6 +437,8 @@ jsontok_t* json_create_uint(jsondoc_t* document, unsigned int value) {
 }
 
 jsontok_t* json_create_double(jsondoc_t* document, double value) {
+    if (document == NULL) return NULL;
+
     jsontok_t* token = __json_alloc_token(document);
     if (token == NULL) return NULL;
 
@@ -397,6 +449,8 @@ jsontok_t* json_create_double(jsondoc_t* document, double value) {
 }
 
 jsontok_t* json_create_object(jsondoc_t* document) {
+    if (document == NULL) return NULL;
+
     jsontok_t* token = __json_alloc_token(document);
     if (token == NULL) return NULL;
 
@@ -407,6 +461,8 @@ jsontok_t* json_create_object(jsondoc_t* document) {
 }
 
 jsontok_t* json_create_array(jsondoc_t* document) {
+    if (document == NULL) return NULL;
+
     jsontok_t* token = __json_alloc_token(document);
     if (token == NULL) return NULL;
 
@@ -417,16 +473,22 @@ jsontok_t* json_create_array(jsondoc_t* document) {
 }
 
 int json_array_prepend(jsontok_t* token_array, jsontok_t* token_append) {
+    if (token_array == NULL || token_append == NULL) return 0;
+
     return json_array_append_to(token_array, 0, token_append);
 }
 
 int json_array_append(jsontok_t* token_array, jsontok_t* token_append) {
+    if (token_array == NULL || token_append == NULL) return 0;
+
     __json_set_child_or_sibling(token_array, token_append);
-    token_array->size++;
+
     return 1;
 }
 
 int json_array_append_to(jsontok_t* token_array, int index, jsontok_t* token_append) {
+    if (token_array == NULL || token_append == NULL) return 0;
+
     jsontok_t* token = token_array->child;
     if (token == NULL) {
         token_array->child = token_append;
@@ -458,13 +520,14 @@ int json_array_append_to(jsontok_t* token_array, int index, jsontok_t* token_app
 
     if (!find_index | (i < index)) {
         __json_set_child_or_sibling(token_array, token_append);
-        token_array->size++;
     }
 
     return 1;
 }
 
 int json_array_erase(jsontok_t* token_array, int index, int count) {
+    if (token_array == NULL) return 0;
+
     jsontok_t* token = token_array->child;
     if (token == NULL) return 1;
     if (count == 0) return 0;
@@ -502,17 +565,21 @@ int json_array_erase(jsontok_t* token_array, int index, int count) {
 }
 
 int json_array_clear(jsontok_t* token_array) {
+    if (token_array == NULL) return 0;
+
     token_array->child = NULL;
     token_array->last_sibling = NULL;
     token_array->size = 0;
     return 1;
 }
 
-int json_array_size(jsontok_t* token_array) {
+int json_array_size(const jsontok_t* token_array) {
+    if (token_array == NULL) return 0;
+
     return token_array->size;
 }
 
-jsontok_t* json_array_get(jsontok_t* token_array, int index) {
+jsontok_t* json_array_get(const jsontok_t* token_array, int index) {
     if (token_array == NULL) return NULL;
 
     jsontok_t* token = token_array->child;
@@ -530,19 +597,19 @@ jsontok_t* json_array_get(jsontok_t* token_array, int index) {
 }
 
 int json_object_set(jsontok_t* token_object, const char* key, jsontok_t* token) {
+    if (token_object == NULL || key == NULL || token == NULL) return 0;
+
     jsontok_t* token_key = json_create_string(token_object->doc, key);
     if (token_key == NULL) return 0;
 
     __json_set_child_or_sibling(token_key, token);
     __json_set_child_or_sibling(token_object, token_key);
 
-    token_object->size++;
-
     return 1;
 }
 
-jsontok_t* json_object_get(jsontok_t* token_object, const char* key) {
-    if (token_object == NULL) return NULL;
+jsontok_t* json_object_get(const jsontok_t* token_object, const char* key) {
+    if (token_object == NULL || key == NULL) return NULL;
 
     jsontok_t* token = token_object->child;
     if (token == NULL) return NULL;
@@ -559,7 +626,7 @@ jsontok_t* json_object_get(jsontok_t* token_object, const char* key) {
 }
 
 int json_object_remove(jsontok_t* token_object, const char* key) {
-    if (token_object == NULL) return 0;
+    if (token_object == NULL || key == NULL) return 0;
 
     jsontok_t* token_prev = NULL;
     jsontok_t* token = token_object->child;
@@ -585,11 +652,15 @@ int json_object_remove(jsontok_t* token_object, const char* key) {
     return 0;
 }
 
-int json_object_size(jsontok_t* token_object) {
+int json_object_size(const jsontok_t* token_object) {
+    if (token_object == NULL) return 0;
+
     return token_object->size;
 }
 
 int json_object_clear(jsontok_t* token_object) {
+    if (token_object == NULL) return 0;
+
     token_object->child = NULL;
     token_object->last_sibling = NULL;
     token_object->size = 0;
@@ -597,6 +668,8 @@ int json_object_clear(jsontok_t* token_object) {
 }
 
 void json_token_set_bool(jsontok_t* token, int value) {
+    if (token == NULL) return;
+
     token->child = NULL;
     token->type = JSON_BOOL;
     token->size = 0;
@@ -604,6 +677,8 @@ void json_token_set_bool(jsontok_t* token, int value) {
 }
 
 void json_token_set_null(jsontok_t* token) {
+    if (token == NULL) return;
+
     token->child = NULL;
     token->type = JSON_NULL;
     token->size = 0;
@@ -611,6 +686,8 @@ void json_token_set_null(jsontok_t* token) {
 }
 
 void json_token_set_string(jsontok_t* token, const char* value) {
+    if (token == NULL || value == NULL) return;
+
     if (token->value.string)
         free(token->value.string);
 
@@ -627,14 +704,18 @@ void json_token_set_string(jsontok_t* token, const char* value) {
     token->value.string[token->size] = 0;
 }
 
-void json_token_set_number(jsontok_t* token, long long value) {
+void json_token_set_llong(jsontok_t* token, long long value) {
+    if (token == NULL) return;
+
     token->child = NULL;
-    token->type = JSON_NUMBER;
+    token->type = JSON_LLONG;
     token->size = 0;
-    token->value._long = value;
+    token->value._llong = value;
 }
 
 void json_token_set_int(jsontok_t* token, int value) {
+    if (token == NULL) return;
+
     token->child = NULL;
     token->type = JSON_INT;
     token->size = 0;
@@ -642,6 +723,8 @@ void json_token_set_int(jsontok_t* token, int value) {
 }
 
 void json_token_set_uint(jsontok_t* token, unsigned int value) {
+    if (token == NULL) return;
+
     token->child = NULL;
     token->type = JSON_UINT;
     token->size = 0;
@@ -649,6 +732,8 @@ void json_token_set_uint(jsontok_t* token, unsigned int value) {
 }
 
 void json_token_set_double(jsontok_t* token, double value) {
+    if (token == NULL) return;
+
     token->child = NULL;
     token->type = JSON_DOUBLE;
     token->size = 0;
@@ -656,6 +741,8 @@ void json_token_set_double(jsontok_t* token, double value) {
 }
 
 void json_token_set_object(jsontok_t* token, jsontok_t* token_object) {
+    if (token == NULL || token_object == NULL) return;
+
     token->child = token_object->child;
     token->last_sibling = token_object->last_sibling;
     token->type = JSON_OBJECT;
@@ -666,6 +753,8 @@ void json_token_set_object(jsontok_t* token, jsontok_t* token_object) {
 }
 
 void json_token_set_array(jsontok_t* token, jsontok_t* token_array) {
+    if (token == NULL || token_array == NULL) return;
+
     token->child = token_array->child;
     token->last_sibling = token_array->last_sibling;
     token->type = JSON_ARRAY;
@@ -675,15 +764,23 @@ void json_token_set_array(jsontok_t* token, jsontok_t* token_array) {
     token->end = -1;
 }
 
-jsonit_t json_init_it(jsontok_t* token) {
+jsonit_t json_init_it(const jsontok_t* token) {
     jsonit_t it = {
-        .ok = 1,
+        .ok = 0,
         .index = 0,
-        .type = token->type,
-        .key = token->child,
+        .type = JSON_UNDEFINED,
+        .key = NULL,
         .value = NULL,
-        .parent = token
+        .parent = NULL
     };
+
+    if (token == NULL) return it;
+
+    it.ok = 1;
+    it.index = 0;
+    it.type = token->type;
+    it.key = token->child;
+    it.parent = (jsontok_t*)token;
 
     if (token->type == JSON_OBJECT) {
         it.value = token->child->child;
@@ -698,42 +795,50 @@ jsonit_t json_init_it(jsontok_t* token) {
     return it;
 }
 
-int json_end_it(jsonit_t* iterator) {
+int json_end_it(const jsonit_t* iterator) {
+    if (iterator == NULL) return 1;
+
     return iterator->index == iterator->parent->size;
 }
 
-const void* json_it_key(jsonit_t* iterator) {
+const void* json_it_key(const jsonit_t* iterator) {
+    if (iterator == NULL)
+        return NULL;
+
     if (iterator->type == JSON_OBJECT)
         return iterator->key->value.string;
-    else if (iterator->type == JSON_ARRAY) {
+    else if (iterator->type == JSON_ARRAY)
         return &iterator->index;
-    }
 
     return NULL;
 }
 
-jsontok_t* json_it_value(jsonit_t* iterator) {
+jsontok_t* json_it_value(const jsonit_t* iterator) {
+    if (iterator == NULL) return NULL;
+
     return iterator->value;
 }
 
 jsonit_t json_next_it(jsonit_t* iterator) {
+    if (iterator == NULL) return (jsonit_t){0};
+
     iterator->index++;
 
     if (json_end_it(iterator)) return *iterator;
 
     iterator->key = iterator->key->sibling;
 
-    if (iterator->type == JSON_OBJECT) {
+    if (iterator->type == JSON_OBJECT)
         iterator->value = iterator->key->child;
-    }
-    else if (iterator->type == JSON_ARRAY) {
+    else if (iterator->type == JSON_ARRAY)
         iterator->value = iterator->key;
-    }
 
     return *iterator;
 }
 
 void json_it_erase(jsonit_t* iterator) {
+    if (iterator == NULL) return;
+
     if (iterator->type == JSON_OBJECT) {
         json_object_remove(iterator->parent, iterator->key->value.string);
     }
@@ -745,6 +850,8 @@ void json_it_erase(jsonit_t* iterator) {
 }
 
 const char* json_stringify(jsondoc_t* document) {
+    if (document == NULL) return NULL;
+
     jsontok_t* token = document->tokens[0];
 
     __json_free_stringify(&document->stringify);
@@ -762,12 +869,16 @@ const char* json_stringify(jsondoc_t* document) {
 }
 
 char* json_stringify_detach(jsondoc_t* document) {
+    if (document == NULL) return NULL;
+
     document->stringify.detached = 1;
 
     return (char*)json_stringify(document);
 }
 
 void __json_set_error(jsondoc_t* document, const char* string) {
+    if (document == NULL) return;
+
     document->ok = 0;
     strncpy(document->error, string, JSON_ERROR_BUFFER_SIZE);
 }
@@ -833,6 +944,8 @@ jsontok_t* __json_alloc_token(jsondoc_t* document) {
             return NULL;
 
     jsontok_t* token = malloc(sizeof * token);
+    if (token == NULL) return NULL;
+
     __json_init_token(document, token);
 
     document->tokens[document->toknext] = token;
@@ -885,8 +998,10 @@ int __json_fill_token(jsontok_t* token, const jsontype_t type, const int start, 
         {
             token->size = parser->pos - start;
             token->value.string = malloc(token->size + 1);
-            if (token->value.string == NULL)
-                return JSON_ERROR_NOMEM;
+            if (token->value.string == NULL) {
+                __json_set_error(parser->doc, JSON_OUT_OF_MEMORY);
+                return 0;
+            }
 
             memcpy(token->value.string, string, token->size);
             token->value.string[token->size] = 0;
@@ -918,12 +1033,12 @@ int __json_fill_token(jsontok_t* token, const jsontype_t type, const int start, 
                 token->value._uint = (unsigned int)lng;
             }
             else {
-                token->type = JSON_NUMBER;
-                token->value._long = lng;
+                token->type = JSON_LLONG;
+                token->value._llong = lng;
             }
         }
         break;
-    case JSON_NUMBER:
+    case JSON_LLONG:
     case JSON_UINT:
         break;
     case JSON_DOUBLE:
@@ -946,6 +1061,9 @@ void __json_set_child_or_sibling(jsontok_t* token_src, jsontok_t* token_dst) {
         token_src->last_sibling->sibling = token_dst;
 
     token_src->last_sibling = token_dst;
+
+    if (token_src->type == JSON_OBJECT || token_src->type == JSON_ARRAY)
+        token_src->size++;
 }
 
 /**
@@ -968,7 +1086,8 @@ int __json_parse_primitive(jsonparser_t* parser) {
         case '-':
           if (parser->dirty_pos != start) {
             parser->dirty_pos = start;
-            return JSON_ERROR_INVAL;
+            __json_set_error(parser->doc, JSON_INVALID_VALUE);
+            return 0;
           }
           is_signed = 1;
           break;
@@ -1016,7 +1135,8 @@ int __json_parse_primitive(jsonparser_t* parser) {
         }
         if (ch < 32 || ch >= 127) {
             parser->dirty_pos = start;
-            return JSON_ERROR_INVAL;
+            __json_set_error(parser->doc, JSON_INVALID_VALUE);
+            return 0;
         }
 
         __json_insert_symbol(parser);
@@ -1024,7 +1144,8 @@ int __json_parse_primitive(jsonparser_t* parser) {
 
     /* In strict mode primitive must be followed by a comma/object/array */
     parser->dirty_pos = start;
-    return JSON_ERROR_PART;
+    __json_set_error(parser->doc, JSON_DOCUMENT_ERROR);
+    return 0;
 
     found:
     if (is_double && !is_bool && !is_null) {
@@ -1040,18 +1161,20 @@ int __json_parse_primitive(jsonparser_t* parser) {
         type = JSON_INT;
         int length = parser->pos - start_internal;
         if (length > 19 + is_signed) {
-            return JSON_ERROR_INVAL;
+            __json_set_error(parser->doc, JSON_INVALID_VALUE);
+            return 0;
         }
     }
 
     if (parser->doc->tokens == NULL) {
         parser->dirty_pos--;
-        return 0;
+        return 1;
     }
     token = __json_alloc_token(parser->doc);
     if (token == NULL) {
         parser->dirty_pos = start;
-        return JSON_ERROR_NOMEM;
+        __json_set_error(parser->doc, JSON_OUT_OF_MEMORY);
+        return 0;
     }
 
     __json_fill_token(token, type, start_internal, parser);
@@ -1061,10 +1184,7 @@ int __json_parse_primitive(jsonparser_t* parser) {
     jsontok_t* t = parser->doc->tokens[parser->toksuper];
     __json_set_child_or_sibling(t, token);
 
-    /* Skip symbol, because json_fill_token write \0 to end string */
-    // parser->pos++;
-
-    return 0;
+    return 1;
 }
 
 /**
@@ -1085,13 +1205,14 @@ int __json_parse_string(jsonparser_t* parser) {
         /* Quote: end of string */
         if (c == '\"') {
             if (parser->doc->tokens == NULL)
-                return 0;
+                return 1;
 
             jsontok_t* token = __json_alloc_token(parser->doc);
 
             if (token == NULL) {
                 parser->dirty_pos = start;
-                return JSON_ERROR_NOMEM;
+                __json_set_error(parser->doc, JSON_OUT_OF_MEMORY);
+                return 0;
             }
 
             __json_fill_token(token, JSON_STRING, start_internal + 1, parser);
@@ -1101,10 +1222,7 @@ int __json_parse_string(jsonparser_t* parser) {
             jsontok_t* t = parser->doc->tokens[parser->toksuper];
             __json_set_child_or_sibling(t, token);
 
-            /* Skip symbol, because json_fill_token write \0 to end string */
-            // parser->pos++;
-
-            return 0;
+            return 1;
         }
 
         /* Backslash: Quoted symbol expected */
@@ -1131,7 +1249,8 @@ int __json_parse_string(jsonparser_t* parser) {
                             (parser->string[parser->dirty_pos] >= 65 && parser->string[parser->dirty_pos] <= 70) ||   /* A-F */
                             (parser->string[parser->dirty_pos] >= 97 && parser->string[parser->dirty_pos] <= 102))) { /* a-f */
                         parser->dirty_pos = start;
-                        return JSON_ERROR_INVAL;
+                        __json_set_error(parser->doc, JSON_INVALID_VALUE);
+                        return 0;
                     }
                     parser->dirty_pos++;
                 }
@@ -1140,7 +1259,8 @@ int __json_parse_string(jsonparser_t* parser) {
             /* Unexpected symbol */
             default:
                 parser->dirty_pos = start;
-                return JSON_ERROR_INVAL;
+                __json_set_error(parser->doc, JSON_INVALID_VALUE);
+                return 0;
             }
         }
 
@@ -1148,7 +1268,8 @@ int __json_parse_string(jsonparser_t* parser) {
     }
     parser->dirty_pos = start;
 
-    return JSON_ERROR_PART;
+    __json_set_error(parser->doc, JSON_DOCUMENT_ERROR);
+    return 0;
 }
 
 int __json_stringify_token(jsondoc_t* document, jsontok_t* token) {
@@ -1222,11 +1343,11 @@ int __json_stringify_token(jsondoc_t* document, jsontok_t* token) {
             if (!__json_stringify_insert(document, value, size)) return 0;
         }
         break;
-    case JSON_NUMBER:
+    case JSON_LLONG:
         {
             size_t buffer_size = 32;
             char buffer[buffer_size];
-            size_t size = snprintf(buffer, buffer_size - 1, "%lld", token->value._long);
+            size_t size = snprintf(buffer, buffer_size - 1, "%lld", token->value._llong);
 
             if (!__json_stringify_insert(document, buffer, size)) return 0;
         }

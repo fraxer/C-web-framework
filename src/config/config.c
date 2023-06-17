@@ -6,12 +6,11 @@
 #include <getopt.h>
 #include "../helpers/helpers.h"
 #include "../log/log.h"
-#include "../jsmn/jsmn.h"
 #include "config.h"
 
 char* CONFIG_PATH = NULL;
 
-static jsmn_parser_t parser;
+static jsondoc_t* document = NULL; 
 
 char* config_get_path(int argc, char* argv[]) {
     int opt = 0;
@@ -133,36 +132,20 @@ int config_init(int argc, char* argv[]) {
 }
 
 int config_free() {
-    jsmn_free(&parser);
-
+    json_free(document);
     return 0;
 }
 
 int config_parse_data(const char* data) {
-    if (jsmn_init(&parser, data) == -1) {
-        return -1;
-    }
+    document = json_init();
+    if (document == NULL) return -1;
 
-    if (jsmn_parse(&parser) < 0) {
-        return -1;
-    }
-
-    jsmntok_t* token_object = jsmn_get_root_token(&parser);
-
-    if (!jsmn_is_object(token_object)) {
-        return -1;
-    }
+    if (!json_parse(document, data)) return -1;
+    if (!json_is_object(json_root(document))) return -1;
 
     return 0;
 }
 
-const jsmntok_t* config_get_section(const char* section) {
-
-    jsmntok_t* token = jsmn_object_get_field(jsmn_get_root_token(&parser), section);
-
-    if (!token) {
-        return NULL;
-    }
-
-    return token;
+const jsontok_t* config_get_section(const char* section) {
+    return json_object_get(json_root(document), section);
 }

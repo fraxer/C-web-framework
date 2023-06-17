@@ -91,7 +91,7 @@ void payload_json(http1request_t* request, http1response_t* response) {
         return;
     }
 
-    jsontok_t* object = json_doc_token(document);
+    jsontok_t* object = json_root(document);
     if (!json_is_object(object)) {
         response->data(response, "is not object");
         return;
@@ -104,8 +104,8 @@ void payload_json(http1request_t* request, http1response_t* response) {
 
     json_array_append(array, json_create_bool(document, 1));
     json_array_append(array, json_create_string(document, "hello kitty"));
-    json_array_append_to(array, 0, json_create_number(document, 123));
-    json_array_append_to(array, 2, json_create_number(document, -4096));
+    json_array_append_to(array, 0, json_create_llong(document, 123));
+    json_array_append_to(array, 2, json_create_llong(document, -4096));
     json_array_append_to(array, 30, json_create_double(document, -409.6));
 
     json_array_erase(array, 2, 2);
@@ -122,7 +122,7 @@ void payload_json(http1request_t* request, http1response_t* response) {
     json_array_append(array, obj);
 
     json_object_set(obj, "key1", json_create_double(document, 432.9640545));
-    json_object_set(obj, "key2", json_create_number(document, 432765656659640545));
+    json_object_set(obj, "key2", json_create_llong(document, 432765656659640545));
     json_object_set(obj, "key3", json_create_bool(document, 0));
     json_object_set(obj, "key4", json_create_null(document));
     json_object_set(obj, "key5", json_create_object(document));
@@ -153,20 +153,6 @@ void payload_json(http1request_t* request, http1response_t* response) {
     // free(string);
 
     json_free(document);
-
-    // do {
-        // jsmntok_t* token_value = it.key;
-        // jsmntok_t* token_value = it.value;
-    // } while (it = jsmn_next_it(it));
-
-    // for (jsmnit_t it = jsmn_init_it(token); !it.end; it = jsmn_next_it(it)) {}
-
-
-    // jsmntok_t* token_index0_value = jsmn_array_value(token, 0);
-
-    // for (int i = 0; i < jsmn_array_size(token); i++) {
-    //     jsmntok_t* token_value = jsmn_array_value(token, i);
-    // }
 }
 
 void payload_json_post(http1request_t* request, http1response_t* response) {
@@ -179,7 +165,7 @@ void payload_json_post(http1request_t* request, http1response_t* response) {
         return;
     }
 
-    jsontok_t* object = json_doc_token(document);
+    jsontok_t* object = json_root(document);
     if (!json_is_object(object)) {
         response->data(response, "is not object");
         return;

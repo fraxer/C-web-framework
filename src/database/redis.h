@@ -2,7 +2,7 @@
 #define __REDIS__
 
 #include <hiredis/hiredis.h>
-#include "../jsmn/jsmn.h"
+#include "../json/json.h"
 #include "database.h"
 
 typedef struct redishost {
@@ -23,6 +23,6 @@ void redis_host_free(void*);
 
 dbconnection_t* redis_connection_create(dbhosts_t*);
 
-db_t* redis_load(const char*, const jsmntok_t*);
+db_t* redis_load(const char*, const jsontok_t*);
 
 #endif
