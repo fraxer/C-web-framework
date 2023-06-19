@@ -23,6 +23,7 @@ int http1parser_host_not_found(http1parser_t*);
 void http1parser_try_set_keepalive(http1parser_t*);
 void http1parser_try_set_range(http1parser_t*);
 void http1parser_try_set_cookie(http1parser_t*);
+void http1parser_try_set_content_length(http1parser_t*);
 int http1parser_cmplower(const char*, ssize_t, const char*, ssize_t);
 int http1parser_is_ctl(int);
 
@@ -35,6 +36,8 @@ void http1parser_init(http1parser_t* parser, connection_t* connection, char* buf
     parser->pos = 0;
     parser->buffer = buffer;
     parser->connection = connection;
+    parser->content_length = 0;
+    parser->content_saved_length = 0;
 
     parser->buf.dynamic_buffer = NULL;
     parser->buf.offset_sbuffer = 0;
@@ -212,14 +215,7 @@ void http1parser_set_bytes_readed(struct http1parser* parser, int readed) {
 int http1parser_parse_payload(http1parser_t* parser) {
     http1request_t* request = (http1request_t*)parser->connection->request;
 
-    switch (request->method) {
-    case ROUTE_POST:
-    case ROUTE_PUT:
-    case ROUTE_PATCH:
-        break;
-    default:
-        return HTTP1PARSER_BAD_REQUEST;
-    }
+    if (!http1request_has_payload(request)) return HTTP1PARSER_BAD_REQUEST;
 
     parser->pos_start = parser->pos;
     parser->pos = parser->bytes_readed;
@@ -246,6 +242,8 @@ int http1parser_parse_payload(http1parser_t* parser) {
     int r = write(request->payload_.fd, &parser->buffer[parser->pos_start], string_len);
     lseek(request->payload_.fd, 0, SEEK_SET);
     if (r <= 0) return HTTP1PARSER_ERROR;
+
+    parser->content_saved_length += string_len;
 
     return HTTP1PARSER_CONTINUE;
 }
@@ -547,6 +545,20 @@ void http1parser_try_set_cookie(http1parser_t* parser) {
     request->cookie_ = cookieparser_cookie(&cparser);
 }
 
+void http1parser_try_set_content_length(http1parser_t* parser) {
+    http1request_t* request = (http1request_t*)parser->connection->request;
+    http1_header_t* header = request->last_header;
+
+    const char* key = "content-length";
+    ssize_t key_length = 14;
+
+    if ((ssize_t)header->key_length != key_length) return;
+    if (!http1parser_cmplower(header->key, header->key_length, key, key_length)) return;
+    if (!http1request_has_payload(request)) return;
+
+    parser->content_length = atoll(header->value);
+}
+
 int http1parser_cmplower(const char* a, ssize_t a_length, const char* b, ssize_t b_length) {
     for (ssize_t i = 0, j = 0; i < a_length && j < b_length; i++, j++) {
         if (tolower(a[i]) != tolower(b[j])) return 0;
@@ -743,6 +755,10 @@ char* http1parser_buffer_copy(http1parser_t* parser) {
     return data;
 }
 
+int http1parser_payload_loaded(http1parser_t* parser) {
+    return parser->content_length == parser->content_saved_length;
+}
+
 int http1parser_set_header_key(http1request_t* request, http1parser_t* parser) {
     char* string = http1parser_buffer_get(parser);
     size_t length = http1parser_buffer_writed(parser);
@@ -788,6 +804,7 @@ int http1parser_set_header_value(http1request_t* request, http1parser_t* parser)
     http1parser_try_set_keepalive(parser);
     http1parser_try_set_range(parser);
     http1parser_try_set_cookie(parser);
+    http1parser_try_set_content_length(parser);
 
     return HTTP1PARSER_SUCCESS;
 }

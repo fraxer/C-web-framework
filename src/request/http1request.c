@@ -8,10 +8,13 @@
 #include <sys/stat.h>
 #include <sys/sendfile.h>
 #include <unistd.h>
+#include <errno.h>
 #include "http1request.h"
+#include "../helpers/helpers.h"
 #include "../utils/urlencodedparser.h"
 #include "../utils/formdataparser.h"
 #include "../utils/multipartparser.h"
+#include "../log/log.h"
 
 void http1request_init_payload(http1request_t*);
 void http1request_reset(http1request_t*);
@@ -211,7 +214,7 @@ char* http1request_payloadf(http1request_t* request, const char* field) {
     while (field != NULL && part) {
         http1_payloadfield_t* pfield = part->field;
         while (pfield) {
-            if (strcmp(pfield->key, "name") == 0 && strcmp(pfield->value, field) == 0) {
+            if (pfield->key != NULL && strcmp(pfield->key, "name") == 0 && strcmp(pfield->value, field) == 0) {
                 goto next;
             }
             pfield = pfield->next;
@@ -299,7 +302,7 @@ http1_payloadfile_t http1request_payload_filef(http1request_t* request, const ch
     while (field != NULL && part) {
         http1_payloadfield_t* pfield = part->field;
         while (pfield) {
-            if (strcmp(pfield->key, "name") == 0 && strcmp(pfield->value, field) == 0) {
+            if (pfield->key != NULL && strcmp(pfield->key, "name") == 0 && strcmp(pfield->value, field) == 0) {
                 goto next;
             }
             pfield = pfield->next;
@@ -310,19 +313,21 @@ http1_payloadfile_t http1request_payload_filef(http1request_t* request, const ch
     if (part == NULL) return file;
 
     char* filename = NULL;
-    http1_payloadfield_t* pfield = part->field;
+    http1_payloadfield_t* pfield = NULL;
 
     next:
 
+    pfield = part->field;
+
     while (pfield) {
         if (strcmp(pfield->key, "filename") == 0) {
-            filename = pfield->key;
+            filename = pfield->value;
             break;
         }
         pfield = pfield->next;
     }
 
-    file.ok = 1;
+    file.ok = filename != NULL;
     file.payload_fd = request->payload_.fd;
     file.offset = part->offset;
     file.size = part->size;
@@ -351,34 +356,57 @@ jsondoc_t* http1request_payload_jsonf(http1request_t* request, const char* field
     return document;
 }
 
+int http1request_has_payload(http1request_t* request) {
+    switch (request->method) {
+    case ROUTE_POST:
+    case ROUTE_PUT:
+    case ROUTE_PATCH:
+        return 1;
+    default:
+        break;
+    }
+
+    return 0;
+}
+
 int http1request_file_save(http1_payloadfile_t* file, const char* dir, const char* filename) {
-    if (dir == NULL || filename == NULL) return 0;
+    if (dir == NULL) return 0;
+    if (filename == NULL) filename = file->name;
+    if (strlen(filename) == 0) return 0;
+    if (filename[0] == '/') return 0;
 
     char path[PATH_MAX] = {0};
     size_t rootdir_length = strlen(file->rootdir);
     size_t dir_length = strlen(dir);
-    
+
     strcpy(path, file->rootdir);
-    if (file->rootdir[rootdir_length - 1] != '/') strcat(path, "/");
+    if (file->rootdir[rootdir_length - 1] != '/' && dir[0] != '/') strcat(path, "/");
     strcat(path, dir);
-    if (dir[dir_length - 1] != '/') strcat(path, "/");
+    if (dir[dir_length - 1] != '/' && filename[0] != '/') strcat(path, "/");
     strcat(path, filename);
 
-    int fd = open(path, O_CREAT | O_TRUNC, S_IRWXU);
+    if (!helpers_mkdir(file->rootdir, dir)) return 0;
+
+    int fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU);
     if (fd < 0) return 0;
 
+    int result = 1;
     off_t offset = file->offset;
-    sendfile(fd, file->payload_fd, &offset, file->size);
+    if (sendfile(fd, file->payload_fd, &offset, file->size) == -1) {
+        log_error("Request error: %s\n", strerror(errno));
+        result = 0;
+    }
+
     close(fd);
 
-    return 1;
+    return result;
 }
 
 char* http1request_file_read(http1_payloadfile_t* file) {
     char* buffer = malloc(file->size + 1);
     if (buffer == NULL) return NULL;
 
-    lseek(file->payload_fd, 0, SEEK_SET);
+    lseek(file->payload_fd, file->offset, SEEK_SET);
     int r = read(file->payload_fd, buffer, file->size);
     lseek(file->payload_fd, 0, SEEK_SET);
 

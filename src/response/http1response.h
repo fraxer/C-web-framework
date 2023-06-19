@@ -32,8 +32,8 @@ typedef struct http1response {
     void(*datan)(struct http1response*, const char*, size_t);
     int(*header_add)(struct http1response*, const char*, const char*);
     int(*headern_add)(struct http1response*, const char*, size_t, const char*, size_t);
+    int(*headeru_add)(struct http1response*, const char*, size_t, const char*, size_t);
     int(*header_add_content_length)(struct http1response*, size_t);
-    int(*header_add_content_type)(struct http1response*, const char*, size_t);
     int(*header_remove)(struct http1response*, const char*);
     int(*headern_remove)(struct http1response*, const char*, size_t);
     int(*file)(struct http1response*, const char*);

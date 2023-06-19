@@ -7,4 +7,6 @@ long int helpers_file_size(int fd);
 
 void helpers_free_null(void*);
 
+int helpers_mkdir(const char* base_path, const char* path);
+
 #endif

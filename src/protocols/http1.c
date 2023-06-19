@@ -29,9 +29,12 @@ void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
 
         switch (bytes_readed) {
         case -1:
-            http1parser_free(&parser);
-            http1_handle(connection);
-            return;
+            if (http1parser_payload_loaded(&parser)) {
+                http1parser_free(&parser);
+                http1_handle(connection);
+                return;
+            }
+            break;
         case 0:
             http1parser_free(&parser);
             connection->keepalive_enabled = 0;
@@ -249,7 +252,10 @@ void http1_handle(connection_t* connection) {
 
     if (http1_get_resource(connection) == 0) return;
 
-    http1_get_file(connection);
+    if (!http1request_has_payload(request))
+        http1_get_file(connection);
+    else
+        http1response_default_response((http1response_t*)connection->response, 400);
 
     connection->after_read_request(connection);
 }
@@ -259,6 +265,8 @@ int http1_get_resource(connection_t* connection) {
 
     for (route_t* route = connection->server->http.route; route; route = route->next) {
         if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {
+            if (route->handler[request->method] == NULL) return -1;
+
             connection->handle = route->handler[request->method];
             connection->queue_push(connection);
             // route->handler[request->method](connection->request, connection->response);
@@ -284,6 +292,8 @@ int http1_get_resource(connection_t* connection) {
 
                 http1parser_append_query(request, query);
             }
+
+            if (route->handler[request->method] == NULL) return -1;
 
             connection->handle = route->handler[request->method];
             connection->queue_push(connection);

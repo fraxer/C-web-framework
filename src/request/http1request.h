@@ -54,5 +54,6 @@ http1_payloadfile_t http1request_payload_file(http1request_t*);
 http1_payloadfile_t http1request_payload_filef(http1request_t*, const char*);
 jsondoc_t* http1request_payload_json(http1request_t*);
 jsondoc_t* http1request_payload_jsonf(http1request_t*, const char*);
+int http1request_has_payload(http1request_t*);
 
 #endif

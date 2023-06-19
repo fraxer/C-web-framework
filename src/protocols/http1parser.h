@@ -49,6 +49,8 @@ typedef struct http1parser {
     size_t bytes_readed;
     size_t pos_start;
     size_t pos;
+    size_t content_length;
+    size_t content_saved_length;
     char* buffer;
     connection_t* connection;
 
@@ -82,5 +84,7 @@ int http1parser_buffer_move(http1parser_t*);
 char* http1parser_buffer_get(http1parser_t*);
 
 char* http1parser_buffer_copy(http1parser_t*);
+
+int http1parser_payload_loaded(http1parser_t*);
 
 #endif

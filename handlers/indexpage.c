@@ -1,4 +1,3 @@
-#include <openssl/sha.h>
 #include <string.h>
 #include "../src/base64/base64.h"
 #include "../src/request/http1request.h"
@@ -8,7 +7,49 @@
 #include "../src/database/dbquery.h"
 #include "../src/database/dbresult.h"
 #include "../src/json/json.h"
+#include "../src/misc/sha1.h"
     #include <stdio.h>
+
+void payload1(http1request_t* request, http1response_t* response) {
+    http1_payloadfile_t payload = request->payload_filef(request, "myfile");
+
+    if (!payload.ok) {
+        response->data(response, "error file");
+        return;
+    }
+
+    if (!payload.save(&payload, "/files/", NULL)) {
+        response->data(response, "filename error");
+        return;
+    }
+
+    char* content = payload.read(&payload);
+    if (content == NULL) {
+        response->data(response, "content error");
+        return;
+    }
+
+    response->data(response, content);
+
+    free(content);
+
+    return;
+}
+
+void payload2(http1request_t* request, http1response_t* response) {
+    char* payload = request->payloadf(request, "myfile");
+
+    if (!payload) {
+        response->data(response, "error file");
+        return;
+    }
+
+    response->data(response, payload);
+
+    free(payload);
+
+    return;
+}
 
 void payload(http1request_t* request, http1response_t* response) {
     char* payload = request->payload(request);
@@ -147,8 +188,8 @@ void payload_json(http1request_t* request, http1response_t* response) {
 
     // char* string = json_stringify(document);
 
-    response->data(response, json_stringify(document));
     response->header_add(response, "Content-Type", "application/json");
+    response->data(response, json_stringify(document));
 
     // free(string);
 
@@ -215,8 +256,8 @@ void payload_json_post(http1request_t* request, http1response_t* response) {
 
     // char* string = json_stringify_detach(document);
 
-    response->data(response, json_stringify(document));
     response->header_add(response, "Content-Type", "application/json");
+    response->data(response, json_stringify(document));
 
     json_free(document);
 }
@@ -296,8 +337,7 @@ void websocket(http1request_t* request, http1response_t* response) {
     key[key_length] = 0;
 
     unsigned char result[40];
-
-    SHA1((const unsigned char*)key, strlen(key), result);
+    sha1((const unsigned char*)key, strlen(key), result);
 
     char pool[41];
 
