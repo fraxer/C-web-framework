@@ -142,6 +142,8 @@ add_library(threadworker STATIC src/thread/threadworker.c)
 
 add_library(base64 STATIC src/base64/base64.c)
 
+add_library(sha1 STATIC src/misc/sha1.c)
+
 target_link_libraries(
 	config
 	json

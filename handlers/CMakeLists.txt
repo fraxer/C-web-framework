@@ -15,5 +15,6 @@ foreach(FILEPATH ${FILEPATHS})
 		dbresult
 		database
 		json
+		sha1
 	)
 endforeach()
