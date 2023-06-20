@@ -540,9 +540,6 @@ int http1response_keepalive_enabled(http1response_t* response) {
 
 void http1response_switch_to_websockets(http1response_t* response) {
     response->connection->switch_to_protocol = protmgr_set_websockets;
-
-    if (response->header_add(response, "Connection", http1response_keepalive_enabled(response) ? "keep-alive" : "Close") == -1) return;
-    if (response->header_add(response, "Cache-Control", "no-store, no-cache") == -1) return;
 }
 
 void http1response_redirect(http1response_t* response, const char* path, int status_code) {

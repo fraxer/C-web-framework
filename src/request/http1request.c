@@ -372,8 +372,11 @@ int http1request_has_payload(http1request_t* request) {
 int http1request_file_save(http1_payloadfile_t* file, const char* dir, const char* filename) {
     if (dir == NULL) return 0;
     if (filename == NULL) filename = file->name;
-    if (strlen(filename) == 0) return 0;
-    if (filename[0] == '/') return 0;
+    size_t filename_length = strlen(filename);
+    if (filename_length == 0) return 0;
+
+    for (size_t i = 0; i < filename_length; i++)
+        if (filename[i] == '/') return 0;
 
     char path[PATH_MAX] = {0};
     size_t rootdir_length = strlen(file->rootdir);
