@@ -261,7 +261,7 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
     const char* ext = http1response_get_extention(resultpath, resultpath_length);
     const char* mimetype = http1response_get_mimetype(ext);
     const char* connection = http1response_keepalive_enabled(response) ? "keep-alive" : "close";
-    if (response->headeru_add(response, "Connection", 1, connection, strlen(connection)) == -1) return -1;
+    if (response->headeru_add(response, "Connection", 10, connection, strlen(connection)) == -1) return -1;
     if (response->headeru_add(response, "Content-Type", 12, mimetype, strlen(mimetype)) == -1) return -1;
 
     if (http1response_prepare_body(response, response->file_.size) == -1) return -1;
