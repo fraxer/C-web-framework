@@ -103,6 +103,7 @@ int json_parse(jsondoc_t*, const char *);
  * Free internal memory
  */
 void json_free(jsondoc_t*);
+void json_token_reset(jsontok_t*);
 
 jsontok_t* json_root(jsondoc_t*);
 int json_ok(jsondoc_t*);

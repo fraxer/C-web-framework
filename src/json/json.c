@@ -217,8 +217,7 @@ void json_free(jsondoc_t* document) {
     if (document->tokens) {
         for (unsigned int i = 0; i < document->tokens_count; i++) {
             jsontok_t* token = document->tokens[i];
-            if (token && token->type == JSON_STRING && token->value.string)
-                free(token->value.string);
+            json_token_reset(token);
 
             free(token);
         }
@@ -248,6 +247,17 @@ void json_free(jsondoc_t* document) {
     document->stringify.detached = 0;
 
     free(document);
+}
+
+void json_token_reset(jsontok_t* token) {
+    if (!token) return;
+    if (token->type == JSON_STRING && token->value.string)
+        free(token->value.string);
+
+    token->child = NULL;
+    token->type = JSON_UNDEFINED;
+    token->size = 0;
+    token->value._int = 0;
 }
 
 jsontok_t* json_root(jsondoc_t* document) {
@@ -670,6 +680,8 @@ int json_object_clear(jsontok_t* token_object) {
 void json_token_set_bool(jsontok_t* token, int value) {
     if (token == NULL) return;
 
+    json_token_reset(token);
+
     token->child = NULL;
     token->type = JSON_BOOL;
     token->size = 0;
@@ -678,6 +690,8 @@ void json_token_set_bool(jsontok_t* token, int value) {
 
 void json_token_set_null(jsontok_t* token) {
     if (token == NULL) return;
+
+    json_token_reset(token);
 
     token->child = NULL;
     token->type = JSON_NULL;
@@ -688,24 +702,23 @@ void json_token_set_null(jsontok_t* token) {
 void json_token_set_string(jsontok_t* token, const char* value) {
     if (token == NULL || value == NULL) return;
 
-    if (token->value.string)
-        free(token->value.string);
-
-    const char* string = value;
+    json_token_reset(token);
 
     token->child = NULL;
     token->type = JSON_STRING;
-    token->size = strlen(string);
+    token->size = strlen(value);
     token->value.string = malloc(token->size + 1);
     if (token->value.string == NULL)
         return;
 
-    memcpy(token->value.string, string, token->size);
+    memcpy(token->value.string, value, token->size);
     token->value.string[token->size] = 0;
 }
 
 void json_token_set_llong(jsontok_t* token, long long value) {
     if (token == NULL) return;
+
+    json_token_reset(token);
 
     token->child = NULL;
     token->type = JSON_LLONG;
@@ -716,6 +729,8 @@ void json_token_set_llong(jsontok_t* token, long long value) {
 void json_token_set_int(jsontok_t* token, int value) {
     if (token == NULL) return;
 
+    json_token_reset(token);
+
     token->child = NULL;
     token->type = JSON_INT;
     token->size = 0;
@@ -724,6 +739,8 @@ void json_token_set_int(jsontok_t* token, int value) {
 
 void json_token_set_uint(jsontok_t* token, unsigned int value) {
     if (token == NULL) return;
+
+    json_token_reset(token);
 
     token->child = NULL;
     token->type = JSON_UINT;
@@ -734,6 +751,8 @@ void json_token_set_uint(jsontok_t* token, unsigned int value) {
 void json_token_set_double(jsontok_t* token, double value) {
     if (token == NULL) return;
 
+    json_token_reset(token);
+
     token->child = NULL;
     token->type = JSON_DOUBLE;
     token->size = 0;
@@ -742,6 +761,8 @@ void json_token_set_double(jsontok_t* token, double value) {
 
 void json_token_set_object(jsontok_t* token, jsontok_t* token_object) {
     if (token == NULL || token_object == NULL) return;
+
+    json_token_reset(token);
 
     token->child = token_object->child;
     token->last_sibling = token_object->last_sibling;
@@ -754,6 +775,8 @@ void json_token_set_object(jsontok_t* token, jsontok_t* token_object) {
 
 void json_token_set_array(jsontok_t* token, jsontok_t* token_array) {
     if (token == NULL || token_array == NULL) return;
+
+    json_token_reset(token);
 
     token->child = token_array->child;
     token->last_sibling = token_array->last_sibling;
