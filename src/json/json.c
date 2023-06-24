@@ -903,7 +903,7 @@ void __json_set_error(jsondoc_t* document, const char* string) {
     if (document == NULL) return;
 
     document->ok = 0;
-    strncpy(document->error, string, JSON_ERROR_BUFFER_SIZE);
+    strncpy(document->error, string, JSON_ERROR_BUFFER_SIZE - 1);
 }
 
 void __json_init_parser(jsondoc_t* document) {
