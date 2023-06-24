@@ -1,7 +1,8 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include "../../src/database/dbquery.h"
-#include "../../src/database/dbresult.h"
+
+#include "dbquery.h"
+#include "dbresult.h"
 
 // const char* server() { return "s1"; }
 const char* db() { return "postresql"; }

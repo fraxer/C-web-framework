@@ -1,13 +1,14 @@
 #include <string.h>
-#include "../src/request/http1request.h"
-#include "../src/response/http1response.h"
-#include "../src/request/websocketsrequest.h"
-#include "../src/response/websocketsresponse.h"
-#include "../src/response/websocketsswitch.h"
-#include "../src/database/dbquery.h"
-#include "../src/database/dbresult.h"
-#include "../src/json/json.h"
-    #include <stdio.h>
+#include <stdio.h>
+
+#include "http1request.h"
+#include "http1response.h"
+#include "websocketsrequest.h"
+#include "websocketsresponse.h"
+#include "websocketsswitch.h"
+#include "dbquery.h"
+#include "dbresult.h"
+#include "json.h"
 
 void payload1(http1request_t* request, http1response_t* response) {
     http1_payloadfile_t payload = request->payload_filef(request, "myfile");

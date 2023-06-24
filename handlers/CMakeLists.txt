@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12.4)
 
-file(GLOB FILEPATHS "*.c")
+file(GLOB FILEPATHS *.c)
 
 foreach(FILEPATH ${FILEPATHS})
 	set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/exec/handlers")
@@ -8,13 +8,5 @@ foreach(FILEPATH ${FILEPATHS})
 
 	add_library(${FILENAME} SHARED ${FILEPATH})
 
-	target_link_libraries(
-		${FILENAME}
-		base64
-		dbquery
-		dbresult
-		database
-		json
-		sha1
-	)
+	target_link_libraries(${FILENAME} misc database json route http1request http1response protocols)
 endforeach()
