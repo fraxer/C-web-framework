@@ -88,7 +88,8 @@ int urlencodedparser_set_field(urlencodedparser_t* parser) {
 
     lseek(parser->payload_fd, part->offset, SEEK_SET);
 
-    read(parser->payload_fd, part->field->value, part->size);
+    ssize_t r = read(parser->payload_fd, part->field->value, part->size);
+    if (r < 0) return -1;
 
     part->field->value[part->size] = 0;
 
