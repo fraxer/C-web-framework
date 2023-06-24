@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12.4)
 
-project(server LANGUAGES C)
+project(cpdy LANGUAGES C)
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
@@ -50,7 +50,7 @@ endif()
 add_compile_definitions(CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
 
 
-add_executable(main src/main.c)
+add_executable(${PROJECT_NAME} src/main.c)
 
 add_library(log STATIC src/log/log.c)
 
@@ -208,14 +208,14 @@ target_link_libraries(
 )
 
 target_link_libraries(
-	main
+	${PROJECT_NAME}
 	moduleloader
 	signal
 )
 
 if(MySQL_FOUND AND INCLUDE_MYSQL STREQUAL yes)
 	target_link_libraries(
-		main
+		${PROJECT_NAME}
 		mysql
 		${MySQL_LIBRARY}
 	)
@@ -223,7 +223,7 @@ endif()
 
 if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
 	target_link_libraries(
-		main
+		${PROJECT_NAME}
 		postgresql
 		pq
 	)
@@ -231,11 +231,12 @@ endif()
 
 if(Redis_FOUND AND INCLUDE_REDIS STREQUAL yes)
 	target_link_libraries(
-		main
+		${PROJECT_NAME}
 		redis
 		${Redis_LIBRARY}
 	)
 endif()
+
 
 add_subdirectory(migrations)
 add_subdirectory(handlers)
