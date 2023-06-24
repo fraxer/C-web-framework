@@ -22,35 +22,6 @@ foreach(DIR ${SUBDIRS})
 		get_filename_component(FILENAME ${FILEPATH} NAME_WE)
 
 		add_library(${FILENAME} SHARED ${FILEPATH})
-		target_link_libraries(${FILENAME} dbquery dbresult database)
+		target_link_libraries(${FILENAME} database)
 	endforeach()
 endforeach()
-
-add_executable(migrate main.c)
-
-target_link_libraries(migrate json config moduleloader database ${CMAKE_DL_LIBS})
-
-if(MySQL_FOUND AND INCLUDE_MYSQL STREQUAL yes)
-	target_link_libraries(
-		migrate
-		mysql
-		${MySQL_LIBRARY}
-	)
-endif()
-
-if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
-	target_link_libraries(
-		migrate
-		postgresql
-		pq
-	)
-endif()
-
-if(Redis_FOUND AND INCLUDE_REDIS STREQUAL yes)
-	target_link_libraries(
-		migrate
-		redis
-		${Redis_LIBRARY}
-	)
-endif()
-
