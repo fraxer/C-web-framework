@@ -1,9 +1,9 @@
 #ifndef __PROTOCOLMANAGER__
 #define __PROTOCOLMANAGER__
 
-#include "tls.h"
-#include "http1.h"
-#include "websockets.h"
+#include "tlsinternal.h"
+#include "http1internal.h"
+#include "websocketsinternal.h"
 
 void protmgr_set_tls(connection_t*);
 
