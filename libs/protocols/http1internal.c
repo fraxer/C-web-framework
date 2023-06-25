@@ -10,7 +10,7 @@
 #include "http1response.h"
 #include "http1parser.h"
 
-#include "http1.h"
+#include "http1internal.h"
 
 void http1_handle(connection_t*);
 int http1_write_head(connection_t*);

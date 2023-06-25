@@ -39,6 +39,7 @@ list(APPEND LIBS json)
 list(APPEND SOURCES database.c database.h)
 list(APPEND SOURCES dbquery.c dbquery.h)
 list(APPEND SOURCES dbresult.c dbresult.h)
+list(APPEND SOURCES db.h)
 
 if(MySQL_FOUND AND INCLUDE_MYSQL STREQUAL yes)
 	list(APPEND SOURCES mysql.c mysql.h)

@@ -8,7 +8,7 @@
 #include "websocketsrequest.h"
 #include "websocketsresponse.h"
 #include "websocketsparser.h"
-#include "websockets.h"
+#include "websocketsinternal.h"
 
 void websockets_handle(connection_t*, websocketsparser_t*);
 int websockets_get_resource(connection_t*);

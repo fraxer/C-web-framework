@@ -1,13 +1,9 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "http1request.h"
-#include "http1response.h"
-#include "websocketsrequest.h"
-#include "websocketsresponse.h"
-#include "websocketsswitch.h"
-#include "dbquery.h"
-#include "dbresult.h"
+#include "http1.h"
+#include "websockets.h"
+#include "db.h"
 #include "json.h"
 
 void payload1(http1request_t* request, http1response_t* response) {

@@ -6,7 +6,7 @@
 #include "log.h"
 #include "connection.h"
 #include "protocolmanager.h"
-#include "tls.h"
+#include "tlsinternal.h"
 
 #define TLS_ERROR_ALLOC_SSL "Tls error: can't allocate a new ssl object\n"
 #define TLS_ERROR_SET_SSL_FD "Tls error: can't attach fd to ssl\n"
