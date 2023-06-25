@@ -205,7 +205,6 @@ server_info_t* server_info_create() {
 
     info->read_buffer = 0;
     info->client_max_body_size = 0;
-    info->environment = ENV_DEV;
     info->tmp_dir = NULL;
     info->gzip_mimetype = NULL;
 

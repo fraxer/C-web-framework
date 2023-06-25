@@ -1,151 +1,114 @@
 {
     "main": {
-        "workers": 30,
+        "workers": 1,
         "threads": 1,
         "reload": "hard",
         "read_buffer": 16384,
         "client_max_body_size": 110485760,
-        "environment": "dev",
-        "keepalive_timeout": 65,
-        "tmp": "/var/www/tmp/"
+        "tmp": "/tmp",
+        "gzip": [
+            "text/html",
+            "application/javascript",
+            "application/json"
+        ]
     },
-    "log": {
-        "file": "/var/log/server/server.log",
-        "verbose": true,
-        "enable": true
+    "migrations": {
+        "source_directory": "<project directory path>/migrations"
     },
-    "servers": [
-        {
+    "servers": {
+        "s1": {
             "domains": [
-                "www.example.com",
-                "*.domain.com",
-                "(a1|a2|a3).domain.com",
-                "(.1|.*|a3).domain.com",
+                "www.example1.com",
+                "*.example1.com",
+                "(a1|a2|a3).example1.com",
+                "(.1|.*|a3).example1.com",
                 "mail.*"
             ],
             "ip": "127.0.0.1",
-            "port": 4443,
-            "root": "/var/www/webroot/",
+            "port": 80,
+            "root": "/var/www/www.example1.com/web",
             "index": "index.html",
             "http": {
                 "routes": {
                     "/": {
-                        "GET": ["./libindexpage.so", "view"],
-                        "PUT": ["./libindexpage.so", "view"],
-                        "DELETE": ["./libindexpage.so", "view"]
+                        "GET": ["<project directory path>/build/exec/handlers/libindexpage.so", "get"]
                     },
                     "/wss": {
-                        "GET": ["./libindexpage.so", "websocket"]
+                        "GET": ["<project directory path>/build/exec/handlers/libindexpage.so", "websocket"]
                     }
                 },
                 "redirects": {
-                    ".*": "https://domain.com",
+                    "/section1/(\\d+)/section2/(\\d+)/section3": "/one/{1}/two/{2}/three",
+                    "/one/\\d+/two/\\d+/three": "/",
                     "/user": "/persons",
-                    "/user(.*)/(\\d)": "/person_%1_/_%2"
+                    "/user(.*)/(\\d)": "/user-{1}-{2}"
                 }
             },
             "websockets": {
                 "routes": {
                     "/": {
-                        "GET": ["./libindexpage.so", "ws_index"],
-                        "PATCH": ["./libindexpage.so", "ws_index"],
-                        "DELETE": ["./libindexpage.so", "ws_index"]
+                        "GET": ["<project directory path>/build/exec/handlers/libwsindexpage.so", "echo"]
                     }
                 }
             },
             "databases": {
-                "db1": {
-                    "hosts": [
-                        {
-                            "ip": "127.0.0.1",
-                            "port": 5432,
-                            "perms": "r"
-                        },
-                        {
-                            "ip": "127.0.0.1",
-                            "port": 1532,
-                            "perms": "wr"
-                        }
-                    ],
-                    "dbname": "database1",
-                    "user": "root",
-                    "password": "",
-                    "driver": "postgresql",
-                    "connection_timeout": 3,
-                    "charset": "utf8mb4",
-                    "collation": "utf8mb4_unicode_ci",
-                    "prefix": ""
-                },
-                "db2": {
-                    "hosts": [
-                        {
-                            "ip": "189.5.0.1",
-                            "port": 4432,
-                            "perms": "r"
-                        },
-                        {
-                            "ip": "189.5.1.1",
-                            "port": 4432,
-                            "perms": "w"
-                        }
-                    ],
-                    "dbname": "database2",
-                    "user": "root",
-                    "password": "",
-                    "driver": "postgresql",
-                    "connection_timeout": 3,
-                    "charset": "utf8mb4",
-                    "collation": "utf8mb4_unicode_ci"
-                }
+                "postgresql": [
+                    {
+                        "ip": "127.0.0.1",
+                        "port": 5432,
+                        "dbname": "dbname",
+                        "user": "root",
+                        "password": "",
+                        "driver": "postgresql",
+                        "connection_timeout": 3,
+                        "migration": true
+                    }
+                ],
+                "mysql": [
+                    {
+                        "ip": "127.0.0.1",
+                        "port": 3306,
+                        "dbname": "dbname",
+                        "user": "root",
+                        "password": "",
+                        "driver": "mysql",
+                        "migration": false
+                    }
+                ],
+                "redis": [
+                    {
+                        "ip": "127.0.0.1",
+                        "port": 6379,
+                        "dbindex": 0,
+                        "user": "",
+                        "password": "",
+                        "driver": "redis"
+                    }
+                ]
             },
-            "openssl": {
-                "fullchain": "/var/www/fullchain.pem",
-                "private": "/var/www/privkey.pem",
+            "tls": {
+                "fullchain": "/var/www/server/fullchain.pem",
+                "private": "/var/www/server/privkey.pem",
                 "ciphers": "TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256 TLS_AES_128_GCM_SHA256 TLS_AES_128_CCM_8_SHA256 TLS_AES_128_CCM_SHA256 ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256"
-            },
+            }
         },
-        {
+        "s2": {
             "domains": [
-                "wwww.example.com"
+                "www.example2.com:8080"
             ],
             "ip": "127.0.0.1",
             "port": 8080,
-            "root": "/var/www/webroot/",
-            "redirects": {
-                ".*": "https://domain.com",
-                "/user": "/persons",
-                "/user(.*)/(\\d)": "/person_%1_/_%2"
-            },
+            "root": "/var/www/www.example2.com/web",
             "index": "index.html",
             "http": {
                 "routes": {
                     "/": {
-                        "GET": ["./libindexpage.so", "view"],
-                        "PUT": ["./libindexpage.so", "view"],
-                        "DELETE": ["./libindexpage.so", "view"]
-                    },
-                    "/wss": {
-                        "GET": ["./libindexpage.so", "websocket"]
+                        "GET": ["<project directory path>/build/exec/handlers/libindexpage.so", "index"]
                     }
-                },
-                "redirects": {
-                    ".*": "https://domain.com",
-                    "/user": "/persons",
-                    "/user(.*)/(\\d)": "/person_%1_/_%2"
                 }
-            },
-            "database": {
-                "host": "127.0.0.1",
-                "port": 5432,
-                "dbname": "database",
-                "user": "root",
-                "password": "",
-                "driver": "postgresql",
-                "connection_timeout": 3,
-                "connection_count": 3
             }
         }
-    ],
+    },
     "mimetypes": {
         "text/html": ["html", "htm", "shtml"],
         "text/css": ["css"],

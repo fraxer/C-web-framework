@@ -674,7 +674,7 @@ int module_loader_servers_load(int reload_is_hard) {
                     goto failed;
                 }
             }
-            else if (strcmp(key, "openssl") == 0) {
+            else if (strcmp(key, "tls") == 0) {
                 finded_fields[OPENSSL] = 1;
 
                 if (!json_is_object(token_value)) goto failed;
@@ -802,7 +802,7 @@ server_info_t* module_loader_server_info_load() {
     if (!token_main) return NULL;
     if (!json_is_object(token_main)) return NULL;
 
-    enum fields { HEAD_BUFFER = 0, CLIENT, ENV, TMP, GZIP, FIELDS_COUNT };
+    enum fields { HEAD_BUFFER = 0, CLIENT, TMP, GZIP, FIELDS_COUNT };
 
     int finded_fields[FIELDS_COUNT] = {0};
 
@@ -823,24 +823,6 @@ server_info_t* module_loader_server_info_load() {
             finded_fields[CLIENT] = 1;
 
             server_info->client_max_body_size = json_int(token_value);
-        }
-        else if (strcmp(key, "environment") == 0) {
-            if (!json_is_string(token_value)) goto failed;
-
-            finded_fields[ENV] = 1;
-
-            const char* value = json_string(token_value);
-
-            if (strcmp(value, "dev") == 0) {
-                server_info->environment = ENV_DEV;
-            }
-            else if (strcmp(value, "prod") == 0) {
-                server_info->environment = ENV_PROD;
-            }
-            else {
-                log_error("Error: Set up environment\n");
-                goto failed;
-            }
         }
         else if (strcmp(key, "tmp") == 0) {
             if (!json_is_string(token_value)) goto failed;
