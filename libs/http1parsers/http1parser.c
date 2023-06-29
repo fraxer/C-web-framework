@@ -144,8 +144,9 @@ int http1parser_run(http1parser_t* parser) {
                 parser->stage = HEADER_SPACE;
 
                 http1parser_buffer_complete(parser);
-                if (!http1parser_set_header_key(request, parser))
-                    return HTTP1PARSER_BAD_REQUEST;
+                int r = http1parser_set_header_key(request, parser);
+                if (r != HTTP1PARSER_SUCCESS)
+                    return r;
 
                 http1parser_buffer_reset(parser);
 
@@ -170,8 +171,9 @@ int http1parser_run(http1parser_t* parser) {
                 parser->stage = NEWLINE2;
 
                 http1parser_buffer_complete(parser);
-                if (!http1parser_set_header_value(request, parser))
-                    return HTTP1PARSER_BAD_REQUEST;
+                int r = http1parser_set_header_value(request, parser);
+                if (r != HTTP1PARSER_SUCCESS && r != HTTP1PARSER_CONTINUE)
+                    return r;
 
                 http1parser_buffer_reset(parser);
 
@@ -497,7 +499,7 @@ int http1parser_host_not_found(http1parser_t* parser) {
         domain = domain->next;
     }
 
-    return HTTP1PARSER_BAD_REQUEST;
+    return HTTP1PARSER_HOST_NOT_FOUND;
 }
 
 void http1parser_try_set_keepalive(http1parser_t* parser) {
@@ -797,8 +799,9 @@ int http1parser_set_header_value(http1request_t* request, http1parser_t* parser)
     if (request->last_header->value == NULL)
         return HTTP1PARSER_OUT_OF_MEMORY;
 
-    if (http1parser_host_not_found(parser) == HTTP1PARSER_BAD_REQUEST)
-        return HTTP1PARSER_BAD_REQUEST;
+    int r = http1parser_host_not_found(parser);
+    if (r != HTTP1PARSER_SUCCESS && r != HTTP1PARSER_CONTINUE)
+        return r;
 
     http1parser_try_set_keepalive(parser);
     http1parser_try_set_range(parser);
