@@ -6,4 +6,4 @@ FILE(GLOB_RECURSE SOURCES *.c)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE database json moduleloader)
+target_link_libraries(${PROJECT_NAME} PRIVATE database json pthread moduleloader)
