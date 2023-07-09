@@ -21,13 +21,15 @@ typedef struct http1request {
     const char* path;
     const char* ext;
 
-    http1_query_t* query;
+    http1_query_t* query_;
     http1_query_t* last_query;
     http1_header_t* header_;
     http1_header_t* last_header;
     http1_cookie_t* cookie_;
 
     connection_t* connection;
+
+    const char*(*query)(struct http1request*, const char*);
 
     http1_header_t*(*header)(struct http1request*, const char*);
     http1_header_t*(*headern)(struct http1request*, const char*, size_t);
@@ -38,7 +40,6 @@ typedef struct http1request {
 
     char*(*payload)(struct http1request*);
     char*(*payloadf)(struct http1request*, const char*);
-    char*(*payload_urlencoded)(struct http1request*, const char*);
     http1_payloadfile_t(*payload_file)(struct http1request*);
     http1_payloadfile_t(*payload_filef)(struct http1request*, const char*);
     jsondoc_t*(*payload_json)(struct http1request*);
@@ -49,7 +50,6 @@ http1request_t* http1request_create(connection_t*);
 
 char* http1request_payload(http1request_t*);
 char* http1request_payloadf(http1request_t*, const char*);
-char* http1request_payload_urlencoded(http1request_t*, const char*);
 http1_payloadfile_t http1request_payload_file(http1request_t*);
 http1_payloadfile_t http1request_payload_filef(http1request_t*, const char*);
 jsondoc_t* http1request_payload_json(http1request_t*);

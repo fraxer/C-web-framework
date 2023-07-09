@@ -27,6 +27,7 @@ route_t* route_init_route();
 int route_init_parser(route_parser_t* parser, const char* dirty_location);
 int route_parse_location(route_parser_t* parser);
 int route_parse_token(route_parser_t* parser);
+void route_insert_custom_symbol(route_parser_t* parser, char symbol);
 void route_insert_symbol(route_parser_t* parser);
 int route_alloc_param(route_parser_t* parser);
 int route_fill_param(route_parser_t* parser);
@@ -158,8 +159,6 @@ int route_parse_location(route_parser_t* parser) {
 
     parser->location[parser->pos] = 0;
 
-    // printf("route: %s\n", parser->location);
-
     return 0;
 }
 
@@ -174,7 +173,8 @@ int route_parse_token(route_parser_t* parser) {
     if (route_alloc_param(parser) == -1) return -1;
 
     for (; parser->dirty_location[parser->dirty_pos] != 0; parser->dirty_pos++) {
-        switch (parser->dirty_location[parser->dirty_pos]) {
+        char ch = parser->dirty_location[parser->dirty_pos];
+        switch (ch) {
         case '{':
             if (!separator_found) {
                 log_error(ROUTE_EMPTY_TOKEN, parser->dirty_location);
@@ -192,7 +192,10 @@ int route_parse_token(route_parser_t* parser) {
                 log_error(ROUTE_EMPTY_PARAM_EXPRESSION, parser->dirty_location);
                 return -1;
             }
-            if (brakets_count == 0) return 0;
+            if (brakets_count == 0) {
+                route_insert_custom_symbol(parser, ')');
+                return 0;
+            }
             brakets_count--;
             route_insert_symbol(parser);
             break;
@@ -231,6 +234,7 @@ int route_parse_token(route_parser_t* parser) {
             symbol_finded = 0;
             if (route_fill_param(parser) == -1) return -1;
             parser->pos = start;
+            route_insert_custom_symbol(parser, '(');
             break;
         default:
             route_insert_symbol(parser);
@@ -243,11 +247,13 @@ int route_parse_token(route_parser_t* parser) {
     return -1;
 }
 
+void route_insert_custom_symbol(route_parser_t* parser, char symbol) {
+    parser->location[parser->pos] = symbol;
+    parser->pos++;
+}
+
 void route_insert_symbol(route_parser_t* parser) {
     parser->location[parser->pos] = parser->dirty_location[parser->dirty_pos];
-
-    // printf("%d, %d, %.*s\n", parser->pos, parser->location[parser->pos], parser->pos, parser->location);
-
     parser->pos++;
 }
 
@@ -300,8 +306,6 @@ int route_fill_param(route_parser_t* parser) {
     strncpy(parser->last_param->string, &parser->location[parser->last_param->start], parser->last_param->string_len);
 
     parser->last_param->string[parser->last_param->string_len] = 0;
-
-    // printf("param: %d, %d, %d, %s\n", parser->last_param->start, parser->last_param->end, parser->last_param->string_len, parser->last_param->string);
 
     return 0;
 }

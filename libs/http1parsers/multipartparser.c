@@ -1,6 +1,8 @@
 #include "formdataparser.h"
 #include "multipartparser.h"
 
+#include <errno.h>
+
 int multipartparser_create_part(multipartparser_t*);
 int multipartparser_create_header(multipartparser_t*);
 void multipartparser_reset_header(multipartparser_t*);
@@ -236,9 +238,10 @@ int multipartparser_write_header(int fd, char* value, size_t offset, size_t size
 
     lseek(fd, offset, SEEK_SET);
     int r = read(fd, value, size);
-    if (r < 0) return 0;
 
     lseek(fd, current_offset, SEEK_SET);
+
+    if (r < 0) return 0;
 
     value[size] = 0;
 

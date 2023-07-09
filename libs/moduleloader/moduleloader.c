@@ -373,33 +373,24 @@ db_t* module_loader_databases_load(const jsontok_t* token_object) {
             goto failed;
         }
 
-        jsontok_t* token_item = json_array_get(token_array, 0);
-        jsontok_t* token_driver = json_object_get(token_item, "driver");
-        if (!json_is_string(token_driver)) {
-            log_error("Database driver not found\n");
-            goto failed;
-        }
-
-        const char* database_id = json_it_key(&it);
-        const char* driver = json_string(token_driver);
-
+        const char* driver = json_it_key(&it);
         db_t* database = NULL;
 
         #ifdef PostgreSQL_FOUND
         if (strcmp(driver, "postgresql") == 0) {
-            database = postgresql_load(database_id, token_array);
+            database = postgresql_load(driver, token_array);
         }
         #endif
 
         #ifdef MySQL_FOUND
         if (strcmp(driver, "mysql") == 0) {
-            database = my_load(database_id, token_array);
+            database = my_load(driver, token_array);
         }
         #endif
 
         #ifdef Redis_FOUND
         if (strcmp(driver, "redis") == 0) {
-            database = redis_load(database_id, token_array);
+            database = redis_load(driver, token_array);
         }
         #endif
 

@@ -274,7 +274,8 @@ int json_ok(jsondoc_t* document) {
 }
 
 const char* json_error(jsondoc_t* document) {
-    if (document == NULL) return NULL;
+    if (document == NULL)
+        return JSON_DOCUMENT_ERROR;
 
     return document->error;
 }
@@ -806,7 +807,9 @@ jsonit_t json_init_it(const jsontok_t* token) {
     it.parent = (jsontok_t*)token;
 
     if (token->type == JSON_OBJECT) {
-        it.value = token->child->child;
+        if (token->child) {
+            it.value = token->child->child;
+        }
     }
     else if (token->type == JSON_ARRAY) {
         it.value = token->child;

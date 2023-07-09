@@ -10,6 +10,17 @@ typedef struct http1response_head {
     char* data;
 } http1response_head_t, http1response_string_t;
 
+typedef struct {
+    const char* name;
+    const char* value;
+    int minutes;
+    const char* path;
+    const char* domain;
+    int secure;
+    int http_only;
+    const char* same_site;
+} cookie_t;
+
 typedef struct http1response {
     response_t base;
 
@@ -30,6 +41,8 @@ typedef struct http1response {
 
     void(*data)(struct http1response*, const char*);
     void(*datan)(struct http1response*, const char*, size_t);
+    void(*def)(struct http1response*, int);
+    void(*redirect)(struct http1response*, const char*, int);
     int(*header_add)(struct http1response*, const char*, const char*);
     int(*headern_add)(struct http1response*, const char*, size_t, const char*, size_t);
     int(*headeru_add)(struct http1response*, const char*, size_t, const char*, size_t);
@@ -40,11 +53,12 @@ typedef struct http1response {
     int(*filen)(struct http1response*, const char*, size_t);
     void(*switch_to_websockets)(struct http1response*);
     http1response_string_t(*deflate)(struct http1response*, const char*, size_t, int);
+    void(*cookie_add)(struct http1response*, cookie_t);
 } http1response_t;
 
 http1response_t* http1response_create(connection_t*);
 
-void http1response_default_response(http1response_t*, int);
+void http1response_default(http1response_t*, int);
 
 http1response_head_t http1response_create_head(http1response_t*);
 

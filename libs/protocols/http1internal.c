@@ -49,22 +49,22 @@ void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
             case HTTP1PARSER_ERROR:
             case HTTP1PARSER_OUT_OF_MEMORY:
                 http1parser_free(&parser);
-                http1response_default_response((http1response_t*)connection->response, 500);
+                http1response_default((http1response_t*)connection->response, 500);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_PAYLOAD_LARGE:
                 http1parser_free(&parser);
-                http1response_default_response((http1response_t*)connection->response, 413);
+                http1response_default((http1response_t*)connection->response, 413);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_BAD_REQUEST:
                 http1parser_free(&parser);
-                http1response_default_response((http1response_t*)connection->response, 400);
+                http1response_default((http1response_t*)connection->response, 400);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_HOST_NOT_FOUND:
                 http1parser_free(&parser);
-                http1response_default_response((http1response_t*)connection->response, 404);
+                http1response_default((http1response_t*)connection->response, 404);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_SUCCESS:
@@ -229,18 +229,18 @@ void http1_handle(connection_t* connection) {
     http1request_t* request = (http1request_t*)connection->request;
 
     if (request->method == ROUTE_NONE) {
-        http1response_default_response((http1response_t*)connection->response, 400);
+        http1response_default((http1response_t*)connection->response, 400);
         connection->after_read_request(connection);
         return;
     }
 
     switch (http1_get_redirect(connection)) {
     case REDIRECT_OUT_OF_MEMORY:
-        http1response_default_response((http1response_t*)connection->response, 500);
+        http1response_default((http1response_t*)connection->response, 500);
         connection->after_read_request(connection);
         return;
     case REDIRECT_LOOP_CYCLE:
-        http1response_default_response((http1response_t*)connection->response, 508);
+        http1response_default((http1response_t*)connection->response, 508);
         connection->after_read_request(connection);
         return;
     case REDIRECT_FOUND:
@@ -257,7 +257,7 @@ void http1_handle(connection_t* connection) {
     if (!http1request_has_payload(request))
         http1_get_file(connection);
     else
-        http1response_default_response((http1response_t*)connection->response, 400);
+        http1response_default((http1response_t*)connection->response, 400);
 
     connection->after_read_request(connection);
 }

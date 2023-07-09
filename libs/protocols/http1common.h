@@ -82,11 +82,19 @@ typedef struct http1_payloadfile {
     char*(*read)(struct http1_payloadfile*);
 } http1_payloadfile_t;
 
+typedef enum {
+    NONE = 0,
+    PLAIN,
+    MULTIPART,
+    URLENCODED
+} http1_payload_type_e;
+
 typedef struct http1_payload {
     int fd;
     char* path;
     char* boundary;
     http1_payloadpart_t* part;
+    http1_payload_type_e type;
 } http1_payload_t;
 
 typedef struct http1_urlendec {
@@ -116,7 +124,7 @@ http1_urlendec_t http1_urlencode(const char*, size_t);
 
 http1_urlendec_t http1_urldecode(const char*, size_t);
 
-http1_cookie_t* http1_cookie_create(const char*, size_t, const char*, size_t);
+http1_cookie_t* http1_cookie_create();
 
 void http1_cookie_free(http1_cookie_t*);
 

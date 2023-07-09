@@ -397,7 +397,7 @@ int http1parser_set_query(http1request_t* request, const char* string, size_t le
 
     if (query == NULL) return HTTP1PARSER_OUT_OF_MEMORY;
 
-    request->query = query;
+    request->query_ = query;
     request->last_query = query;
 
     for (++pos; pos < length; pos++) {
@@ -448,7 +448,7 @@ int http1parser_set_query(http1request_t* request, const char* string, size_t le
         query->key = http1_set_field(&string[point_start], pos - point_start);
         if (query->key == NULL) return HTTP1PARSER_OUT_OF_MEMORY;
 
-        query->value = http1_set_field("", 0);
+        query->value = http1_set_field("", 1);
         if (query->value == NULL) return HTTP1PARSER_OUT_OF_MEMORY;
     }
     else if (stage == VALUE) {
@@ -460,6 +460,9 @@ int http1parser_set_query(http1request_t* request, const char* string, size_t le
 }
 
 void http1parser_append_query(http1request_t* request, http1_query_t* query) {
+    if (request->query_ == NULL) {
+        request->query_ = query;
+    }
     if (request->last_query) {
         request->last_query->next = query;
     }
@@ -763,16 +766,13 @@ int http1parser_payload_loaded(http1parser_t* parser) {
 int http1parser_set_header_key(http1request_t* request, http1parser_t* parser) {
     char* string = http1parser_buffer_get(parser);
     size_t length = http1parser_buffer_writed(parser);
-    http1_header_t* header = http1_header_create(NULL, 0, NULL, 0);
+    http1_header_t* header = http1_header_create(string, length, NULL, 0);
 
     if (header == NULL) {
         log_error("HTTP error: can't alloc header memory\n");
         return HTTP1PARSER_OUT_OF_MEMORY;
     }
     
-    header->key = http1_set_field(string, length);
-    header->key_length = length;
-
     if (header->key == NULL)
         return HTTP1PARSER_OUT_OF_MEMORY;
 

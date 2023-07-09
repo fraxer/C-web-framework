@@ -34,6 +34,7 @@ http1response_string_t http1response_deflate(http1response_t*, const char*, size
 int http1response_cmpstr(const char*, const char*);
 int http1response_cmpsubstr(const char*, const char*);
 int http1response_prepare_body(http1response_t*, size_t);
+void http1response_cookie_add(http1response_t*, cookie_t);
 
 
 void http1response_header_free(http1_header_t* header) {
@@ -85,6 +86,8 @@ http1response_t* http1response_create(connection_t* connection) {
     response->defstream_init = 0;
     response->data = http1response_data;
     response->datan = http1response_datan;
+    response->def = http1response_default;
+    response->redirect = http1response_redirect;
     response->header_add = http1response_header_add;
     response->headern_add = http1response_headern_add;
     response->headeru_add = http1response_headeru_add;
@@ -95,6 +98,7 @@ http1response_t* http1response_create(connection_t* connection) {
     response->filen = http1response_filen;
     response->switch_to_websockets = http1response_switch_to_websockets;
     response->deflate = http1response_deflate;
+    response->cookie_add = http1response_cookie_add;
     response->base.reset = (void(*)(void*))http1response_reset;
     response->base.free = (void(*)(void*))http1response_free;
 
@@ -219,7 +223,7 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
 
         if (S_ISDIR(stat_obj.st_mode)) {
             if (index == NULL) {
-                http1response_default_response(response, 403);
+                http1response_default(response, 403);
                 return -1;
             }
 
@@ -238,7 +242,7 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
             stat(indexpath, &stat_obj);
 
             if (!S_ISREG(stat_obj.st_mode)) {
-                http1response_default_response(response, 403);
+                http1response_default(response, 403);
                 return -1;
             }
 
@@ -246,7 +250,7 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
             resultpath_length = indexpath_length;
         }
         else if (!S_ISREG(stat_obj.st_mode)) {
-            http1response_default_response(response, 404);
+            http1response_default(response, 404);
             return -1;
         }
     }
@@ -508,7 +512,7 @@ const char* http1response_get_extention(const char* path, size_t length) {
     return NULL;
 }
 
-void http1response_default_response(http1response_t* response, int status_code) {
+void http1response_default(http1response_t* response, int status_code) {
     http1response_reset(response);
     response->status_code = status_code;
 
@@ -724,7 +728,7 @@ int http1response_prepare_body(http1response_t* response, size_t length) {
         if (response->ranges->start > (ssize_t)length) {
             http1response_free_ranges(response->ranges);
             response->ranges = NULL;
-            http1response_default_response(response, 416);
+            http1response_default(response, 416);
             return -1;
         }
 
@@ -751,4 +755,99 @@ int http1response_prepare_body(http1response_t* response, size_t length) {
     }
 
     return 0;
+}
+
+void http1response_cookie_add(http1response_t* response, cookie_t cookie) {
+    if (cookie.name == NULL || cookie.name[0] == 0)
+        return;
+    if (cookie.value == NULL || cookie.value[0] == 0)
+        return;
+
+    char template[128];
+    char date[32];
+    strcpy(template, "%s=%s");
+    int count = 2;
+    const char* vars[4];
+
+    if (cookie.minutes > 0) {
+        vars[count - 2] = date;
+        count++;
+        time_t t = time(NULL);
+        t += cookie.minutes * 60;
+        struct tm* timeptr = localtime(&t);
+
+        if (strftime(date, sizeof(date), "%a, %d %b %Y %T GMT", timeptr) == 0) return;
+
+        strcat(template, "; Expires=%s");
+    }
+    if (cookie.path != NULL && cookie.path[0] != 0) {
+        vars[count - 2] = cookie.path;
+        count++;
+        strcat(template, "; Path=%s");
+    }
+    if (cookie.domain != NULL && cookie.domain[0] != 0) {
+        vars[count - 2] = cookie.domain;
+        count++;
+        strcat(template, "; Domain=%s");
+    }
+    if (cookie.secure) strcat(template, "; Secure");
+    if (cookie.http_only) strcat(template, "; HttpOnly");
+    if (cookie.same_site != NULL && cookie.same_site[0] != 0) {
+        vars[count - 2] = cookie.same_site;
+        count++;
+        strcat(template, "; SameSite=%s");
+    }
+
+    char* string = NULL;
+
+    switch (count) {
+    case 2:
+    {
+        size_t string_length = snprintf(NULL, 0, template, cookie.name, cookie.value) + 1;
+        string = malloc(string_length);
+        if (string == NULL) return;
+        snprintf(string, string_length, template, cookie.name, cookie.value);
+        break;
+    }
+    case 3:
+    {
+        size_t string_length = snprintf(NULL, 0, template, cookie.name, cookie.value, vars[0]) + 1;
+        string = malloc(string_length);
+        if (string == NULL) return;
+        snprintf(string, string_length, template, cookie.name, cookie.value, vars[0]);
+        break;
+    }
+    case 4:
+    {
+        size_t string_length = snprintf(NULL, 0, template, cookie.name, cookie.value, vars[0], vars[1]) + 1;
+        string = malloc(string_length);
+        if (string == NULL) return;
+        snprintf(string, string_length, template, cookie.name, cookie.value, vars[0], vars[1]);
+        break;
+    }
+    case 5:
+    {
+        size_t string_length = snprintf(NULL, 0, template, cookie.name, cookie.value, vars[0], vars[1], vars[2]) + 1;
+        string = malloc(string_length);
+        if (string == NULL) return;
+        snprintf(string, string_length, template, cookie.name, cookie.value, vars[0], vars[1], vars[2]);
+        break;
+    }
+    case 6:
+    {
+        size_t string_length = snprintf(NULL, 0, template, cookie.name, cookie.value, vars[0], vars[1], vars[2], vars[3]) + 1;
+        string = malloc(string_length);
+        if (string == NULL) return;
+        snprintf(string, string_length, template, cookie.name, cookie.value, vars[0], vars[1], vars[2], vars[3]);
+        break;
+    }
+    default:
+        return;
+    }
+
+    if (string == NULL) return;
+
+    response->header_add(response, "Set-Cookie", string);
+
+    free(string);
 }

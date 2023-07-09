@@ -468,7 +468,7 @@ int websocketsparser_set_location(websocketsrequest_t* request, const char* stri
         if (c == '?' && path_point_end == 0) {
             path_point_end = i;
 
-            int result = websocketsparser_set_query(request, &string[i + 1], length);
+            int result = websocketsparser_set_query(request, &string[i + 1], length - (i + 1));
 
             if (result == 0) goto next;
             if (result < 0) return result;
@@ -560,7 +560,7 @@ int websocketsparser_set_query(websocketsrequest_t* request, const char* string,
 
     if (query == NULL) return -1;
 
-    request->query = query;
+    request->query_ = query;
     request->last_query = query;
 
     for (; pos < length; pos++) {

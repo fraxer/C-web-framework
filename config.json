@@ -59,7 +59,6 @@
                         "dbname": "dbname",
                         "user": "root",
                         "password": "",
-                        "driver": "postgresql",
                         "connection_timeout": 3,
                         "migration": true
                     }
@@ -71,7 +70,6 @@
                         "dbname": "dbname",
                         "user": "root",
                         "password": "",
-                        "driver": "mysql",
                         "migration": false
                     }
                 ],
@@ -81,8 +79,7 @@
                         "port": 6379,
                         "dbindex": 0,
                         "user": "",
-                        "password": "",
-                        "driver": "redis"
+                        "password": ""
                     }
                 ]
             },

@@ -19,6 +19,7 @@
 
 void http1request_init_payload(http1request_t*);
 void http1request_reset(http1request_t*);
+const char* http1request_query(http1request_t*, const char*);
 http1_header_t* http1request_header(http1request_t*, const char*);
 http1_header_t* http1request_headern(http1request_t*, const char*, size_t);
 const char* http1request_cookie(http1request_t*, const char*);
@@ -27,16 +28,18 @@ void http1request_payload_free(http1_payload_t*);
 int http1request_file_save(http1_payloadfile_t*, const char*, const char*);
 char* http1request_file_read(http1_payloadfile_t*);
 void http1request_payload_parse(http1request_t*);
+http1_payloadpart_t* http1request_multipart_part(http1request_t*, const char*);
+http1_payloadpart_t* http1request_urlencoded_part(http1request_t*, const char*);
 
 void http1request_init_payload(http1request_t* request) {
     request->payload_.fd = 0;
     request->payload_.path = NULL;
     request->payload_.part = NULL;
     request->payload_.boundary = NULL;
+    request->payload_.type = NONE;
 
     request->payload = http1request_payload;
     request->payloadf = http1request_payloadf;
-    request->payload_urlencoded = http1request_payload_urlencoded;
     request->payload_file = http1request_payload_file;
     request->payload_filef = http1request_payload_filef;
     request->payload_json = http1request_payload_json;
@@ -90,12 +93,13 @@ http1request_t* http1request_create(connection_t* connection) {
     request->uri = NULL;
     request->path = NULL;
     request->ext = NULL;
-    request->query = NULL;
+    request->query_ = NULL;
     request->last_query = NULL;
     request->header_ = NULL;
     request->last_header = NULL;
     request->cookie_ = NULL;
     request->connection = connection;
+    request->query = http1request_query;
     request->header = http1request_header;
     request->headern = http1request_headern;
     request->cookie = http1request_cookie;
@@ -126,8 +130,8 @@ void http1request_reset(http1request_t* request) {
 
     http1request_payload_free(&request->payload_);
 
-    http1request_query_free(request->query);
-    request->query = NULL;
+    http1request_query_free(request->query_);
+    request->query_ = NULL;
     request->last_query = NULL;
 
     http1request_header_free(request->header_);
@@ -136,6 +140,21 @@ void http1request_reset(http1request_t* request) {
 
     http1_cookie_free(request->cookie_);
     request->cookie_ = NULL;
+}
+
+const char* http1request_query(http1request_t* request, const char* key) {
+    if (key == NULL) return NULL;
+
+    http1_query_t* query = request->query_;
+
+    while (query) {
+        if (strcmp(key, query->key) == 0)
+            return query->value;
+
+        query = query->next;
+    }
+
+    return NULL;
 }
 
 http1_header_t* http1request_header(http1request_t* request, const char* key) {
@@ -208,26 +227,18 @@ char* http1request_payload(http1request_t* request) {
 char* http1request_payloadf(http1request_t* request, const char* field) {
     http1request_payload_parse(request);
 
-    char* buffer = NULL;
-    http1_payloadpart_t* part = request->payload_.part;
-    if (part == NULL) return NULL;
+    http1_payloadpart_t* part = NULL;
 
-    while (field != NULL && part) {
-        http1_payloadfield_t* pfield = part->field;
-        while (pfield) {
-            if (pfield->key != NULL && strcmp(pfield->key, "name") == 0 && strcmp(pfield->value, field) == 0) {
-                goto next;
-            }
-            pfield = pfield->next;
-        }
-        part = part->next;
-    }
+    if (request->payload_.type == PLAIN || request->payload_.type == MULTIPART)
+        part = http1request_multipart_part(request, field);
+    else if (request->payload_.type == URLENCODED)
+        part = http1request_urlencoded_part(request, field);
+    else
+        return NULL;
 
     if (part == NULL) return NULL;
 
-    next:
-
-    buffer = malloc(part->size + 1);
+    char* buffer = malloc(part->size + 1);
     if (buffer == NULL) return NULL;
 
     lseek(request->payload_.fd, part->offset, SEEK_SET);
@@ -244,39 +255,36 @@ char* http1request_payloadf(http1request_t* request, const char* field) {
     return buffer;
 }
 
-char* http1request_payload_urlencoded(http1request_t* request, const char* field) {
-    http1request_payload_parse(request);
-
+http1_payloadpart_t* http1request_multipart_part(http1request_t* request, const char* field) {
     http1_payloadpart_t* part = request->payload_.part;
-
     if (part == NULL) return NULL;
 
     while (field != NULL && part) {
-        if (part->field && strcmp(part->field->value, field) == 0) {
-            part = part->next;
-            break;
+        http1_payloadfield_t* pfield = part->field;
+        while (pfield) {
+            if (pfield->key != NULL && strcmp(pfield->key, "name") == 0 && strcmp(pfield->value, field) == 0)
+                return part;
+
+            pfield = pfield->next;
         }
+        part = part->next;
+    }
+
+    return part;
+}
+
+http1_payloadpart_t* http1request_urlencoded_part(http1request_t* request, const char* field) {
+    http1_payloadpart_t* part = request->payload_.part;
+    if (part == NULL) return NULL;
+
+    while (field != NULL && part) {
+        if (part->field && strcmp(part->field->value, field) == 0)
+            return part->next;
 
         part = part->next;
     }
 
-    if (part == NULL) return NULL;
-
-    char* buffer = malloc(part->size + 1);
-    if (buffer == NULL) return NULL;
-
-    lseek(request->payload_.fd, part->offset, SEEK_SET);
-    int r = read(request->payload_.fd, buffer, part->size);
-    lseek(request->payload_.fd, 0, SEEK_SET);
-
-    buffer[part->size] = 0;
-
-    if (r < 0) {
-        free(buffer);
-        return NULL;
-    }
-
-    return buffer;
+    return NULL;
 }
 
 http1_payloadfile_t http1request_payload_file(http1request_t* request) {
@@ -297,38 +305,21 @@ http1_payloadfile_t http1request_payload_filef(http1request_t* request, const ch
         .read = http1request_file_read
     };
 
-    http1_payloadpart_t* part = request->payload_.part;
-    if (part == NULL) return file;
-
-    while (field != NULL && part) {
-        http1_payloadfield_t* pfield = part->field;
-        while (pfield) {
-            if (pfield->key != NULL && strcmp(pfield->key, "name") == 0 && strcmp(pfield->value, field) == 0) {
-                goto next;
-            }
-            pfield = pfield->next;
-        }
-        part = part->next;
-    }
-
+    http1_payloadpart_t* part = http1request_multipart_part(request, field);
     if (part == NULL) return file;
 
     char* filename = NULL;
-    http1_payloadfield_t* pfield = NULL;
-
-    next:
-
-    pfield = part->field;
+    http1_payloadfield_t* pfield = part->field;
 
     while (pfield) {
-        if (strcmp(pfield->key, "filename") == 0) {
+        if (pfield->key && strcmp(pfield->key, "filename") == 0) {
             filename = pfield->value;
             break;
         }
         pfield = pfield->next;
     }
 
-    file.ok = filename != NULL;
+    file.ok = !(field != NULL && filename == NULL);
     file.payload_fd = request->payload_.fd;
     file.offset = part->offset;
     file.size = part->size;
@@ -492,6 +483,7 @@ void http1request_payload_parse_multipart(http1request_t* request, const char* h
 
     lseek(request->payload_.fd, 0, SEEK_SET);
 
+    request->payload_.type = MULTIPART;
     request->payload_.part = multipartparser_part(&mparser);
 }
 
@@ -517,6 +509,7 @@ void http1request_payload_parse_urlencoded(http1request_t* request) {
 
     lseek(request->payload_.fd, 0, SEEK_SET);
 
+    request->payload_.type = URLENCODED;
     request->payload_.part = urlencodedparser_part(&parser);
 }
 
@@ -527,6 +520,7 @@ void http1request_payload_parse_plain(http1request_t* request) {
     part->size = lseek(request->payload_.fd, 0, SEEK_END);
     lseek(request->payload_.fd, 0, SEEK_SET);
 
+    request->payload_.type = PLAIN;
     request->payload_.part = part;
 }
 

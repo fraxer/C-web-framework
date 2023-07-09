@@ -6,6 +6,7 @@
 #include "websocketsrequest.h"
 
 db_t* websocketsrequest_database_list(websocketsrequest_t*);
+const char* websocketsrequest_query(websocketsrequest_t*, const char*);
 
 websocketsrequest_t* websocketsrequest_alloc() {
     return (websocketsrequest_t*)malloc(sizeof(websocketsrequest_t));
@@ -49,9 +50,10 @@ websocketsrequest_t* websocketsrequest_create(connection_t* connection) {
     request->ext = NULL;
     request->payload = NULL;
     request->control_payload = NULL;
-    request->query = NULL;
+    request->query_ = NULL;
     request->last_query = NULL;
     request->connection = connection;
+    request->query = websocketsrequest_query;
     request->database_list = websocketsrequest_database_list;
     request->base.reset = (void(*)(void*))websocketsrequest_reset;
     request->base.free = (void(*)(void*))websocketsrequest_free;
@@ -80,8 +82,8 @@ void websocketsrequest_reset(websocketsrequest_t* request) {
         if (request->payload) free(request->payload);
         request->payload = NULL;
 
-        websocketsrequest_query_free(request->query);
-        request->query = NULL;
+        websocketsrequest_query_free(request->query_);
+        request->query_ = NULL;
         request->last_query = NULL;
     }
 
@@ -95,4 +97,19 @@ void websocketsrequest_reset(websocketsrequest_t* request) {
 
 db_t* websocketsrequest_database_list(websocketsrequest_t* request) {
     return request->connection->server->database;
+}
+
+const char* websocketsrequest_query(websocketsrequest_t* request, const char* key) {
+    if (key == NULL) return NULL;
+
+    websockets_query_t* query = request->query_;
+
+    while (query) {
+        if (strcmp(key, query->key) == 0)
+            return query->value;
+
+        query = query->next;
+    }
+
+    return NULL;
 }

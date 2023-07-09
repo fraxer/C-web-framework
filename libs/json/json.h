@@ -97,7 +97,7 @@ jsondoc_t* json_init();
  * It parses a JSON data string into and array of tokens, each describing
  * a single JSON object.
  */
-int json_parse(jsondoc_t*, const char *);
+int json_parse(jsondoc_t*, const char*);
 
 /**
  * Free internal memory

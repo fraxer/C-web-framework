@@ -37,12 +37,13 @@ typedef struct websocketsrequest {
 
     int* keepalive_enabled;
 
-    websockets_query_t* query;
+    websockets_query_t* query_;
     websockets_query_t* last_query;
 
     connection_t* connection;
 
     db_t*(*database_list)(struct websocketsrequest*);
+    const char*(*query)(struct websocketsrequest*, const char*);
 } websocketsrequest_t;
 
 websocketsrequest_t* websocketsrequest_create(connection_t*);

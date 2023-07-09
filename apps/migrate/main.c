@@ -522,9 +522,9 @@ int mg_create_template(const char* source_directory, mgconfig_t* config) {
 
     const char* data =
         "#include <stdlib.h>\n"
-        "#include <stdio.h>\n"
-        "#include \"../../src/database/dbquery.h\"\n"
-        "#include \"../../src/database/dbresult.h\"\n\n"
+        "#include <stdio.h>\n\n"
+        "#include \"dbquery.h\"\n"
+        "#include \"dbresult.h\"\n\n"
 
         "const char* db() { return \"\"; }\n\n"
 

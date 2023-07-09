@@ -20,11 +20,17 @@ http1_header_t* http1_header_create(const char* key, size_t key_length, const ch
 
     if (header == NULL) return NULL;
 
-    header->key = http1_set_field(key, key_length);
+    header->key = NULL;
     header->key_length = key_length;
-    header->value = http1_set_field(value, value_length);
+    header->value = NULL;
     header->value_length = value_length;
     header->next = NULL;
+
+    if (key_length)
+        header->key = http1_set_field(key, key_length);
+
+    if (value_length)
+        header->value = http1_set_field(value, value_length);
 
     return header;
 }
@@ -44,9 +50,15 @@ http1_query_t* http1_query_create(const char* key, size_t key_length, const char
 
     if (query == NULL) return NULL;
 
-    query->key = http1_set_field(key, key_length);
-    query->value = http1_set_field(value, value_length);
+    query->key = NULL;
+    query->value = NULL;
     query->next = NULL;
+
+    if (key && key_length)
+        query->key = http1_set_field(key, key_length);
+
+    if (value && value_length)
+        query->value = http1_set_field(value, value_length);
 
     return query;
 }
@@ -58,8 +70,6 @@ void http1_query_free(http1_query_t* query) {
 }
 
 char* http1_set_field(const char* string, size_t length) {
-    if (length == 0) return NULL;
-
     char* value = malloc(length + 1);
     if (value == NULL) return value;
 
@@ -192,15 +202,15 @@ http1_cookie_t* http1_cookie_alloc() {
     return malloc(sizeof(http1_cookie_t));
 }
 
-http1_cookie_t* http1_cookie_create(const char* key, size_t key_length, const char* value, size_t value_length) {
+http1_cookie_t* http1_cookie_create() {
     http1_cookie_t* cookie = http1_cookie_alloc();
 
     if (cookie == NULL) return NULL;
 
-    cookie->key = http1_set_field(key, key_length);
-    cookie->key_length = key_length;
-    cookie->value = http1_set_field(value, value_length);
-    cookie->value_length = value_length;
+    cookie->key = NULL;
+    cookie->key_length = 0;
+    cookie->value = NULL;
+    cookie->value_length = 0;
     cookie->next = NULL;
 
     return cookie;
