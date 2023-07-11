@@ -359,8 +359,9 @@ int http1_get_redirect(connection_t* connection) {
         if (request->ext) free((void*)request->ext);
         request->ext = NULL;
 
-        if (redirect_is_external(new_uri)) {
+        if (http1response_redirect_is_external(new_uri)) {
             request->uri = new_uri;
+            connection->keepalive_enabled = 0;
             return REDIRECT_FOUND;
         }
 

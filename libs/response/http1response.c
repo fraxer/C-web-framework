@@ -552,6 +552,10 @@ void http1response_redirect(http1response_t* response, const char* path, int sta
     response->status_code = status_code;
 
     if (response->header_add(response, "Location", path) == -1) return;
+
+    if (http1response_redirect_is_external(path)) {
+        if (response->header_add(response, "Connection", "Close") == -1) return;
+    }
 }
 
 http1response_head_t http1response_create_head(http1response_t* response) {
@@ -849,4 +853,29 @@ void http1response_cookie_add(http1response_t* response, cookie_t cookie) {
     response->header_add(response, "Set-Cookie", string);
 
     free(string);
+}
+
+int http1response_redirect_is_external(const char* url) {
+    if (strlen(url) < 8) return 0;
+
+    if (url[0] == 'h'
+        && url[1] == 't'
+        && url[2] == 't'
+        && url[3] == 'p'
+        && url[4] == ':'
+        && url[5] == '/'
+        && url[6] == '/'
+        ) return 1;
+
+    if (url[0] == 'h'
+        && url[1] == 't'
+        && url[2] == 't'
+        && url[3] == 'p'
+        && url[4] == 's'
+        && url[5] == ':'
+        && url[6] == '/'
+        && url[7] == '/'
+        ) return 1;
+
+    return 0;
 }

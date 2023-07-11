@@ -34,6 +34,4 @@ void redirect_free(redirect_t*);
 
 char* redirect_get_uri(redirect_t*, const char*, int*);
 
-int redirect_is_external(const char* url);
-
 #endif

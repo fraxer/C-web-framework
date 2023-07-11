@@ -295,31 +295,6 @@ char* redirect_get_uri(redirect_t* redirect, const char* string, int* vector) {
     return uri;
 }
 
-int redirect_is_external(const char* url) {
-    if (strlen(url) < 8) return 0;
-
-    if (url[0] == 'h'
-        && url[1] == 't'
-        && url[2] == 't'
-        && url[3] == 'p'
-        && url[4] == ':'
-        && url[5] == '/'
-        && url[6] == '/'
-        ) return 1;
-
-    if (url[0] == 'h'
-        && url[1] == 't'
-        && url[2] == 't'
-        && url[3] == 'p'
-        && url[4] == 's'
-        && url[5] == ':'
-        && url[6] == '/'
-        && url[7] == '/'
-        ) return 1;
-
-    return 0;
-}
-
 void redirect_append_uri(char* uri, size_t* offset, const char* string, size_t length) {
     strncpy(&uri[*offset], string, length);
 

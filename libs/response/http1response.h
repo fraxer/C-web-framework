@@ -72,4 +72,6 @@ http1_ranges_t* http1response_init_ranges();
 
 void http1response_free_ranges(http1_ranges_t*);
 
+int http1response_redirect_is_external(const char* url);
+
 #endif
