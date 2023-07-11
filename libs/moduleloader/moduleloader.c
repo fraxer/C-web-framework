@@ -690,11 +690,6 @@ int module_loader_servers_load(int reload_is_hard) {
             }
         }
 
-        if (finded_fields[HTTP] == 0 && finded_fields[WEBSOCKETS] == 0) {
-            log_error("Error: Missing section http and websockets\n");
-            goto failed;
-        }
-
         if (module_loader_check_unique_domains(first_server) == -1) goto failed;
     }
 
