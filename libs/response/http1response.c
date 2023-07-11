@@ -552,7 +552,6 @@ void http1response_redirect(http1response_t* response, const char* path, int sta
     response->status_code = status_code;
 
     if (response->header_add(response, "Location", path) == -1) return;
-    if (http1response_header_add_content_length(response, 0) == -1) return;
 }
 
 http1response_head_t http1response_create_head(http1response_t* response) {
