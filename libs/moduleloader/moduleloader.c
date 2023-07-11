@@ -499,16 +499,17 @@ openssl_t* module_loader_openssl_load(const jsontok_t* token_object) {
 
 int module_loader_check_unique_domains(server_t* first_server) {
     for (server_t* current_server = first_server; current_server; current_server = current_server->next) {
+        unsigned short int current_port = current_server->port;
         for (domain_t* current_domain = current_server->domain; current_domain; current_domain = current_domain->next) {
 
             for (server_t* server = first_server; server; server = server->next) {
+                unsigned short int port = server->port;
                 for (domain_t* domain = server->domain; domain; domain = domain->next) {
+                    if (current_domain == domain) continue;
 
-                    if (current_domain != domain) {
-                        if (strcmp(current_domain->template, domain->template) == 0) {
-                            log_error("Error: Domains must be unique. %s\n", current_domain->template);
-                            return -1;
-                        }
+                    if (strcmp(current_domain->template, domain->template) == 0 && current_port == port) {
+                        log_error("Error: Domains must be unique. %s\n", current_domain->template);
+                        return -1;
                     }
                 }
             }
@@ -635,11 +636,6 @@ int module_loader_servers_load(int reload_is_hard) {
 
                 server->http.route = module_loader_http_routes_load(&first_lib, json_object_get(token_value, "routes"));
                 server->http.redirect = module_loader_http_redirects_load(json_object_get(token_value, "redirects"));
-
-                if (server->http.route == NULL) {
-                    log_error("Error: Can't load http routes\n");
-                    goto failed;
-                }
             }
             else if (strcmp(key, "websockets") == 0) {
                 if (!json_is_object(token_value)) goto failed;

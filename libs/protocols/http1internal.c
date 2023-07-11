@@ -18,6 +18,7 @@ int http1_write_body(connection_t*, char*, size_t, size_t);
 int http1_get_resource(connection_t*);
 int http1_get_file(connection_t*);
 int http1_get_redirect(connection_t*);
+int http1_apply_redirect(connection_t*);
 char* http1_get_fullpath(connection_t*);
 void http1_prepare_range(http1response_t*, ssize_t*, ssize_t*, size_t*, const size_t);
 
@@ -234,22 +235,9 @@ void http1_handle(connection_t* connection) {
         return;
     }
 
-    switch (http1_get_redirect(connection)) {
-    case REDIRECT_OUT_OF_MEMORY:
-        http1response_default((http1response_t*)connection->response, 500);
+    if (http1_apply_redirect(connection)) {
         connection->after_read_request(connection);
         return;
-    case REDIRECT_LOOP_CYCLE:
-        http1response_default((http1response_t*)connection->response, 508);
-        connection->after_read_request(connection);
-        return;
-    case REDIRECT_FOUND:
-        http1response_redirect((http1response_t*)connection->response, request->uri, 301);
-        connection->after_read_request(connection);
-        return;
-    case REDIRECT_NOT_FOUND:
-    default:
-        break;
     }
 
     if (http1_get_resource(connection) == 0) return;
@@ -316,21 +304,40 @@ int http1_get_file(connection_t* connection) {
     return response->filen(response, request->path, request->path_length);
 }
 
+int http1_apply_redirect(connection_t* connection) {
+    http1request_t* request = (http1request_t*)connection->request;
+    http1response_t* response = (http1response_t*)connection->response;
+
+    switch (http1_get_redirect(connection)) {
+    case REDIRECT_OUT_OF_MEMORY:
+        http1response_default(response, 500);
+        return 1;
+    case REDIRECT_LOOP_CYCLE:
+        http1response_default(response, 508);
+        return 1;
+    case REDIRECT_FOUND:
+        http1response_redirect(response, request->uri, 301);
+        return 1;
+    case REDIRECT_NOT_FOUND:
+    default:
+        break;
+    }
+
+    return 0;
+}
+
 int http1_get_redirect(connection_t* connection) {
     http1request_t* request = (http1request_t*)connection->request;
-
-    redirect_t* redirect = connection->server->http.redirect;
 
     int loop_cycle = 1;
     int find_new_location = 0;
 
+    redirect_t* redirect = connection->server->http.redirect;
     while (redirect) {
         if (loop_cycle >= 10) return REDIRECT_LOOP_CYCLE;
 
         int vector_size = redirect->params_count * 6;
         int vector[vector_size];
-
-        // find resource by template
         int matches_count = pcre_exec(redirect->location, NULL, request->path, request->path_length, 0, 0, vector, vector_size);
 
         if (matches_count < 0) {
@@ -340,40 +347,25 @@ int http1_get_redirect(connection_t* connection) {
 
         find_new_location = 1;
 
-        const char* old_uri = request->uri;
-        const char* old_path = request->path;
-        const char* old_ext = request->ext;
-
         char* new_uri = redirect_get_uri(redirect, request->path, vector);
-
         if (new_uri == NULL) return REDIRECT_OUT_OF_MEMORY;
 
-        // if (redirect_is_external(new_uri)) {
-        //     return REDIRECT_ALIAS;
-        // }
+        if (request->uri) free((void*)request->uri);
+        request->uri = NULL;
 
-        int result = http1parser_set_uri(request, new_uri, strlen(new_uri));
+        if (request->path) free((void*)request->path);
+        request->path = NULL;
 
-        if (result == -1) {
-            if (old_uri != request->uri) {
-                free((void*)request->uri);
-                request->uri = old_uri;
-            }
-            if (old_path != request->path) {
-                free((void*)request->path);
-                request->path = old_path;
-            }
-            if (old_ext != request->ext) {
-                free((void*)request->ext);
-                request->ext = old_ext;
-            }
+        if (request->ext) free((void*)request->ext);
+        request->ext = NULL;
+
+        if (redirect_is_external(new_uri)) {
+            request->uri = new_uri;
+            return REDIRECT_FOUND;
+        }
+
+        if (http1parser_set_uri(request, new_uri, strlen(new_uri)) == -1)
             return REDIRECT_OUT_OF_MEMORY;
-        }
-        else {
-            if (old_uri != request->uri) free((void*)old_uri);
-            if (old_path != request->path) free((void*)old_path);
-            if (old_ext != request->ext) free((void*)old_ext);
-        }
 
         redirect = connection->server->http.redirect;
 

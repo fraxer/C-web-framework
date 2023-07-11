@@ -7,8 +7,7 @@ enum redirect_status {
     REDIRECT_OUT_OF_MEMORY,
     REDIRECT_LOOP_CYCLE,
     REDIRECT_FOUND,
-    REDIRECT_NOT_FOUND,
-    REDIRECT_ALIAS
+    REDIRECT_NOT_FOUND
 };
 
 typedef struct redirect_param {
@@ -34,5 +33,7 @@ redirect_t* redirect_create(const char*, const char*);
 void redirect_free(redirect_t*);
 
 char* redirect_get_uri(redirect_t*, const char*, int*);
+
+int redirect_is_external(const char* url);
 
 #endif
