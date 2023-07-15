@@ -1,26 +1,24 @@
-#include <stddef.h>
 #include <stdlib.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 
 #include "log.h"
-#include "server.h"
 #include "socket.h"
 
 int socket_init(in_addr_t, unsigned short int);
 
 int socket_set_options(int);
 
-socket_t* socket_listen_create(server_t* server, in_addr_t ip, unsigned short int port, void*(*socket_alloc)()) {
+socket_t* socket_listen_create(in_addr_t ip, unsigned short int port, void*(*socket_alloc)()) {
     socket_t* result = NULL;
     socket_t* socket = (socket_t*)socket_alloc();
 
     if (socket == NULL) return NULL;
 
     socket->fd = socket_init(ip, port);
-    socket->server = server;
+    socket->ip = ip;
+    socket->port = port;
 
     if (socket->fd == -1) {
         log_error("Socket error: Can't create socket on port %d\n", port);
@@ -64,19 +62,17 @@ void socket_free(socket_t* socket) {
 int socket_init(in_addr_t ip, unsigned short int port) {
     struct sockaddr_in sa = {0};
 
-    int result = -1;
-
     sa.sin_family      = AF_INET;
     sa.sin_port        = htons(port);
     sa.sin_addr.s_addr = ip;
 
     int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
     if (fd == -1) {
         log_error("Socket error: Can't create socket\n");
         return -1;
     }
 
+    int result = -1;
     if (socket_set_options(fd) == -1) {
         log_error("Socket error: Can't set oprions for socket\n");
         goto failed;
@@ -91,9 +87,8 @@ int socket_init(in_addr_t ip, unsigned short int port) {
 
     failed:
 
-    if (result == -1) {
+    if (result == -1)
         close(fd);
-    }
 
     return result;
 }
@@ -120,9 +115,8 @@ int socket_set_nonblocking(int socket) {
 }
 
 socket_t* socket_find(int fd, socket_t* first_socket) {
-    for (socket_t* socket = first_socket; socket; socket = socket->next) {
+    for (socket_t* socket = first_socket; socket; socket = socket->next)
         if (socket->fd == fd) return socket;
-    }
 
     return NULL;
 }

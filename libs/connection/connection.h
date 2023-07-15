@@ -2,16 +2,20 @@
 #define __CONNECTION__
 
 #include <stdatomic.h>
-#include "../server/server.h"
-#include "../openssl/openssl.h"
-#include "../request/request.h"
-#include "../response/response.h"
+#include "socket.h"
+#include "server.h"
+#include "openssl.h"
+#include "request.h"
+#include "response.h"
 
 typedef struct connection {
     int fd;
     int basefd;
     int keepalive_enabled;
     int timeout;
+    int server_finded;
+    in_addr_t ip;
+    unsigned short int port;
     atomic_bool locked;
     int* counter;
     void* apidata;
@@ -32,9 +36,9 @@ typedef struct connection {
     void(*switch_to_protocol)(struct connection*);
 } connection_t;
 
-connection_t* connection_create(int, int);
+connection_t* connection_create(socket_t*, int);
 
-connection_t* connection_alloc(int fd, int basefd);
+connection_t* connection_alloc(int, int, in_addr_t, unsigned short int);
 
 void connection_free(connection_t*);
 

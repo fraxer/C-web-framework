@@ -474,7 +474,6 @@ int http1parser_host_not_found(http1parser_t* parser) {
     if (parser->host_found) return HTTP1PARSER_SUCCESS;
 
     http1request_t* request = (http1request_t*)parser->connection->request;
-
     http1_header_t* header = request->last_header;
 
     const char* host_key = "host";
@@ -484,22 +483,46 @@ int http1parser_host_not_found(http1parser_t* parser) {
         if (tolower(header->key[i]) != tolower(host_key[j])) return HTTP1PARSER_CONTINUE;
     }
 
-    domain_t* domain = parser->connection->server->domain;
+    const size_t MAX_DOMAIN_LENGTH = 255;
+    char domain[MAX_DOMAIN_LENGTH];
+
+    strncpy(domain, header->value, MAX_DOMAIN_LENGTH - 1);
+    size_t domain_length = 0;
+    const size_t max_domain_length = header->value_length < MAX_DOMAIN_LENGTH ?
+        header->value_length :
+        MAX_DOMAIN_LENGTH;
+
+    for (; domain_length < max_domain_length; domain_length++) {
+        if (domain[domain_length] == ':') {
+            domain[domain_length] = 0;
+            break;
+        }
+    }
 
     int vector_struct_size = 6;
     int substring_count = 20;
     int vector_size = substring_count * vector_struct_size;
     int vector[vector_size];
 
-    while (domain) {
-        int matches_count = pcre_exec(domain->pcre_template, NULL, header->value, header->value_length, 0, 0, vector, vector_size);
+    server_t* server = parser->connection->server;
+    while (server) {
+        if (server->ip == parser->connection->ip && server->port == parser->connection->port) {
+            domain_t* server_domain = server->domain;
 
-        if (matches_count > 0) {
-            parser->host_found = 1;
-            return HTTP1PARSER_SUCCESS;
+            while (server_domain) {
+                int matches_count = pcre_exec(server_domain->pcre_template, NULL, domain, domain_length, 0, 0, vector, vector_size);
+
+                if (matches_count > 0) {
+                    parser->host_found = 1;
+                    parser->connection->server = server;
+                    return HTTP1PARSER_SUCCESS;
+                }
+
+                server_domain = server_domain->next;
+            }
         }
 
-        domain = domain->next;
+        server = server->next;
     }
 
     return HTTP1PARSER_HOST_NOT_FOUND;
@@ -800,7 +823,7 @@ int http1parser_set_header_value(http1request_t* request, http1parser_t* parser)
         return HTTP1PARSER_OUT_OF_MEMORY;
 
     int r = http1parser_host_not_found(parser);
-    if (r != HTTP1PARSER_SUCCESS && r != HTTP1PARSER_CONTINUE)
+    if (r == HTTP1PARSER_HOST_NOT_FOUND)
         return r;
 
     http1parser_try_set_keepalive(parser);

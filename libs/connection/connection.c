@@ -2,18 +2,17 @@
 #include <errno.h>
 
 #include "log.h"
-#include "socket.h"
 #include "openssl.h"
 #include "connection.h"
 
-connection_t* connection_create(int listen_socket, int basefd) {
+connection_t* connection_create(socket_t* socket, int basefd) {
     connection_t* result = NULL;
 
     struct sockaddr in_addr;
 
     socklen_t in_len = sizeof(in_addr);
 
-    int connfd = accept(listen_socket, &in_addr, &in_len);
+    int connfd = accept(socket->fd, &in_addr, &in_len);
 
     if (connfd == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) { // Done processing incoming connections 
@@ -34,7 +33,7 @@ connection_t* connection_create(int listen_socket, int basefd) {
         goto failed;
     }
 
-    connection_t* connection = connection_alloc(connfd, basefd);
+    connection_t* connection = connection_alloc(connfd, basefd, socket->ip, socket->port);
 
     if (connection == NULL) goto failed;
 
@@ -49,7 +48,7 @@ connection_t* connection_create(int listen_socket, int basefd) {
     return result;
 }
 
-connection_t* connection_alloc(int fd, int basefd) {
+connection_t* connection_alloc(int fd, int basefd, in_addr_t ip, unsigned short int port) {
     connection_t* connection = (connection_t*)malloc(sizeof(connection_t));
 
     if (connection == NULL) return NULL;
@@ -58,6 +57,9 @@ connection_t* connection_alloc(int fd, int basefd) {
     connection->basefd = basefd;
     connection->keepalive_enabled = 0;
     connection->timeout = 0;
+    connection->server_finded = 0;
+    connection->ip = ip;
+    connection->port = port;
     connection->locked = 0;
     connection->counter = NULL;
     connection->ssl = NULL;

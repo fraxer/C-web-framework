@@ -79,8 +79,8 @@ void epoll_run(void* chain) {
             if (listen_socket != NULL) {
                 connection_t* connection = NULL;
 
-                while ((connection = connection_create(listen_socket->fd, basefd)) != NULL) {
-                    if (epoll_after_create_connection(connection, listen_socket->server, &connection_count) == -1) break;
+                while ((connection = connection_create(listen_socket, basefd)) != NULL) {
+                    if (epoll_after_create_connection(connection, server_chain->server, &connection_count) == -1) break;
                 }
 
                 continue;
@@ -147,7 +147,7 @@ int epoll_init(socket_epoll_t** first_socket, server_t* first_server) {
     socket_epoll_t* last_socket = NULL;
 
     for (server_t* server = first_server; server; server = server->next) {
-        socket_epoll_t* socket = (socket_epoll_t*)socket_listen_create(server, server->ip, server->port, (void*(*)())epoll_socket_alloc);
+        socket_epoll_t* socket = (socket_epoll_t*)socket_listen_create(server->ip, server->port, (void*(*)())epoll_socket_alloc);
 
         if (socket == NULL) return -1;
 
@@ -200,7 +200,16 @@ int epoll_after_create_connection(connection_t* connection, server_t* server, in
     connection->counter = connection_count;
     connection->server = server;
 
-    if (server->openssl) {
+    while (server) {
+        if (server->ip == connection->ip && server->port == connection->port) {
+            connection->server = server;
+            break;
+        }
+
+        server = server->next;
+    }
+
+    if (connection->server->openssl) {
         protmgr_set_tls(connection);
     } else {
         protmgr_set_http1(connection);
@@ -217,12 +226,12 @@ int epoll_after_create_connection(connection_t* connection, server_t* server, in
 }
 
 socket_epoll_t* epoll_socket_alloc() {
-    socket_epoll_t* socket = (socket_epoll_t*)malloc(sizeof(socket_epoll_t));
-
+    socket_epoll_t* socket = malloc(sizeof(socket_epoll_t));
     if (socket == NULL) return NULL;
 
+    socket->base.ip = 0;
+    socket->base.port = 0;
     socket->base.fd = 0;
-    socket->base.server = NULL;
     socket->base.next = NULL;
     socket->event = (epoll_event_t*)malloc(sizeof(epoll_event_t));
     socket->event->events = 0;

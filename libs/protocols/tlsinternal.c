@@ -31,10 +31,55 @@ void tls_write(connection_t* connection, char* buffer, size_t size) {
     log_error("tls write\n");
 }
 
+int tls_sni_cb(SSL* ssl, int* al, void* arg) {
+    (void)al;
+
+    union tls_addr {
+        struct in_addr ip4;
+        struct in6_addr ip6;
+    } addrbuf;
+
+    const char* server_name = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+    if (server_name == NULL)
+        return SSL_TLSEXT_ERR_NOACK;
+
+    // Per RFC 6066 section 3: ensure that name is not an IP literal.
+    if (inet_pton(AF_INET, server_name, &addrbuf) == 1 ||
+        inet_pton(AF_INET6, server_name, &addrbuf) == 1)
+        return SSL_TLSEXT_ERR_NOACK;
+
+    connection_t* connection = (connection_t*)arg;
+    size_t server_name_length = strlen(server_name);
+    int vector_struct_size = 6;
+    int substring_count = 20;
+    int vector_size = substring_count * vector_struct_size;
+    int vector[vector_size];
+
+    // Find appropriate SSL context for requested servername.
+    for (server_t* server = connection->server; server; server = server->next) {
+        if (server->ip != connection->ip || server->port != connection->port) continue;
+
+        for (domain_t* domain = server->domain; domain; domain = domain->next) {
+            int matches_count = pcre_exec(domain->pcre_template, NULL, server_name, server_name_length, 0, 0, vector, vector_size);
+            if (matches_count > 0) {
+                connection->server = server;
+                SSL_set_SSL_CTX(connection->ssl, connection->server->openssl->ctx);
+
+                return SSL_TLSEXT_ERR_OK;
+            }
+        }
+    }
+
+    /* No match, use the existing context/certificate. */
+    return SSL_TLSEXT_ERR_OK;
+}
+
 void tls_handshake(connection_t* connection) {
     int result = 0;
 
     if (connection->ssl == NULL) {
+        SSL_CTX_set_tlsext_servername_callback(connection->server->openssl->ctx, tls_sni_cb);
+        SSL_CTX_set_tlsext_servername_arg(connection->server->openssl->ctx, connection);
 
         connection->ssl = SSL_new(connection->server->openssl->ctx);
 
@@ -66,7 +111,6 @@ void tls_handshake(connection_t* connection) {
         epoll_ssl_error:
         connection->close(connection);
         return;
-
     case SSL_ERROR_WANT_READ:
     case SSL_ERROR_WANT_WRITE:
     case SSL_ERROR_WANT_ACCEPT:

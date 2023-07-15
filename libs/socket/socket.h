@@ -3,17 +3,16 @@
 
 #include <arpa/inet.h>
 
-#include "server.h"
-
 typedef struct socket {
     int fd;
-    server_t* server;
+    in_addr_t ip;
+    unsigned short int port;
     struct socket* next;
 } socket_t;
 
-socket_t* socket_listen_create(server_t*, in_addr_t, unsigned short int, void*(*)());
+socket_t* socket_listen_create(in_addr_t, unsigned short int, void*(*)());
 
-void socket_free();
+void socket_free(socket_t*);
 
 socket_t* socket_find(int, socket_t*);
 
