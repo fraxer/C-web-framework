@@ -122,6 +122,12 @@
         "text/vnd.wap.wml": ["wml"],
         "text/x-component": ["htc"],
 
+        "font/ttf": ["ttf"],
+        "font/eot": ["eot"],
+        "font/otf": ["otf"],
+        "font/woff": ["woff"],
+        "font/woff2": ["woff2"],
+
         "image/png": ["png"],
         "image/svg+xml": ["svg", "svgz"],
         "image/tiff": ["tif", "tiff"],
