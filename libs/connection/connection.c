@@ -49,8 +49,7 @@ connection_t* connection_create(socket_t* socket, int basefd) {
 }
 
 connection_t* connection_alloc(int fd, int basefd, in_addr_t ip, unsigned short int port) {
-    connection_t* connection = (connection_t*)malloc(sizeof(connection_t));
-
+    connection_t* connection = malloc(sizeof(connection_t));
     if (connection == NULL) return NULL;
 
     connection->fd = fd;

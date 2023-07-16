@@ -50,6 +50,8 @@ void epoll_connection_set_hooks(connection_t*);
 
 void epoll_disable(socket_t*, int);
 
+int epoll_socket_exist(socket_epoll_t*, server_t*);
+
 
 void epoll_run(void* chain) {
     int result = -1;
@@ -88,14 +90,13 @@ void epoll_run(void* chain) {
 
             connection_t* connection = (connection_t*)ev->data.ptr;
 
-            if (connection_trylock(connection) != 0) {
+            if (connection_trylock(connection) != 0)
                 continue;
-            }
 
             if ((ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) ||
                 (server_chain->is_deprecated && server_chain->is_hard_reload)) {
                 connection->close(connection);
-                connection = NULL;
+                ev->data.ptr = NULL;
             }
             else if (ev->events & EPOLLIN) {
                 connection->read(connection, buffer, server_chain->info->read_buffer);
@@ -147,17 +148,17 @@ int epoll_init(socket_epoll_t** first_socket, server_t* first_server) {
     socket_epoll_t* last_socket = NULL;
 
     for (server_t* server = first_server; server; server = server->next) {
+        if (epoll_socket_exist(*first_socket, server)) continue;
+
         socket_epoll_t* socket = (socket_epoll_t*)socket_listen_create(server->ip, server->port, (void*(*)())epoll_socket_alloc);
 
         if (socket == NULL) return -1;
 
-        if (last_socket) {
+        if (last_socket)
             last_socket->base.next = (socket_t*)socket;
-        }
 
-        if (*first_socket == NULL) {
+        if (*first_socket == NULL)
             *first_socket = socket;
-        }
 
         last_socket = socket;
 
@@ -185,6 +186,17 @@ void epoll_disable(socket_t* first_socket, int basefd) {
 
         socket = next;
     }
+}
+
+int epoll_socket_exist(socket_epoll_t* socket, server_t* server) {
+    while (socket) {
+        if (socket->base.ip == server->ip && socket->base.port == server->port)
+            return 1;
+
+        socket = (socket_epoll_t*)socket->base.next;
+    }
+
+    return 0;
 }
 
 char* epoll_buffer_alloc(int size) {

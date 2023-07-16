@@ -16,7 +16,9 @@
 #include "multipartparser.h"
 #include "log.h"
 #include "http1request.h"
+#include "http1parser.h"
 
+int http1request_init_parser(http1request_t*);
 void http1request_init_payload(http1request_t*);
 void http1request_reset(http1request_t*);
 const char* http1request_query(http1request_t*, const char*);
@@ -30,6 +32,15 @@ char* http1request_file_read(http1_payloadfile_t*);
 void http1request_payload_parse(http1request_t*);
 http1_payloadpart_t* http1request_multipart_part(http1request_t*, const char*);
 http1_payloadpart_t* http1request_urlencoded_part(http1request_t*, const char*);
+
+int http1request_init_parser(http1request_t* request) {
+    request->parser = malloc(sizeof(http1parser_t));
+    if (request->parser == NULL) return 0;
+
+    http1parser_init(request->parser);
+
+    return 1;
+}
 
 void http1request_init_payload(http1request_t* request) {
     request->payload_.fd = 0;
@@ -74,6 +85,7 @@ void http1request_free(void* arg) {
     http1request_t* request = (http1request_t*)arg;
 
     http1request_reset(request);
+    http1parser_free(request->parser);
 
     free(request);
 
@@ -82,7 +94,6 @@ void http1request_free(void* arg) {
 
 http1request_t* http1request_create(connection_t* connection) {
     http1request_t* request = http1request_alloc();
-
     if (request == NULL) return NULL;
 
     request->method = ROUTE_NONE;
@@ -99,6 +110,7 @@ http1request_t* http1request_create(connection_t* connection) {
     request->last_header = NULL;
     request->cookie_ = NULL;
     request->connection = connection;
+    request->parser = NULL;
     request->query = http1request_query;
     request->header = http1request_header;
     request->headern = http1request_headern;
@@ -108,6 +120,11 @@ http1request_t* http1request_create(connection_t* connection) {
     request->base.free = (void(*)(void*))http1request_free;
 
     http1request_init_payload(request);
+
+    if (!http1request_init_parser(request)) {
+        free(request);
+        return NULL;
+    }
 
     return request;
 }
@@ -140,6 +157,8 @@ void http1request_reset(http1request_t* request) {
 
     http1_cookie_free(request->cookie_);
     request->cookie_ = NULL;
+
+    http1parser_reset(request->parser);
 }
 
 const char* http1request_query(http1request_t* request, const char* key) {
@@ -247,7 +266,7 @@ char* http1request_payloadf(http1request_t* request, const char* field) {
 
     buffer[part->size] = 0;
 
-    if (r <= 0) {
+    if (r < 0) {
         free(buffer);
         return NULL;
     }
@@ -276,6 +295,7 @@ http1_payloadpart_t* http1request_multipart_part(http1request_t* request, const 
 http1_payloadpart_t* http1request_urlencoded_part(http1request_t* request, const char* field) {
     http1_payloadpart_t* part = request->payload_.part;
     if (part == NULL) return NULL;
+    if (field == NULL) return part->next;
 
     while (field != NULL && part) {
         if (part->field && strcmp(part->field->value, field) == 0)
@@ -537,15 +557,15 @@ void http1request_payload_parse(http1request_t* request) {
         header = header->next;
     }
 
-    if (header == NULL) return;
-
-    if (cmpsubstr(header->value, "multipart/form-data")) {
-        http1request_payload_parse_multipart(request, header->value);
-    }
-    else if (cmpstr(header->value, "application/x-www-form-urlencoded")) {
-        http1request_payload_parse_urlencoded(request);
-    }
-    else {
+    if (header == NULL) {
         http1request_payload_parse_plain(request);
+        return;
     }
+
+    if (cmpsubstr(header->value, "multipart/form-data"))
+        http1request_payload_parse_multipart(request, header->value);
+    else if (cmpstr(header->value, "application/x-www-form-urlencoded"))
+        http1request_payload_parse_urlencoded(request);
+    else
+        http1request_payload_parse_plain(request);
 }

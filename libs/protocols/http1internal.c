@@ -9,7 +9,6 @@
 #include "http1request.h"
 #include "http1response.h"
 #include "http1parser.h"
-
 #include "http1internal.h"
 
 void http1_handle(connection_t*);
@@ -24,53 +23,47 @@ void http1_prepare_range(http1response_t*, ssize_t*, ssize_t*, size_t*, const si
 
 
 void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
-    http1parser_t parser;
-    http1parser_init(&parser, connection, buffer);
+    http1parser_t* parser = ((http1request_t*)connection->request)->parser;
+    http1parser_set_connection(parser, connection);
+    http1parser_set_buffer(parser, buffer);
 
     while (1) {
         int bytes_readed = http1_read_internal(connection, buffer, buffer_size);
 
         switch (bytes_readed) {
         case -1:
-            if (http1parser_payload_loaded(&parser)) {
-                http1parser_free(&parser);
-                http1_handle(connection);
-                return;
-            }
-            break;
+            return;
         case 0:
-            http1parser_free(&parser);
             connection->keepalive_enabled = 0;
             connection->after_read_request(connection);
             return;
         default:
-            http1parser_set_bytes_readed(&parser, bytes_readed);
+            http1parser_set_bytes_readed(parser, bytes_readed);
 
-            switch (http1parser_run(&parser)) {
+            switch (http1parser_run(parser)) {
             case HTTP1PARSER_ERROR:
             case HTTP1PARSER_OUT_OF_MEMORY:
-                http1parser_free(&parser);
                 http1response_default((http1response_t*)connection->response, 500);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_PAYLOAD_LARGE:
-                http1parser_free(&parser);
                 http1response_default((http1response_t*)connection->response, 413);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_BAD_REQUEST:
-                http1parser_free(&parser);
                 http1response_default((http1response_t*)connection->response, 400);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_HOST_NOT_FOUND:
-                http1parser_free(&parser);
                 http1response_default((http1response_t*)connection->response, 404);
                 connection->after_read_request(connection);
                 return;
-            case HTTP1PARSER_SUCCESS:
             case HTTP1PARSER_CONTINUE:
                 break;
+            case HTTP1PARSER_COMPLETE:
+                http1parser_reset(parser);
+                http1_handle(connection);
+                return;
             }
         }
     }

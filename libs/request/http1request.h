@@ -12,6 +12,7 @@ typedef struct http1request {
     route_methods_e method;
     http1_version_e version;
     http1_payload_t payload_;
+    void* parser;
 
     size_t uri_length;
     size_t path_length;
@@ -55,5 +56,9 @@ http1_payloadfile_t http1request_payload_filef(http1request_t*, const char*);
 jsondoc_t* http1request_payload_json(http1request_t*);
 jsondoc_t* http1request_payload_jsonf(http1request_t*, const char*);
 int http1request_has_payload(http1request_t*);
+
+int http1parser_set_uri(http1request_t*, const char*, size_t);
+
+void http1parser_append_query(http1request_t*, http1_query_t*);
 
 #endif
