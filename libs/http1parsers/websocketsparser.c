@@ -78,7 +78,7 @@ int websocketsparser_run(websocketsparser_t* parser) {
     if (parser->frame.payload_length == 0) {
         return 0;
     }
-    if (parser->stage == METHOD) {
+    if (parser->stage == HTTP1PARSER_METHOD) {
         result = websocketsparser_parse_method(parser);
         if (result < 0) return result;
     }
@@ -157,7 +157,7 @@ int websocketsparser_parse_second_byte(websocketsparser_t* parser) {
             parser->stage = MASK_KEY;
         }
         else if (!is_custom_payload_parser && (parser->frame.opcode == 1 || parser->frame.opcode == 2)) {
-            parser->stage = METHOD;
+            parser->stage = HTTP1PARSER_METHOD;
         }
         else {
             parser->stage = DATA;
@@ -205,7 +205,7 @@ int websocketsparser_parse_payload_length(websocketsparser_t* parser) {
         parser->stage = MASK_KEY;
     }
     else if (!is_custom_payload_parser && (parser->frame.opcode == 1 || parser->frame.opcode == 2)) {
-        parser->stage = METHOD;
+        parser->stage = HTTP1PARSER_METHOD;
     }
     else {
         parser->stage = DATA;
@@ -238,7 +238,7 @@ int websocketsparser_parse_mask(websocketsparser_t* parser) {
     parser->string_len = 0;
 
     if (!is_custom_payload_parser && (parser->frame.opcode == 1 || parser->frame.opcode == 2)) {
-        parser->stage = METHOD;
+        parser->stage = HTTP1PARSER_METHOD;
     }
     else {
         parser->stage = DATA;
@@ -420,7 +420,7 @@ int websocketsparser_save_location(websocketsparser_t* parser) {
 
     if (parser->string) {
         if (!is_custom_payload_parser) {
-            if (parser->stage == METHOD) {
+            if (parser->stage == HTTP1PARSER_METHOD) {
                 result = websocketsparser_set_method(parser->request, parser->string, parser->string_len);
             }
             if (parser->stage == LOCATION) {

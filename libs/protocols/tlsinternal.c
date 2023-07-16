@@ -55,6 +55,9 @@ int tls_sni_cb(SSL* ssl, int* al, void* arg) {
     int vector_size = substring_count * vector_struct_size;
     int vector[vector_size];
 
+    if (connection->ssl == NULL)
+        return SSL_TLSEXT_ERR_NOACK;
+
     // Find appropriate SSL context for requested servername.
     for (server_t* server = connection->server; server; server = server->next) {
         if (server->ip != connection->ip || server->port != connection->port) continue;

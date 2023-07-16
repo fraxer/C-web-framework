@@ -11,7 +11,7 @@ typedef enum websockets_request_stage {
     SECOND_BYTE,
     PAYLOAD_LEN,
     MASK_KEY,
-    METHOD,
+    HTTP1PARSER_METHOD,
     LOCATION,
     DATA,
     CONTINUE_DATA
