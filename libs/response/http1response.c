@@ -6,7 +6,6 @@
 #include <ctype.h>
 #include <sys/stat.h>
 
-#include "protocolmanager.h"
 #include "mimetype.h"
 #include "http1response.h"
 
@@ -27,7 +26,6 @@ const char* http1response_get_mimetype(const char*);
 const char* http1response_get_extention(const char*, size_t);
 void http1response_reset(http1response_t*);
 int http1response_keepalive_enabled(http1response_t*);
-void http1response_switch_to_websockets(http1response_t*);
 void http1response_try_enable_gzip(http1response_t*, const char*);
 void http1response_try_enable_te(http1response_t*, const char*);
 http1response_string_t http1response_deflate(http1response_t*, const char*, size_t, int);
@@ -96,7 +94,6 @@ http1response_t* http1response_create(connection_t* connection) {
     response->headern_remove = NULL;
     response->file = http1response_file;
     response->filen = http1response_filen;
-    response->switch_to_websockets = http1response_switch_to_websockets;
     response->deflate = http1response_deflate;
     response->cookie_add = http1response_cookie_add;
     response->base.reset = (void(*)(void*))http1response_reset;
@@ -540,10 +537,6 @@ void http1response_default(http1response_t* response, int status_code) {
 
 int http1response_keepalive_enabled(http1response_t* response) {
     return response->connection->keepalive_enabled;
-}
-
-void http1response_switch_to_websockets(http1response_t* response) {
-    response->connection->switch_to_protocol = protmgr_set_websockets;
 }
 
 void http1response_redirect(http1response_t* response, const char* path, int status_code) {

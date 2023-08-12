@@ -3,6 +3,7 @@
 
 #include <string.h>
 
+#include "protocolmanager.h"
 #include "http1response.h"
 #include "http1request.h"
 #include "sha1.h"
@@ -35,14 +36,15 @@ void switch_to_websockets(http1request_t* request, http1response_t* response) {
     response->headern_add(response, "Upgrade", 7, "websocket", 9);
     response->headern_add(response, "Connection", 10, "Upgrade", 7);
     response->headern_add(response, "Sec-WebSocket-Accept", 20, base64_string, retlen);
+    response->connection->switch_to_protocol = protmgr_set_websockets_default;
 
-    if (ws_protocol != NULL) {
+    if (ws_protocol != NULL && strcmp(ws_protocol->value, "resource") == 0) {
         response->headern_add(response, "Sec-WebSocket-Protocol", 22, ws_protocol->value, ws_protocol->value_length);
+        response->connection->switch_to_protocol = protmgr_set_websockets_resource;
     }
 
     response->status_code = 101;
     response->connection->keepalive_enabled = 1;
-    response->switch_to_websockets(response);
 }
 
 #endif
