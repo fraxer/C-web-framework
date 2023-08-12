@@ -30,8 +30,14 @@ typedef struct websockets_frame {
     unsigned int opcode;
     unsigned int masked;
     unsigned char mask[4];
-    ssize_t payload_length;
+    size_t payload_length;
 } websockets_frame_t;
+
+typedef struct websockets_payload {
+    int fd;
+    size_t payload_offset;
+    char* path;
+} websockets_payload_t;
 
 websockets_query_t* websockets_query_create(const char*, size_t, const char*, size_t);
 

@@ -16,34 +16,31 @@ typedef enum websockets_datatype {
     WEBSOCKETS_PONG = 0x8A
 } websockets_datatype_e;
 
+struct websocketsrequest;
+
+typedef struct websockets_protocol {
+    int(*payload_parse)(struct websocketsrequest*, const char*, size_t, int);
+    int(*get_resource)(connection_t*);
+    void(*reset)(void*);
+    void(*free)(void*);
+} websockets_protocol_t;
+
 typedef struct websocketsrequest {
     request_t base;
-    route_methods_e method;
     websockets_datatype_e type;
     websockets_datatype_e control_type;
+    websockets_payload_t payload;
+    void* parser;
+    websockets_protocol_t* protocol;
 
-    size_t uri_length;
-    size_t path_length;
-    size_t ext_length;
     size_t payload_length;
-    size_t control_payload_length;
-
-    char* uri;
-    char* path;
-    char* ext;
-
-    char* payload;
-    char* control_payload;
+    int fragmented;
 
     int* keepalive_enabled;
-
-    websockets_query_t* query_;
-    websockets_query_t* last_query;
 
     connection_t* connection;
 
     db_t*(*database_list)(struct websocketsrequest*);
-    const char*(*query)(struct websocketsrequest*, const char*);
 } websocketsrequest_t;
 
 websocketsrequest_t* websocketsrequest_create(connection_t*);

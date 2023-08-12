@@ -28,7 +28,7 @@ void protmgr_set_http1(connection_t* connection) {
     connection->response = (response_t*)http1response_create(connection);
 }
 
-void protmgr_set_websockets(connection_t* connection) {
+void protmgr_set_websockets_default(connection_t* connection) {
     connection->read = websockets_read;
     connection->write = websockets_write;
 
@@ -36,7 +36,28 @@ void protmgr_set_websockets(connection_t* connection) {
         connection->request->free(connection->request);
     }
 
-    connection->request = (request_t*)websocketsrequest_create(connection);
+    websocketsrequest_t* request = websocketsrequest_create(connection);
+    connection->request = (request_t*)request;
+    request->protocol = websockets_protocol_default_create();
+
+    if (connection->response != NULL) {
+        connection->response->free(connection->response);
+    }
+
+    connection->response = (response_t*)websocketsresponse_create(connection);
+}
+
+void protmgr_set_websockets_resource(connection_t* connection) {
+    connection->read = websockets_read;
+    connection->write = websockets_write;
+
+    if (connection->request != NULL) {
+        connection->request->free(connection->request);
+    }
+
+    websocketsrequest_t* request = websocketsrequest_create(connection);
+    connection->request = (request_t*)request;
+    request->protocol = websockets_protocol_resource_create();
 
     if (connection->response != NULL) {
         connection->response->free(connection->response);

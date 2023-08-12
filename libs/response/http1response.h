@@ -51,7 +51,6 @@ typedef struct http1response {
     int(*headern_remove)(struct http1response*, const char*, size_t);
     int(*file)(struct http1response*, const char*);
     int(*filen)(struct http1response*, const char*, size_t);
-    void(*switch_to_websockets)(struct http1response*);
     http1response_string_t(*deflate)(struct http1response*, const char*, size_t, int);
     void(*cookie_add)(struct http1response*, cookie_t);
 } http1response_t;

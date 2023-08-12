@@ -35,6 +35,7 @@ typedef struct server_http {
 
 typedef struct server_websockets {
     route_t* route;
+    void(*default_handler)(void*, void*);
 } server_websockets_t;
 
 typedef struct server {
