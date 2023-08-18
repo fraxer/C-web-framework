@@ -19,7 +19,7 @@ typedef enum websockets_datatype {
 struct websocketsrequest;
 
 typedef struct websockets_protocol {
-    int(*payload_parse)(struct websocketsrequest*, const char*, size_t, int);
+    int(*payload_parse)(struct websocketsrequest*, char*, size_t, int);
     int(*get_resource)(connection_t*);
     void(*reset)(void*);
     void(*free)(void*);
@@ -44,9 +44,11 @@ typedef struct websocketsrequest {
 } websocketsrequest_t;
 
 websocketsrequest_t* websocketsrequest_create(connection_t*);
-
 void websocketsrequest_reset(websocketsrequest_t*);
-
 void websocketsrequest_reset_continue(websocketsrequest_t*);
+
+char* websocketsrequest_payload(websockets_protocol_t*);
+char* websocketsrequest_payloadf(websockets_protocol_t*, const char*);
+jsondoc_t* websocketsrequest_payload_json(websockets_protocol_t*);
 
 #endif
