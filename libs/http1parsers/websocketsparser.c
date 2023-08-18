@@ -273,9 +273,12 @@ int websocketsparser_parse_payload(websocketsparser_t* parser) {
     size_t pos_start = parser->pos;
     size_t size = parser->bytes_readed - pos_start;
 
+    parser->payload_saved_length += size;
+
     int end = parser->payload_saved_length >= parser->frame.payload_length && parser->frame.fin;
 
-    if (!request->protocol->payload_parse(request, &parser->buffer[pos_start], size, end)) return WSPARSER_ERROR;
+    if (!request->protocol->payload_parse(request, &parser->buffer[pos_start], size, end))
+        return WSPARSER_ERROR;
 
     return end ? WSPARSER_COMPLETE : WSPARSER_CONTINUE;
 }

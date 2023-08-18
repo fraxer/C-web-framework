@@ -13,6 +13,7 @@
 #include "routeloader.h"
 #include "domain.h"
 #include "server.h"
+#include "websockets.h"
 #include "openssl.h"
 #include "mimetype.h"
 #include "threadhandler.h"
@@ -250,6 +251,34 @@ redirect_t* module_loader_http_redirects_load(const jsontok_t* token_object) {
     }
 
     return result;
+}
+
+void module_loader_websockets_default_load(void(**fn)(void*, void*), routeloader_lib_t** first_lib, const jsontok_t* token_array) {
+    *fn = (void(*)(void*, void*))websockets_default_handler;
+
+    if (token_array == NULL) return;
+    if (!json_is_array(token_array)) return;
+
+    routeloader_lib_t* last_lib = routeloader_get_last(*first_lib);
+
+    const char* lib_file = json_string(json_array_get(token_array, 0));
+    const char* lib_handler = json_string(json_array_get(token_array, 1));
+
+    if (!routeloader_has_lib(*first_lib, lib_file)) {
+        routeloader_lib_t* routeloader_lib = routeloader_load_lib(lib_file);
+
+        if (routeloader_lib == NULL) return;
+
+        if (*first_lib == NULL)
+            *first_lib = routeloader_lib;
+
+        if (last_lib)
+            last_lib->next = routeloader_lib;
+
+        last_lib = routeloader_lib;
+    }
+
+    *(void**)(&(*fn)) = routeloader_get_handler(*first_lib, lib_file, lib_handler);
 }
 
 route_t* module_loader_websockets_routes_load(routeloader_lib_t** first_lib, const jsontok_t* token_object) {
@@ -642,12 +671,9 @@ int module_loader_servers_load(int reload_is_hard) {
 
                 finded_fields[WEBSOCKETS] = 1;
 
-                server->websockets.route = module_loader_websockets_routes_load(&first_lib, json_object_get(token_value, "routes"));
+                module_loader_websockets_default_load(&server->websockets.default_handler, &first_lib, json_object_get(token_value, "default"));
 
-                if (server->websockets.route == NULL) {
-                    log_error("Error: Can't load websockets routes\n");
-                    goto failed;
-                }
+                server->websockets.route = module_loader_websockets_routes_load(&first_lib, json_object_get(token_value, "routes"));
             }
             else if (strcmp(key, "databases") == 0) {
                 finded_fields[DATABASE] = 1;
@@ -688,6 +714,10 @@ int module_loader_servers_load(int reload_is_hard) {
                 log_error("Error: Can't alloc memory for index file\n");
                 goto failed;
             }
+        }
+
+        if (finded_fields[WEBSOCKETS] == 0) {
+            server->websockets.default_handler = (void(*)(void*, void*))websockets_default_handler;
         }
 
         if (module_loader_check_unique_domains(first_server) == -1) goto failed;

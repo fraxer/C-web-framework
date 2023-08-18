@@ -5,8 +5,6 @@
 
 #include "websocketsrequest.h"
 #include "websocketsparser.h"
-#include "websocketsprotocoldefault.h"
-#include "websocketsprotocolresource.h"
 
 void websocketsrequest_init_payload(websocketsrequest_t*);
 int websocketsrequest_init_parser(websocketsrequest_t*);
@@ -96,4 +94,16 @@ void websocketsrequest_payload_free(websockets_payload_t* payload) {
 
     free(payload->path);
     payload->path = NULL;
+}
+
+char* websocketsrequest_payload(websockets_protocol_t* protocol) {
+    return NULL;
+}
+
+char* websocketsrequest_payloadf(websockets_protocol_t* protocol, const char* key) {
+    return NULL;
+}
+
+jsondoc_t* websocketsrequest_payload_json(websockets_protocol_t* protocol) {
+    return NULL;
 }

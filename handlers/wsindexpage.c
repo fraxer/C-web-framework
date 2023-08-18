@@ -1,7 +1,7 @@
 #include "websockets.h"
 
 void echo(websocketsrequest_t* request, websocketsresponse_t* response) {
-    const char* data = "";
+    const char* data = "const echo";
 
     // if (request->payload)
     //     data = request->payload;
@@ -15,16 +15,21 @@ void echo(websocketsrequest_t* request, websocketsresponse_t* response) {
 }
 
 void test(websocketsrequest_t* request, websocketsresponse_t* response) {
-    const char* data = "";
-
-    // char* data = ((websockets_protocol_default_t*)request->protocol)->payload();
-    // free(data);
-
-    // websockets_protocol_resource_t* protocol = ((websockets_protocol_resource_t*)request->protocol);
-    // char* data = protocol->payloadf(protocol, "myfield");
-    // char* data = protocol->query(protocol, "myfield");
-    // const char* data = protocol->uri;
-    // free(data);
+    websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)request->protocol;
+    char* data = protocol->payloadf(protocol, "myfield");
+    const char* q = protocol->query(protocol, "myfield");
+    const char* uri = protocol->uri;
 
     response->text(response, data);
+
+    if (data) free(data);
+}
+
+void default_(websocketsrequest_t* request, websocketsresponse_t* response) {
+    if (request->type == WEBSOCKETS_TEXT) {
+        response->text(response, "default response");
+        return;
+    }
+
+    response->binary(response, "default response");
 }

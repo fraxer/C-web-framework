@@ -3,6 +3,8 @@
 #include "http1response.h"
 #include "websocketsrequest.h"
 #include "websocketsresponse.h"
+#include "websocketsprotocoldefault.h"
+#include "websocketsprotocolresource.h"
 
 #include "protocolmanager.h"
 

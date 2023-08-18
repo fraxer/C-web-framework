@@ -30,6 +30,7 @@ server_t* server_create() {
     server->index = NULL;
     server->http.route = NULL;
     server->http.redirect = NULL;
+    server->websockets.default_handler = NULL;
     server->websockets.route = NULL;
     server->database = NULL;
     server->openssl = NULL;
