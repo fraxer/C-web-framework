@@ -6,7 +6,7 @@
 int websocketsrequest_get_default(connection_t*);
 void websockets_protocol_default_reset(void*);
 void websockets_protocol_default_free(void*);
-int websockets_protocol_default_payload_parse(websocketsrequest_t*, char*, size_t, int);
+int websockets_protocol_default_payload_parse(websocketsrequest_t*, char*, size_t);
 
 websockets_protocol_t* websockets_protocol_default_create() {
     websockets_protocol_default_t* protocol = malloc(sizeof * protocol);
@@ -19,6 +19,8 @@ websockets_protocol_t* websockets_protocol_default_create() {
     protocol->payload = (char*(*)(websockets_protocol_default_t*))websocketsrequest_payload;
     protocol->payloadf = (char*(*)(websockets_protocol_default_t*, const char*))websocketsrequest_payloadf;
     protocol->payload_json = (jsondoc_t*(*)(websockets_protocol_default_t*))websocketsrequest_payload_json;
+
+    websockets_protocol_init_payload((websockets_protocol_t*)protocol);
 
     return (websockets_protocol_t*)protocol;
 }
@@ -39,31 +41,22 @@ void websockets_protocol_default_free(void* protocol) {
     free(protocol);
 }
 
-int websockets_protocol_default_payload_parse(websocketsrequest_t* request, char* string, size_t length, int end) {
+int websockets_protocol_default_payload_parse(websocketsrequest_t* request, char* string, size_t length) {
     websocketsparser_t* parser = (websocketsparser_t*)request->parser;
 
     for (size_t i = 0; i < length; i++)
         string[i] ^= parser->frame.mask[parser->payload_index++ % 4];
 
-    if (request->payload.fd <= 0) {
-        const char* template = "tmp.XXXXXX";
-        const char* tmp_dir = request->connection->server->info->tmp_dir;
+    const char* tmp_dir = request->connection->server->info->tmp_dir;
+    if (!websockets_create_tmpfile(request->protocol, tmp_dir))
+        return 0;
 
-        size_t path_length = strlen(tmp_dir) + strlen(template) + 2; // "/", "\0"
-        request->payload.path = malloc(path_length);
-        snprintf(request->payload.path, path_length, "%s/%s", tmp_dir, template);
-
-        request->payload.fd = mkstemp(request->payload.path);
-        if (request->payload.fd == -1) return 0;
-    }
-
-    off_t payloadlength = lseek(request->payload.fd, 0, SEEK_END);
-
+    off_t payloadlength = lseek(request->protocol->payload.fd, 0, SEEK_END);
     if (payloadlength + length > request->connection->server->info->client_max_body_size)
         return 0;
 
-    int r = write(request->payload.fd, string, length);
-    lseek(request->payload.fd, 0, SEEK_SET);
+    int r = write(request->protocol->payload.fd, string, length);
+    lseek(request->protocol->payload.fd, 0, SEEK_SET);
     if (r <= 0) return 0;
     
     return 1;

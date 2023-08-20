@@ -8,14 +8,14 @@ static const size_t method_max_length = 6;
 int websocketsrequest_get_resource(connection_t*);
 void websockets_protocol_resource_reset(void*);
 void websockets_protocol_resource_free(void*);
-int websockets_protocol_resource_payload_parse(websocketsrequest_t*, char*, size_t, int);
+int websockets_protocol_resource_payload_parse(websocketsrequest_t*, char*, size_t);
 const char* websocketsrequest_query(websockets_protocol_resource_t*, const char*);
 websockets_query_t* websocketsrequest_last_query_item(websockets_protocol_resource_t*);
 void websocketsrequest_query_free(websockets_query_t*);
 int websocketsrequest_has_payload(websockets_protocol_resource_t*);
 int websocketsparser_parse_method(websockets_protocol_resource_t*, char*, size_t);
 int websocketsparser_parse_location(websockets_protocol_resource_t*, char*, size_t);
-int websocketsparser_set_uri(websockets_protocol_resource_t*, const char*, size_t);
+int websocketsparser_append_uri(websockets_protocol_resource_t*, const char*, size_t);
 int websocketsparser_set_path(websockets_protocol_resource_t*, const char*, size_t);
 int websocketsparser_set_ext(websockets_protocol_resource_t*, const char*, size_t);
 int websocketsparser_set_query(websockets_protocol_resource_t*, const char*, size_t);
@@ -41,6 +41,8 @@ websockets_protocol_t* websockets_protocol_resource_create() {
     protocol->ext = NULL;
     protocol->query_ = NULL;
     protocol->query = websocketsrequest_query;
+
+    websockets_protocol_init_payload((websockets_protocol_t*)protocol);
 
     return (websockets_protocol_t*)protocol;
 }
@@ -119,28 +121,31 @@ int websocketsrequest_get_resource(connection_t* connection) {
     return 0;
 }
 
-int websockets_protocol_resource_payload_parse(websocketsrequest_t* request, char* string, size_t length, int last_data) {
+int websockets_protocol_resource_payload_parse(websocketsrequest_t* request, char* string, size_t length) {
     websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)request->protocol;
     websocketsparser_t* parser = (websocketsparser_t*)request->parser;
+
+    int end_frame = parser->payload_saved_length >= parser->frame.payload_length;
+    int end_data = end_frame && parser->frame.fin;
 
     size_t offset = 0;
     for (size_t i = 0; i < length; i++) {
         string[i] ^= parser->frame.mask[parser->payload_index++ % 4];
         char ch = string[i];
-        int end = last_data && (i + 1 == length);
+        int last_symbol = i + 1 == length;
+        int last_data = end_data && last_symbol;
 
         switch (protocol->parser_stage) {
         case WSPROTRESOURCE_METHOD:
             {
                 size_t s = websocketsparser_buffer_writed(parser);
-
                 if (s > method_max_length)
                     return 0;
 
                 if (ch != ' ')
                     websocketsparser_buffer_push(parser, ch);
 
-                if (ch == ' ' || end) {
+                if (ch == ' ' || last_data) {
                     protocol->parser_stage = WSPROTRESOURCE_LOCATION;
 
                     websocketsparser_buffer_complete(parser);
@@ -153,7 +158,7 @@ int websockets_protocol_resource_payload_parse(websocketsrequest_t* request, cha
                     websocketsparser_buffer_reset(parser);
                 }
 
-                if (end)
+                if (last_data)
                     return 1;
             }
             break;
@@ -162,21 +167,27 @@ int websockets_protocol_resource_payload_parse(websocketsrequest_t* request, cha
                 if (ch != ' ')
                     websocketsparser_buffer_push(parser, ch);
 
-                if (ch == ' ' || end) {
-                    protocol->parser_stage = WSPROTRESOURCE_DATA;
-                    offset = i + 1;
-
+                if (ch == ' ' || last_symbol) {
                     websocketsparser_buffer_complete(parser);
 
                     char* value = websocketsparser_buffer_get(parser);
                     size_t value_length = websocketsparser_buffer_writed(parser);
-                    if (!websocketsparser_parse_location(protocol, value, value_length))
+
+                    if (websocketsparser_append_uri(protocol, value, value_length) == -1)
                         return 0;
 
                     websocketsparser_buffer_reset(parser);
                 }
 
-                if (end)
+                if (ch == ' ' || last_data) {
+                    protocol->parser_stage = WSPROTRESOURCE_DATA;
+                    offset = i + 1;
+
+                    if (!websocketsparser_parse_location(protocol, protocol->uri, protocol->uri_length))
+                        return 0;
+                }
+
+                if (last_data)
                     return 1;
             }
             break;
@@ -189,25 +200,16 @@ int websockets_protocol_resource_payload_parse(websocketsrequest_t* request, cha
         if (!websocketsrequest_has_payload(protocol))
             return 0;
 
-        if (request->payload.fd <= 0) {
-            const char* template = "tmp.XXXXXX";
-            const char* tmp_dir = request->connection->server->info->tmp_dir;
+        const char* tmp_dir = request->connection->server->info->tmp_dir;
+        if (!websockets_create_tmpfile(request->protocol, tmp_dir))
+            return 0;
 
-            size_t path_length = strlen(tmp_dir) + strlen(template) + 2; // "/", "\0"
-            request->payload.path = malloc(path_length);
-            snprintf(request->payload.path, path_length, "%s/%s", tmp_dir, template);
-
-            request->payload.fd = mkstemp(request->payload.path);
-            if (request->payload.fd == -1) return 0;
-        }
-
-        off_t payloadlength = lseek(request->payload.fd, 0, SEEK_END);
-
+        off_t payloadlength = lseek(request->protocol->payload.fd, 0, SEEK_END);
         if (payloadlength + length > request->connection->server->info->client_max_body_size)
             return 0;
 
-        int r = write(request->payload.fd, &string[offset], length - offset);
-        lseek(request->payload.fd, 0, SEEK_SET);
+        int r = write(request->protocol->payload.fd, &string[offset], length - offset);
+        lseek(request->protocol->payload.fd, 0, SEEK_SET);
         if (r <= 0) return 0;
     }
 
@@ -305,23 +307,24 @@ int websocketsparser_parse_location(websockets_protocol_resource_t* protocol, ch
     if (path_point_end == 0) path_point_end = uri_point_end;
     if (ext_point_start == 0) ext_point_start = path_point_end;
 
-    if (websocketsparser_set_uri(protocol, string, length) == -1) return 0;
     if (websocketsparser_set_path(protocol, string, path_point_end) == -1) return 0;
     if (websocketsparser_set_ext(protocol, &string[ext_point_start], path_point_end - ext_point_start) == -1) return 0;
 
     return 1;
 }
 
-int websocketsparser_set_uri(websockets_protocol_resource_t* protocol, const char* string, size_t length) {
-    if (string[0] != '/') return -1;
+int websocketsparser_append_uri(websockets_protocol_resource_t* protocol, const char* string, size_t length) {
+    char* data = realloc(protocol->uri, protocol->uri_length + length + 1);
+    if (data == NULL) return 0;
 
-    protocol->uri = (char*)malloc(length + 1);
-    if (protocol->uri == NULL) return -1;
+    protocol->uri = data;
 
-    memcpy(protocol->uri, string, length);
+    memcpy(&protocol->uri[protocol->uri_length], string, length);
 
-    protocol->uri[length] = 0;
-    protocol->uri_length = length;
+    protocol->uri_length += length;
+    protocol->uri[protocol->uri_length] = 0;
+
+    if (protocol->uri[0] != '/') return -1;
 
     return 0;
 }

@@ -1,17 +1,20 @@
 #include "websockets.h"
 
 void echo(websocketsrequest_t* request, websocketsresponse_t* response) {
-    const char* data = "const echo";
+    websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)request->protocol;
 
-    // if (request->payload)
-    //     data = request->payload;
+    const char* q = protocol->query(protocol, "my");
+    if (q) {
+        response->text(response, q);
+        return;
+    }
 
-    // data = request->query(request, "my");
+    if (protocol->uri_length) {
+        response->text(response, protocol->uri);
+        return;
+    }
 
-    // if (!data)
-    //     data = "none";
-
-    response->text(response, data);
+    response->text(response, "const echo");
 }
 
 void test(websocketsrequest_t* request, websocketsresponse_t* response) {
