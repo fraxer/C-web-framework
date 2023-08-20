@@ -6,17 +6,16 @@
 #include "websocketsrequest.h"
 #include "websocketsparser.h"
 
-void websocketsrequest_init_payload(websocketsrequest_t*);
 int websocketsrequest_init_parser(websocketsrequest_t*);
 db_t* websocketsrequest_database_list(websocketsrequest_t*);
 void websocketsrequest_payload_free(websockets_payload_t*);
 int websocketsrequest_get_default(connection_t*);
 int websocketsrequest_get_resource(connection_t*);
 
-void websocketsrequest_init_payload(websocketsrequest_t* request) {
-    request->payload.fd = 0;
-    request->payload.path = NULL;
-    request->payload.payload_offset = 0;
+void websockets_protocol_init_payload(websockets_protocol_t* protocol) {
+    protocol->payload.fd = 0;
+    protocol->payload.path = NULL;
+    protocol->payload.payload_offset = 0;
 }
 
 int websocketsrequest_init_parser(websocketsrequest_t* request) {
@@ -49,14 +48,11 @@ websocketsrequest_t* websocketsrequest_create(connection_t* connection) {
     if (request == NULL) return NULL;
 
     request->type = WEBSOCKETS_NONE;
-    request->control_type = WEBSOCKETS_NONE;
-    request->payload_length = 0;
+    request->can_reset = 1;
     request->connection = connection;
     request->database_list = websocketsrequest_database_list;
     request->base.reset = (void(*)(void*))websocketsrequest_reset;
     request->base.free = (void(*)(void*))websocketsrequest_free;
-
-    websocketsrequest_init_payload(request);
 
     if (!websocketsrequest_init_parser(request)) {
         free(request);
@@ -67,17 +63,17 @@ websocketsrequest_t* websocketsrequest_create(connection_t* connection) {
 }
 
 void websocketsrequest_reset(websocketsrequest_t* request) {
-    if (request->control_type == WEBSOCKETS_NONE) {
-        request->type = WEBSOCKETS_NONE;
+    if (request->can_reset) {
+        if (request->type != WEBSOCKETS_PING && request->type != WEBSOCKETS_PONG)
+            request->fragmented = 0;
 
-        request->payload_length = 0;
-        request->fragmented = 0;
+        request->type = WEBSOCKETS_NONE;
         request->protocol->reset(request->protocol);
 
-        websocketsrequest_payload_free(&request->payload);
+        websocketsrequest_payload_free(&request->protocol->payload);
     }
 
-    request->control_type = WEBSOCKETS_NONE;
+    request->can_reset = 1;
 }
 
 db_t* websocketsrequest_database_list(websocketsrequest_t* request) {
@@ -94,6 +90,24 @@ void websocketsrequest_payload_free(websockets_payload_t* payload) {
 
     free(payload->path);
     payload->path = NULL;
+}
+
+int websockets_create_tmpfile(websockets_protocol_t* protocol, const char* tmp_dir) {
+    if (protocol->payload.fd) return 1;
+
+    const char* template = "tmp.XXXXXX";
+    size_t path_length = strlen(tmp_dir) + strlen(template) + 2; // "/", "\0"
+    protocol->payload.path = malloc(path_length);
+    snprintf(protocol->payload.path, path_length, "%s/%s", tmp_dir, template);
+
+    protocol->payload.fd = mkstemp(protocol->payload.path);
+    if (protocol->payload.fd == -1) {
+        free(protocol->payload.path);
+        protocol->payload.path = NULL;
+        return 0;
+    }
+
+    return 1;
 }
 
 char* websocketsrequest_payload(websockets_protocol_t* protocol) {

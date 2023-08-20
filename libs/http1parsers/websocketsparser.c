@@ -73,8 +73,7 @@ int websocketsparser_run(websocketsparser_t* parser) {
     for (parser->pos = parser->pos_start; parser->pos < parser->bytes_readed; parser->pos++) {
         char ch = parser->buffer[parser->pos];
 
-        switch (parser->stage)
-        {
+        switch (parser->stage) {
         case WSPARSER_FIRST_BYTE:
             {
                 websocketsparser_buffer_push(parser, ch);
@@ -200,19 +199,18 @@ int websocketsparser_parse_first_byte(websocketsparser_t* parser) {
     parser->frame.opcode = c & 0x0F;
 
     websocketsrequest_t* request = (websocketsrequest_t*)parser->connection->request;
-    if (!parser->frame.fin)
+
+    if (parser->frame.fin == 0)
         request->fragmented = 1;
 
-    if (request->type == WEBSOCKETS_NONE) {
+    if (request->type == WEBSOCKETS_NONE)
         request->type = parser->frame.opcode + 0x80;
-    }
 
-    if (websocketsparser_is_control_frame(&parser->frame) && (request->type == WEBSOCKETS_TEXT || request->type == WEBSOCKETS_BINARY)) {
-        request->control_type = WEBSOCKETS_CONTINUE;
-    }
-    if (parser->frame.fin == 0 || parser->frame.opcode == WSOPCODE_CONTINUE) {
-        request->control_type = WEBSOCKETS_CONTINUE;
-    }
+    if (request->fragmented)
+        request->can_reset = 0;
+
+    if (parser->frame.fin == 1 || parser->frame.opcode == WSOPCODE_CLOSE)
+        request->can_reset = 1;
 
     return 1;
 }
@@ -275,12 +273,12 @@ int websocketsparser_parse_payload(websocketsparser_t* parser) {
 
     parser->payload_saved_length += size;
 
-    int end = parser->payload_saved_length >= parser->frame.payload_length && parser->frame.fin;
-
-    if (!request->protocol->payload_parse(request, &parser->buffer[pos_start], size, end))
+    if (!request->protocol->payload_parse(request, &parser->buffer[pos_start], size))
         return WSPARSER_ERROR;
 
-    return end ? WSPARSER_COMPLETE : WSPARSER_CONTINUE;
+    int end_frame = parser->payload_saved_length >= parser->frame.payload_length;
+
+    return end_frame ? WSPARSER_COMPLETE : WSPARSER_CONTINUE;
 }
 
 void websockets_buffer_init(websocketsparser_buffer_t* buffer) {
@@ -291,8 +289,7 @@ void websockets_buffer_init(websocketsparser_buffer_t* buffer) {
     buffer->type = STATIC;
 }
 
-int websocketsparser_is_control_frame(websockets_frame_t* frame)
-{
+int websocketsparser_is_control_frame(websockets_frame_t* frame) {
     switch (frame->opcode) {
     case WSOPCODE_CLOSE:
     case WSOPCODE_PING:
