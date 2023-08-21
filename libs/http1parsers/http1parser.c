@@ -39,11 +39,7 @@ void http1parser_init(http1parser_t* parser) {
     parser->content_length = 0;
     parser->content_saved_length = 0;
 
-    parser->buf.dynamic_buffer = NULL;
-    parser->buf.offset_sbuffer = 0;
-    parser->buf.offset_dbuffer = 0;
-    parser->buf.dbuffer_size = 0;
-    parser->buf.type = STATIC;
+    bufferdata_init(&parser->buf);
 }
 
 void http1parser_set_connection(http1parser_t* parser, connection_t* connection) {
@@ -86,28 +82,28 @@ int http1parser_run(http1parser_t* parser) {
             if (ch == ' ') {
                 parser->stage = HTTP1PARSER_URI;
 
-                http1parser_buffer_complete(parser);
+                bufferdata_complete(&parser->buf);
                 if (!http1parser_set_method(request, parser))
                     return HTTP1PARSER_BAD_REQUEST;
 
-                http1parser_buffer_reset(parser);
+                bufferdata_reset(&parser->buf);
                 break;
             }
             else {
-                if (http1parser_buffer_writed(parser) > 7)
+                if (bufferdata_writed(&parser->buf) > 7)
                     return HTTP1PARSER_BAD_REQUEST;
 
-                http1parser_buffer_push(parser, ch);
+                bufferdata_push(&parser->buf, ch);
                 break;
             }
         case HTTP1PARSER_URI:
             if (ch == ' ') {
                 parser->stage = HTTP1PARSER_PROTOCOL;
 
-                http1parser_buffer_complete(parser);
+                bufferdata_complete(&parser->buf);
 
-                size_t length = http1parser_buffer_writed(parser);
-                char* uri = http1parser_buffer_copy(parser);
+                size_t length = bufferdata_writed(&parser->buf);
+                char* uri = bufferdata_copy(&parser->buf);
                 if (uri == NULL)
                     return HTTP1PARSER_OUT_OF_MEMORY;
 
@@ -115,33 +111,33 @@ int http1parser_run(http1parser_t* parser) {
                 if (result != HTTP1PARSER_CONTINUE)
                     return result;
 
-                http1parser_buffer_reset(parser);
+                bufferdata_reset(&parser->buf);
                 break;
             }
             else if (http1parser_is_ctl(ch)) {
                 return HTTP1PARSER_BAD_REQUEST;
             }
             else {
-                http1parser_buffer_push(parser, ch);
+                bufferdata_push(&parser->buf, ch);
                 break;
             }
         case HTTP1PARSER_PROTOCOL:
             if (ch == '\r') {
                 parser->stage = HTTP1PARSER_NEWLINE1;
 
-                http1parser_buffer_complete(parser);
+                bufferdata_complete(&parser->buf);
                 if (!http1parser_set_protocol(request, parser))
                     return HTTP1PARSER_BAD_REQUEST;
 
-                http1parser_buffer_reset(parser);
+                bufferdata_reset(&parser->buf);
 
                 break;
             }
             else {
-                if (http1parser_buffer_writed(parser) > 8)
+                if (bufferdata_writed(&parser->buf) > 8)
                     return HTTP1PARSER_BAD_REQUEST;
 
-                http1parser_buffer_push(parser, ch);
+                bufferdata_push(&parser->buf, ch);
                 break;
             }
         case HTTP1PARSER_NEWLINE1:
@@ -153,7 +149,7 @@ int http1parser_run(http1parser_t* parser) {
                 return HTTP1PARSER_BAD_REQUEST;
         case HTTP1PARSER_HEADER_KEY:
             if (ch == '\r') {
-                if (http1parser_buffer_writed(parser) > 0)
+                if (bufferdata_writed(&parser->buf) > 0)
                     return HTTP1PARSER_BAD_REQUEST;
 
                 parser->stage = HTTP1PARSER_NEWLINE3;
@@ -162,12 +158,12 @@ int http1parser_run(http1parser_t* parser) {
             else if (ch == ':') {
                 parser->stage = HTTP1PARSER_HEADER_SPACE;
 
-                http1parser_buffer_complete(parser);
+                bufferdata_complete(&parser->buf);
                 int r = http1parser_set_header_key(request, parser);
                 if (r != HTTP1PARSER_CONTINUE)
                     return r;
 
-                http1parser_buffer_reset(parser);
+                bufferdata_reset(&parser->buf);
 
                 break;
             }
@@ -175,7 +171,7 @@ int http1parser_run(http1parser_t* parser) {
                 return HTTP1PARSER_BAD_REQUEST;
             }
             else {
-                http1parser_buffer_push(parser, ch);
+                bufferdata_push(&parser->buf, ch);
                 break;
             }
         case HTTP1PARSER_HEADER_SPACE:
@@ -189,12 +185,12 @@ int http1parser_run(http1parser_t* parser) {
             if (ch == '\r') {
                 parser->stage = HTTP1PARSER_NEWLINE2;
 
-                http1parser_buffer_complete(parser);
+                bufferdata_complete(&parser->buf);
                 int r = http1parser_set_header_value(request, parser);
                 if (r != HTTP1PARSER_CONTINUE)
                     return r;
 
-                http1parser_buffer_reset(parser);
+                bufferdata_reset(&parser->buf);
 
                 break;
             }
@@ -203,7 +199,7 @@ int http1parser_run(http1parser_t* parser) {
             }
             else
             {
-                http1parser_buffer_push(parser, ch);
+                bufferdata_push(&parser->buf, ch);
                 break;
             }
         case HTTP1PARSER_NEWLINE2:
@@ -279,8 +275,8 @@ int http1parser_parse_payload(http1parser_t* parser) {
 }
 
 int http1parser_set_method(http1request_t* request, http1parser_t* parser) {
-    char* string = http1parser_buffer_get(parser);
-    size_t length = http1parser_buffer_writed(parser);
+    char* string = bufferdata_get(&parser->buf);
+    size_t length = bufferdata_writed(&parser->buf);
 
     if (length == 3 && string[0] == 'G' && string[1] == 'E' && string[2] == 'T') {
         request->method = ROUTE_GET;
@@ -356,7 +352,7 @@ int http1parser_set_uri(http1request_t* request, const char* string, size_t leng
 }
 
 int http1parser_set_protocol(http1request_t* request, http1parser_t* parser) {
-    char* string = http1parser_buffer_get(parser);
+    char* string = bufferdata_get(&parser->buf);
 
     if (string[0] == 'H' && string[1] == 'T' && string[2] == 'T' && string[3] == 'P' && string[4] == '/'  && string[5] == '1' && string[6] == '.' && string[7] == '1') {
         request->version = HTTP1_VER_1_1;
@@ -733,88 +729,9 @@ http1_ranges_t* http1parser_parse_range(char* str, size_t length) {
     return ranges;
 }
 
-int http1parser_buffer_push(http1parser_t* parser, char ch) {
-    parser->buf.static_buffer[parser->buf.offset_sbuffer] = ch;
-    parser->buf.offset_sbuffer++;
-
-    if (parser->buf.offset_sbuffer < HTTP1PARSER_BUFSIZ) {
-        parser->buf.static_buffer[parser->buf.offset_sbuffer] = 0;
-        return HTTP1PARSER_CONTINUE;
-    }
-
-    parser->buf.type = DYNAMIC;
-
-    return http1parser_buffer_move(parser);
-}
-
-void http1parser_buffer_reset(http1parser_t* parser) {
-    parser->buf.offset_dbuffer = 0;
-    parser->buf.offset_sbuffer = 0;
-    parser->buf.type = STATIC;
-}
-
-size_t http1parser_buffer_writed(http1parser_t* parser) {
-    if (parser->buf.type == DYNAMIC) {
-        return parser->buf.offset_dbuffer + parser->buf.offset_sbuffer;
-    }
-    return parser->buf.offset_sbuffer;
-}
-
-int http1parser_buffer_complete(http1parser_t* parser) {
-    if (parser->buf.type == DYNAMIC) {
-        return http1parser_buffer_move(parser);
-    }
-    return HTTP1PARSER_CONTINUE;
-}
-
-int http1parser_buffer_move(http1parser_t* parser) {
-    if (parser->buf.type != DYNAMIC)
-        return HTTP1PARSER_CONTINUE;
-
-    size_t dbuffer_length = parser->buf.offset_dbuffer + parser->buf.offset_sbuffer;
-
-    if (parser->buf.dbuffer_size <= dbuffer_length) {
-        char* data = realloc(parser->buf.dynamic_buffer, dbuffer_length + 1);
-
-        if (data == NULL)
-            return HTTP1PARSER_OUT_OF_MEMORY;
-
-        parser->buf.dbuffer_size = dbuffer_length + 1;
-        parser->buf.dynamic_buffer = data;
-    }
-
-    memcpy(&parser->buf.dynamic_buffer[parser->buf.offset_dbuffer], parser->buf.static_buffer, parser->buf.offset_sbuffer);
-
-    parser->buf.dynamic_buffer[dbuffer_length] = 0;
-    parser->buf.offset_dbuffer = dbuffer_length;
-    parser->buf.offset_sbuffer = 0;
-
-    return HTTP1PARSER_CONTINUE;
-}
-
-char* http1parser_buffer_get(http1parser_t* parser) {
-    if (parser->buf.type == DYNAMIC) {
-        return parser->buf.dynamic_buffer;
-    }
-    return parser->buf.static_buffer;
-}
-
-char* http1parser_buffer_copy(http1parser_t* parser) {
-    char* string = http1parser_buffer_get(parser);
-    size_t length = http1parser_buffer_writed(parser);
-
-    char* data = malloc(length + 1);
-    if (data == NULL) return NULL;
-
-    memcpy(data, string, length);
-    data[length] = 0;
-
-    return data;
-}
-
 int http1parser_set_header_key(http1request_t* request, http1parser_t* parser) {
-    char* string = http1parser_buffer_get(parser);
-    size_t length = http1parser_buffer_writed(parser);
+    char* string = bufferdata_get(&parser->buf);
+    size_t length = bufferdata_writed(&parser->buf);
     http1_header_t* header = http1_header_create(string, length, NULL, 0);
 
     if (header == NULL) {
@@ -839,8 +756,8 @@ int http1parser_set_header_key(http1request_t* request, http1parser_t* parser) {
 }
 
 int http1parser_set_header_value(http1request_t* request, http1parser_t* parser) {
-    char* string = http1parser_buffer_get(parser);
-    size_t length = http1parser_buffer_writed(parser);
+    char* string = bufferdata_get(&parser->buf);
+    size_t length = bufferdata_writed(&parser->buf);
 
     request->last_header->value = http1_set_field(string, length);
     request->last_header->value_length = length;

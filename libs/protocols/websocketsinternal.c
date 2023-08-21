@@ -70,9 +70,8 @@ void websockets_write(connection_t* connection, char* buffer, size_t buffer_size
     if (response->body.pos < response->body.size) {
         size_t size = response->body.size - response->body.pos;
 
-        if (size > buffer_size) {
+        if (size > buffer_size)
             size = buffer_size;
-        }
 
         ssize_t writed = websockets_write_internal(connection, &response->body.data[response->body.pos], size);
 
@@ -89,9 +88,8 @@ void websockets_write(connection_t* connection, char* buffer, size_t buffer_size
 
         size_t size = response->file_.size - response->file_.pos;
 
-        if (size > buffer_size) {
+        if (size > buffer_size)
             size = buffer_size;
-        }
 
         size_t readed = read(response->file_.fd, buffer, size);
 
@@ -126,13 +124,13 @@ void websockets_handle(connection_t* connection, websocketsparser_t* parser) {
 
     if (parser->frame.fin) {
         if (parser->frame.opcode == WSOPCODE_CLOSE) {
-            websocketsresponse_close(response, websocketsparser_buffer_get(parser), websocketsparser_buffer_writed(parser));
+            websocketsresponse_close(response, bufferdata_get(&parser->buf), bufferdata_writed(&parser->buf));
             connection->keepalive_enabled = 0;
             connection->after_read_request(connection);
             return;
         }
         else if (parser->frame.opcode == WSOPCODE_PING) {
-            websocketsresponse_pong(response, websocketsparser_buffer_get(parser), websocketsparser_buffer_writed(parser));
+            websocketsresponse_pong(response, bufferdata_get(&parser->buf), bufferdata_writed(&parser->buf));
             connection->after_read_request(connection);
             return;
         }

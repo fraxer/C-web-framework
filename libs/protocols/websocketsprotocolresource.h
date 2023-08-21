@@ -26,7 +26,6 @@ typedef struct websockets_protocol_resource {
     websockets_query_t* query_;
 
     char*(*payload)(struct websockets_protocol_resource*);
-    char*(*payloadf)(struct websockets_protocol_resource*, const char*);
     jsondoc_t*(*payload_json)(struct websockets_protocol_resource*);
     const char*(*query)(struct websockets_protocol_resource*, const char*);
 } websockets_protocol_resource_t;

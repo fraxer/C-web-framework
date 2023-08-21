@@ -17,7 +17,6 @@ int websocketsparser_set_payload_length(websocketsparser_t*, int);
 int websocketsparser_set_control_payload(websocketsparser_t*, const char*, size_t);
 int websocketsparser_set_payload(websocketsparser_t*, const char*, size_t);
 void websocketsparser_flush(websocketsparser_t*);
-void websockets_buffer_init(websocketsparser_buffer_t*);
 int websocketsparser_is_control_frame(websockets_frame_t*);
 
 
@@ -33,7 +32,7 @@ void websocketsparser_init(websocketsparser_t* parser) {
     parser->payload_saved_length = 0;
 
     websockets_frame_init(&parser->frame);
-    websockets_buffer_init(&parser->buf);
+    bufferdata_init(&parser->buf);
 }
 
 void websocketsparser_set_connection(websocketsparser_t* parser, connection_t* connection) {
@@ -76,22 +75,22 @@ int websocketsparser_run(websocketsparser_t* parser) {
         switch (parser->stage) {
         case WSPARSER_FIRST_BYTE:
             {
-                websocketsparser_buffer_push(parser, ch);
+                bufferdata_push(&parser->buf, ch);
 
                 parser->stage = WSPARSER_SECOND_BYTE;
 
-                websocketsparser_buffer_complete(parser);
+                bufferdata_complete(&parser->buf);
                 if (!websocketsparser_parse_first_byte(parser))
                     return WSPARSER_BAD_REQUEST;
 
-                websocketsparser_buffer_reset(parser);
+                bufferdata_reset(&parser->buf);
             }
             break;
         case WSPARSER_SECOND_BYTE:
             {
-                websocketsparser_buffer_push(parser, ch);
+                bufferdata_push(&parser->buf, ch);
 
-                websocketsparser_buffer_complete(parser);
+                bufferdata_complete(&parser->buf);
                 if (!websocketsparser_parse_second_byte(parser))
                     return WSPARSER_BAD_REQUEST;
 
@@ -105,7 +104,7 @@ int websocketsparser_run(websocketsparser_t* parser) {
                     parser->stage = WSPARSER_MASK_KEY;
                 }
 
-                websocketsparser_buffer_reset(parser);
+                bufferdata_reset(&parser->buf);
             }
             break;
         case WSPARSER_PAYLOAD_LEN_126:
@@ -113,18 +112,18 @@ int websocketsparser_run(websocketsparser_t* parser) {
                 if (websocketsparser_is_control_frame(&parser->frame))
                     return WSPARSER_BAD_REQUEST;
 
-                websocketsparser_buffer_push(parser, ch);
+                bufferdata_push(&parser->buf, ch);
 
-                if (websocketsparser_buffer_writed(parser) < 2)
+                if (bufferdata_writed(&parser->buf) < 2)
                     break;
 
                 parser->stage = WSPARSER_MASK_KEY;
 
-                websocketsparser_buffer_complete(parser);
+                bufferdata_complete(&parser->buf);
                 if (!websocketsparser_parse_payload_length_126(parser))
                     return WSPARSER_BAD_REQUEST;
 
-                websocketsparser_buffer_reset(parser);
+                bufferdata_reset(&parser->buf);
             }
             break;
         case WSPARSER_PAYLOAD_LEN_127:
@@ -132,32 +131,32 @@ int websocketsparser_run(websocketsparser_t* parser) {
                 if (websocketsparser_is_control_frame(&parser->frame))
                     return WSPARSER_BAD_REQUEST;
 
-                websocketsparser_buffer_push(parser, ch);
+                bufferdata_push(&parser->buf, ch);
 
-                if (websocketsparser_buffer_writed(parser) < 8)
+                if (bufferdata_writed(&parser->buf) < 8)
                     break;
 
                 parser->stage = WSPARSER_MASK_KEY;
 
-                websocketsparser_buffer_complete(parser);
+                bufferdata_complete(&parser->buf);
                 if (!websocketsparser_parse_payload_length_127(parser))
                     return WSPARSER_BAD_REQUEST;
 
-                websocketsparser_buffer_reset(parser);
+                bufferdata_reset(&parser->buf);
             }
             break;
         case WSPARSER_MASK_KEY:
             {
-                websocketsparser_buffer_push(parser, ch);
+                bufferdata_push(&parser->buf, ch);
 
-                if (websocketsparser_buffer_writed(parser) < 4)
+                if (bufferdata_writed(&parser->buf) < 4)
                     break;
 
-                websocketsparser_buffer_complete(parser);
+                bufferdata_complete(&parser->buf);
                 if (!websocketsparser_parse_mask(parser))
                     return WSPARSER_BAD_REQUEST;
 
-                websocketsparser_buffer_reset(parser);
+                bufferdata_reset(&parser->buf);
 
                 if (parser->frame.payload_length == 0)
                     return WSPARSER_COMPLETE;
@@ -170,10 +169,10 @@ int websocketsparser_run(websocketsparser_t* parser) {
 
                 ch = ch ^ parser->frame.mask[parser->payload_index++ % 4];
 
-                websocketsparser_buffer_push(parser, ch);
+                bufferdata_push(&parser->buf, ch);
 
                 if (end) {
-                    websocketsparser_buffer_complete(parser);
+                    bufferdata_complete(&parser->buf);
                     return WSPARSER_COMPLETE;
                 }
             }
@@ -189,7 +188,7 @@ int websocketsparser_run(websocketsparser_t* parser) {
 }
 
 int websocketsparser_parse_first_byte(websocketsparser_t* parser) {
-    char* string = websocketsparser_buffer_get(parser);
+    char* string = bufferdata_get(&parser->buf);
     unsigned char c = string[0];
 
     parser->frame.fin = (c >> 7) & 0x01;
@@ -216,7 +215,7 @@ int websocketsparser_parse_first_byte(websocketsparser_t* parser) {
 }
 
 int websocketsparser_parse_second_byte(websocketsparser_t* parser) {
-    char* string = websocketsparser_buffer_get(parser);
+    char* string = bufferdata_get(&parser->buf);
     unsigned char c = string[0];
 
     parser->frame.masked = (c >> 7) & 0x01;
@@ -242,7 +241,7 @@ int websocketsparser_set_payload_length(websocketsparser_t* parser, int byte_cou
 
     int counter = byte_count;
     const int byte_left = 8;
-    const unsigned char* value = (const unsigned char*)websocketsparser_buffer_get(parser);
+    const unsigned char* value = (const unsigned char*)bufferdata_get(&parser->buf);
 
     do {
         parser->frame.payload_length |= value[byte_count - counter] << (byte_left * counter - byte_left);
@@ -252,9 +251,9 @@ int websocketsparser_set_payload_length(websocketsparser_t* parser, int byte_cou
 }
 
 int websocketsparser_parse_mask(websocketsparser_t* parser) {
-    char* string = websocketsparser_buffer_get(parser);
+    char* string = bufferdata_get(&parser->buf);
 
-    for (size_t i = 0; i < websocketsparser_buffer_writed(parser); i++) 
+    for (size_t i = 0; i < bufferdata_writed(&parser->buf); i++) 
         parser->frame.mask[i] = string[i];
 
     if (websocketsparser_is_control_frame(&parser->frame))
@@ -281,14 +280,6 @@ int websocketsparser_parse_payload(websocketsparser_t* parser) {
     return end_frame ? WSPARSER_COMPLETE : WSPARSER_CONTINUE;
 }
 
-void websockets_buffer_init(websocketsparser_buffer_t* buffer) {
-    buffer->dynamic_buffer = NULL;
-    buffer->offset_sbuffer = 0;
-    buffer->offset_dbuffer = 0;
-    buffer->dbuffer_size = 0;
-    buffer->type = STATIC;
-}
-
 int websocketsparser_is_control_frame(websockets_frame_t* frame) {
     switch (frame->opcode) {
     case WSOPCODE_CLOSE:
@@ -298,83 +289,4 @@ int websocketsparser_is_control_frame(websockets_frame_t* frame) {
     }
 
     return 0;
-}
-
-int websocketsparser_buffer_push(websocketsparser_t* parser, char ch) {
-    parser->buf.static_buffer[parser->buf.offset_sbuffer] = ch;
-    parser->buf.offset_sbuffer++;
-
-    if (parser->buf.offset_sbuffer < WSPARSER_BUFSIZ) {
-        parser->buf.static_buffer[parser->buf.offset_sbuffer] = 0;
-        return WSPARSER_CONTINUE;
-    }
-
-    parser->buf.type = DYNAMIC;
-
-    return websocketsparser_buffer_move(parser);
-}
-
-void websocketsparser_buffer_reset(websocketsparser_t* parser) {
-    parser->buf.offset_dbuffer = 0;
-    parser->buf.offset_sbuffer = 0;
-    parser->buf.type = STATIC;
-}
-
-size_t websocketsparser_buffer_writed(websocketsparser_t* parser) {
-    if (parser->buf.type == DYNAMIC) {
-        return parser->buf.offset_dbuffer + parser->buf.offset_sbuffer;
-    }
-    return parser->buf.offset_sbuffer;
-}
-
-int websocketsparser_buffer_complete(websocketsparser_t* parser) {
-    if (parser->buf.type == DYNAMIC) {
-        return websocketsparser_buffer_move(parser);
-    }
-    return WSPARSER_CONTINUE;
-}
-
-int websocketsparser_buffer_move(websocketsparser_t* parser) {
-    if (parser->buf.type != DYNAMIC)
-        return WSPARSER_CONTINUE;
-
-    size_t dbuffer_length = parser->buf.offset_dbuffer + parser->buf.offset_sbuffer;
-
-    if (parser->buf.dbuffer_size <= dbuffer_length) {
-        char* data = realloc(parser->buf.dynamic_buffer, dbuffer_length + 1);
-
-        if (data == NULL)
-            return WSPARSER_OUT_OF_MEMORY;
-
-        parser->buf.dbuffer_size = dbuffer_length + 1;
-        parser->buf.dynamic_buffer = data;
-    }
-
-    memcpy(&parser->buf.dynamic_buffer[parser->buf.offset_dbuffer], parser->buf.static_buffer, parser->buf.offset_sbuffer);
-
-    parser->buf.dynamic_buffer[dbuffer_length] = 0;
-    parser->buf.offset_dbuffer = dbuffer_length;
-    parser->buf.offset_sbuffer = 0;
-
-    return WSPARSER_CONTINUE;
-}
-
-char* websocketsparser_buffer_get(websocketsparser_t* parser) {
-    if (parser->buf.type == DYNAMIC) {
-        return parser->buf.dynamic_buffer;
-    }
-    return parser->buf.static_buffer;
-}
-
-char* websocketsparser_buffer_copy(websocketsparser_t* parser) {
-    char* string = websocketsparser_buffer_get(parser);
-    size_t length = websocketsparser_buffer_writed(parser);
-
-    char* data = malloc(length + 1);
-    if (data == NULL) return NULL;
-
-    memcpy(data, string, length);
-    data[length] = 0;
-
-    return data;
 }

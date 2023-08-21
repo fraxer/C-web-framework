@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <fcntl.h>
 
 #include "websocketsrequest.h"
 #include "websocketsparser.h"
@@ -71,6 +72,7 @@ void websocketsrequest_reset(websocketsrequest_t* request) {
         request->protocol->reset(request->protocol);
 
         websocketsrequest_payload_free(&request->protocol->payload);
+        websocketsparser_reset(request->parser);
     }
 
     request->can_reset = 1;
@@ -111,13 +113,36 @@ int websockets_create_tmpfile(websockets_protocol_t* protocol, const char* tmp_d
 }
 
 char* websocketsrequest_payload(websockets_protocol_t* protocol) {
-    return NULL;
-}
+    off_t payload_size = lseek(protocol->payload.fd, 0, SEEK_END);
+    lseek(protocol->payload.fd, 0, SEEK_SET);
 
-char* websocketsrequest_payloadf(websockets_protocol_t* protocol, const char* key) {
-    return NULL;
+    char* buffer = malloc(payload_size + 1);
+    if (buffer == NULL) return NULL;
+
+    int r = read(protocol->payload.fd, buffer, payload_size);
+    lseek(protocol->payload.fd, 0, SEEK_SET);
+
+    buffer[payload_size] = 0;
+
+    if (r < 0) {
+        free(buffer);
+        buffer = NULL;
+    }
+
+    return buffer;
 }
 
 jsondoc_t* websocketsrequest_payload_json(websockets_protocol_t* protocol) {
-    return NULL;
+    char* payload = websocketsrequest_payload(protocol);
+    if (payload == NULL) return NULL;
+
+    jsondoc_t* document = json_init();
+    if (!document) goto failed;
+    if (json_parse(document, payload) < 0) goto failed;
+
+    failed:
+
+    free(payload);
+
+    return document;
 }
