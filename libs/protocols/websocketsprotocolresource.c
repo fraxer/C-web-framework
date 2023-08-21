@@ -29,7 +29,6 @@ websockets_protocol_t* websockets_protocol_resource_create() {
     protocol->base.reset = websockets_protocol_resource_reset;
     protocol->base.free = websockets_protocol_resource_free;
     protocol->payload = (char*(*)(websockets_protocol_resource_t*))websocketsrequest_payload;
-    protocol->payloadf = (char*(*)(websockets_protocol_resource_t*, const char*))websocketsrequest_payloadf;
     protocol->payload_json = (jsondoc_t*(*)(websockets_protocol_resource_t*))websocketsrequest_payload_json;
     protocol->method = ROUTE_NONE;
     protocol->parser_stage = WSPROTRESOURCE_METHOD;
@@ -49,6 +48,12 @@ websockets_protocol_t* websockets_protocol_resource_create() {
 
 void websockets_protocol_resource_reset(void* arg) {
     websockets_protocol_resource_t* protocol = arg;
+
+    protocol->method = ROUTE_NONE;
+    protocol->parser_stage = WSPROTRESOURCE_METHOD;
+    protocol->uri_length = 0;
+    protocol->path_length = 0;
+    protocol->ext_length = 0;
 
     if (protocol->uri) free((void*)protocol->uri);
     protocol->uri = NULL;
@@ -138,24 +143,24 @@ int websockets_protocol_resource_payload_parse(websocketsrequest_t* request, cha
         switch (protocol->parser_stage) {
         case WSPROTRESOURCE_METHOD:
             {
-                size_t s = websocketsparser_buffer_writed(parser);
+                size_t s = bufferdata_writed(&parser->buf);
                 if (s > method_max_length)
                     return 0;
 
                 if (ch != ' ')
-                    websocketsparser_buffer_push(parser, ch);
+                    bufferdata_push(&parser->buf, ch);
 
                 if (ch == ' ' || last_data) {
                     protocol->parser_stage = WSPROTRESOURCE_LOCATION;
 
-                    websocketsparser_buffer_complete(parser);
+                    bufferdata_complete(&parser->buf);
 
-                    char* value = websocketsparser_buffer_get(parser);
-                    size_t value_length = websocketsparser_buffer_writed(parser);
+                    char* value = bufferdata_get(&parser->buf);
+                    size_t value_length = bufferdata_writed(&parser->buf);
                     if (!websocketsparser_parse_method(protocol, value, value_length))
                         return 0;
 
-                    websocketsparser_buffer_reset(parser);
+                    bufferdata_reset(&parser->buf);
                 }
 
                 if (last_data)
@@ -165,18 +170,18 @@ int websockets_protocol_resource_payload_parse(websocketsrequest_t* request, cha
         case WSPROTRESOURCE_LOCATION:
             {
                 if (ch != ' ')
-                    websocketsparser_buffer_push(parser, ch);
+                    bufferdata_push(&parser->buf, ch);
 
                 if (ch == ' ' || last_symbol) {
-                    websocketsparser_buffer_complete(parser);
+                    bufferdata_complete(&parser->buf);
 
-                    char* value = websocketsparser_buffer_get(parser);
-                    size_t value_length = websocketsparser_buffer_writed(parser);
+                    char* value = bufferdata_get(&parser->buf);
+                    size_t value_length = bufferdata_writed(&parser->buf);
 
                     if (websocketsparser_append_uri(protocol, value, value_length) == -1)
                         return 0;
 
-                    websocketsparser_buffer_reset(parser);
+                    bufferdata_reset(&parser->buf);
                 }
 
                 if (ch == ' ' || last_data) {
