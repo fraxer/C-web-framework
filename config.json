@@ -45,6 +45,7 @@
                 }
             },
             "websockets": {
+                "default": ["<project directory path>/build/exec/handlers/libwsindexpage.so", "default_"],
                 "routes": {
                     "/": {
                         "GET": ["<project directory path>/build/exec/handlers/libwsindexpage.so", "echo"]
