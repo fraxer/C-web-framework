@@ -5,6 +5,7 @@
 #include "db.h"
 
 void get(http1request_t* request, http1response_t* response) {
+    (void)request;
     // log_error("Error message\n");
 
     // response->redirect(response, "/mysql", 301);
