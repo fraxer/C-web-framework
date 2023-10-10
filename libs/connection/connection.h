@@ -24,6 +24,7 @@ typedef struct connection {
     server_t* server;
     request_t* request;
     response_t* response;
+    void* broadcast_list;
 
     int(*close)(struct connection*);
     void(*read)(struct connection*, char*, size_t);
