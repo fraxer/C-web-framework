@@ -52,7 +52,6 @@ void epoll_disable(socket_t*, int);
 
 int epoll_socket_exist(socket_epoll_t*, server_t*);
 
-
 void epoll_run(void* chain) {
     int result = -1;
     int connection_count = 0;
@@ -95,14 +94,19 @@ void epoll_run(void* chain) {
 
             if ((ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) ||
                 (server_chain->is_deprecated && server_chain->is_hard_reload)) {
+                connection_set_state(connection, CONNECTION_WAITCLOSE);
                 connection->close(connection);
                 ev->data.ptr = NULL;
             }
             else if (ev->events & EPOLLIN) {
+                connection_set_state(connection, CONNECTION_READ);
                 connection->read(connection, buffer, server_chain->info->read_buffer);
+                connection_set_state(connection, CONNECTION_WAITWRITE);
             }
             else if (ev->events & EPOLLOUT) {
+                connection_set_state(connection, CONNECTION_WRITE);
                 connection->write(connection, buffer, server_chain->info->read_buffer);
+                connection_set_state(connection, CONNECTION_WAITREAD);
             }
 
             connection_unlock(connection);
@@ -310,10 +314,11 @@ int epoll_connection_close(connection_t* connection) {
     }
 
     shutdown(connection->fd, 2);
-
     close(connection->fd);
+    connection->fd = 0;
 
-    connection_free(connection);
+    if (connection->queue_count == 0)
+        connection_free(connection);
 
     return 0;
 }

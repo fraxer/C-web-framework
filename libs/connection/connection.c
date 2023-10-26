@@ -5,6 +5,8 @@
 #include "openssl.h"
 #include "connection.h"
 
+void broadcast_clear(connection_t*);
+
 connection_t* connection_create(socket_t* socket, int basefd) {
     connection_t* result = NULL;
 
@@ -54,12 +56,14 @@ connection_t* connection_alloc(int fd, int basefd, in_addr_t ip, unsigned short 
 
     connection->fd = fd;
     connection->basefd = basefd;
+    connection->queue_count = 0;
     connection->keepalive_enabled = 0;
     connection->timeout = 0;
     connection->server_finded = 0;
     connection->ip = ip;
     connection->port = port;
     connection->locked = 0;
+    connection->state = CONNECTION_WAITREAD;
     connection->counter = NULL;
     connection->ssl = NULL;
     connection->apidata = NULL;
@@ -81,6 +85,8 @@ connection_t* connection_alloc(int fd, int basefd, in_addr_t ip, unsigned short 
 
 void connection_free(connection_t* connection) {
     if (connection == NULL) return;
+
+    broadcast_clear(connection);
 
     if (connection->ssl) {
         SSL_free_buffers(connection->ssl);
@@ -125,6 +131,8 @@ int connection_trylock(connection_t* connection) {
 }
 
 int connection_lock(connection_t* connection) {
+    if (connection == NULL) return -1;
+
     _Bool expected = 0;
     _Bool desired = 1;
 
@@ -142,4 +150,16 @@ int connection_unlock(connection_t* connection) {
     }
 
     return -1;
+}
+
+void connection_set_state(connection_t* connection, int state) {
+    connection->state = state;
+}
+
+int connection_state(connection_t* connection) {
+    return connection->state;
+}
+
+int connection_alive(connection_t* connection) {
+    return connection->fd > 0;
 }

@@ -47,15 +47,13 @@ void default_(websocketsrequest_t* request, websocketsresponse_t* response) {
     response->data(response, "default response");
 }
 
-
-
-void send_data(response_t* response, const char* data) {
+void send_data(response_t* response, const char* data, size_t size) {
     websocketsresponse_t* wsresponse = (websocketsresponse_t*)response;
-    wsresponse->text(wsresponse, data);
+    wsresponse->textn(wsresponse, data, size);
 }
 
 int check_key(void* sourceData, void* targetData) {
-    return sourceData == targetData;
+    return strcmp(sourceData, targetData) == 0;
 }
 
 void br(websocketsrequest_t* request, websocketsresponse_t* response) {
@@ -72,13 +70,19 @@ void br(websocketsrequest_t* request, websocketsresponse_t* response) {
     const char* broadcast_name = "br";
     char* id = (char*)"asd";
 
-    if (broadcast_add(broadcast_name, request->connection, id, sizeof(*id) * strlen(id), send_data))
-        response->text(response, "Error broadcast create");
+    broadcast_add(broadcast_name, request->connection, id, sizeof(*id) * strlen(id) + 1, send_data);
+    // if (!broadcast_add(broadcast_name, request->connection, id, sizeof(*id) * strlen(id), send_data)) {
+    //     response->text(response, "Error broadcast create");
+    //     return;
+    // }
 
-    broadcast_remove(broadcast_name, request->connection);
+    // broadcast_remove(broadcast_name, request->connection);
 
-    broadcast_send_all(broadcast_name, "data");
-    broadcast_send(broadcast_name, "data", id, check_key);
+    char data[200] = {0};
+    int len = sprintf(data, "data %d", request->connection->fd);
+
+    broadcast_send_all(broadcast_name, request->connection, data, len);
+    // broadcast_send(broadcast_name, request->connection, "data", strlen("data"), id, check_key);
 
     if (request->type == WEBSOCKETS_TEXT)
         response->text(response, "done");

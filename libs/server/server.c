@@ -14,6 +14,7 @@ server_chain_t* server_chain_alloc();
 server_info_t* server_info_alloc();
 gzip_mimetype_t* server_gzip_mimetype_alloc();
 void server_gzip_mimetype_free(gzip_mimetype_t*);
+void broadcast_free(struct broadcast* broadcast);
 
 
 server_t* server_create() {
@@ -35,6 +36,7 @@ server_t* server_create() {
     server->database = NULL;
     server->openssl = NULL;
     server->info = NULL;
+    server->broadcast = NULL;
     server->next = NULL;
 
     return server;
@@ -83,6 +85,9 @@ void server_free(server_t* server) {
         if (server->openssl) openssl_free(server->openssl);
         server->openssl = NULL;
 
+        if (server->broadcast) broadcast_free(server->broadcast);
+        server->broadcast = NULL;
+
         server->info = NULL;
 
         server->next = NULL;
@@ -125,7 +130,7 @@ server_chain_t* server_chain_alloc() {
     return (server_chain_t*)malloc(sizeof(server_chain_t));
 }
 
-server_chain_t* server_chain_create(server_t* server, routeloader_lib_t* lib, server_info_t* server_info, int is_hard_reload) {
+server_chain_t* server_chain_create(server_t* server, routeloader_lib_t* lib, server_info_t* server_info, broadcast_attrs_t* broadcast_attrs, int is_hard_reload) {
     server_chain_t* chain = server_chain_alloc();
 
     if (chain == NULL) return NULL;
@@ -139,6 +144,7 @@ server_chain_t* server_chain_create(server_t* server, routeloader_lib_t* lib, se
     chain->thread_count = 0;
     chain->routeloader = lib;
     chain->server = server;
+    chain->broadcast = broadcast_attrs;
     chain->info = server_info;
     chain->prev = NULL;
     chain->next = NULL;
@@ -153,8 +159,8 @@ server_chain_t* server_chain_last() {
     return last_server_chain;
 }
 
-int server_chain_append(server_t* server, routeloader_lib_t* lib, server_info_t* server_info, int is_hard_reload) {
-    server_chain_t* chain = server_chain_create(server, lib, server_info, is_hard_reload);
+int server_chain_append(server_t* server, routeloader_lib_t* lib, server_info_t* server_info, broadcast_attrs_t* broadcast_attrs, int is_hard_reload) {
+    server_chain_t* chain = server_chain_create(server, lib, server_info, broadcast_attrs, is_hard_reload);
 
     if (chain == NULL) return -1;
 
