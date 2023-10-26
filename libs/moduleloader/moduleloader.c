@@ -18,6 +18,7 @@
 #include "mimetype.h"
 #include "threadhandler.h"
 #include "threadworker.h"
+#include "broadcast.h"
 #ifdef MySQL_FOUND
     #include "mysql.h"
 #endif
@@ -81,6 +82,10 @@ int module_loader_init_modules() {
 
     log_reinit();
 
+    server_chain_t* chain = server_chain_last();
+    if (chain)
+        chain->broadcast->is_deprecated = 1;
+
     if (module_loader_servers_load(reload_is_hard)) return -1;
 
     if (module_loader_mimetype_load() == -1) return -1;
@@ -88,6 +93,11 @@ int module_loader_init_modules() {
     if (module_loader_thread_workers_load() == -1) goto failed;
 
     if (module_loader_thread_handlers_load() == -1) goto failed;
+
+    // if (module_loader_broadcast_handlers_load() == -1) goto failed;
+
+    // broadcast_thread(server_chain_last()->broadcast);
+    broadcast_thread(server_chain_last()->broadcast);
 
     result = 0;
 
@@ -560,6 +570,9 @@ int module_loader_servers_load(int reload_is_hard) {
     server_info_t* server_info = module_loader_server_info_load();
     if (server_info == NULL) goto failed;
 
+    broadcast_attrs_t* broadcast_attrs = broadcast_attrs_init();
+    if (broadcast_attrs == NULL) goto failed;
+
     for (jsonit_t it_servers = json_init_it(token_object); !json_end_it(&it_servers); json_next_it(&it_servers)) {
         enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
         enum fields { DOMAINS = 0, IP, PORT, ROOT, INDEX, HTTP, WEBSOCKETS, DATABASE, OPENSSL, FIELDS_COUNT };
@@ -578,6 +591,9 @@ int module_loader_servers_load(int reload_is_hard) {
             last_server->next = server;
 
         last_server = server;
+
+        server->broadcast = broadcast_init(broadcast_attrs);
+        if (!server->broadcast) goto failed;
 
         const jsontok_t* token_server = json_it_value(&it_servers);
         if (!json_is_object(token_server)) return -1;
@@ -728,7 +744,7 @@ int module_loader_servers_load(int reload_is_hard) {
         return -1;
     }
 
-    if (server_chain_append(first_server, first_lib, server_info, reload_is_hard) == -1) goto failed;
+    if (server_chain_append(first_server, first_lib, server_info, broadcast_attrs, reload_is_hard) == -1) goto failed;
 
     result = 0;
 

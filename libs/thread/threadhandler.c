@@ -23,11 +23,11 @@ void* thread_handler(void* arg) {
 
     while (1) {
         connection_t* connection = connection_queue_guard_pop();
+        if (connection_lock(connection) == 0) {
+            if (connection->handle)
+                connection->handle(connection->request, connection->response);
 
-        if (connection && connection->handle) {
-            connection_lock(connection);
-            connection->handle(connection->request, connection->response);
-            connection->queue_pop(connection);
+            connection->queue_pop(connection);            
             connection_unlock(connection);
         }
 

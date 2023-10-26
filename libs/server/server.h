@@ -51,20 +51,32 @@ typedef struct server {
     db_t* database;
     openssl_t* openssl;
     server_info_t* info;
+    void* broadcast;
     struct server* next;
 } server_t;
+
+struct broadcast;
+
+typedef struct broadcast_attrs {
+    pthread_t thread;
+    pthread_mutex_t scheduler_mutex;
+    pthread_cond_t scheduler_cond;
+    atomic_bool is_deprecated;
+    void* broadcast_queue;
+    void* broadcast_queue_last;
+} broadcast_attrs_t;
 
 typedef struct server_chain {
     int is_deprecated;
     int is_hard_reload;
     int thread_count;
     int domain_hash_bucket_size;
-
     pthread_mutex_t mutex;
 
     server_t* server;
     server_info_t* info;
     routeloader_lib_t* routeloader;
+    broadcast_attrs_t* broadcast;
     struct server_chain* prev;
     struct server_chain* next;
     void(*destroy)(struct server_chain*);
@@ -76,11 +88,11 @@ index_t* server_create_index(const char*);
 
 void server_free(server_t*);
 
-server_chain_t* server_chain_create(server_t* server, routeloader_lib_t*, server_info_t*, int);
+server_chain_t* server_chain_create(server_t* server, routeloader_lib_t*, server_info_t*, broadcast_attrs_t*, int);
 
 server_chain_t* server_chain_last();
 
-int server_chain_append(server_t*, routeloader_lib_t*, server_info_t*, int);
+int server_chain_append(server_t*, routeloader_lib_t*, server_info_t*, broadcast_attrs_t*, int);
 
 void server_chain_destroy(server_chain_t*);
 
