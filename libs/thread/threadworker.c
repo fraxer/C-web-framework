@@ -38,12 +38,9 @@ void* thread_worker(void* arg) {
     // }
 
     if (pthread_mutex_trylock(&mutex) == 0) {
-
         server_chain_t* chain = thread_worker->server_chain;
-
-        if (chain && chain->thread_count == 0) {
+        if (chain && chain->thread_count == 0)
             chain->destroy(chain);
-        }
 
         pthread_mutex_unlock(&mutex);
     }

@@ -130,7 +130,7 @@ server_chain_t* server_chain_alloc() {
     return (server_chain_t*)malloc(sizeof(server_chain_t));
 }
 
-server_chain_t* server_chain_create(server_t* server, routeloader_lib_t* lib, server_info_t* server_info, broadcast_attrs_t* broadcast_attrs, int is_hard_reload) {
+server_chain_t* server_chain_create(server_t* server, routeloader_lib_t* lib, server_info_t* server_info, broadcast_queue_attrs_t* broadcast_queue_attrs, int is_hard_reload) {
     server_chain_t* chain = server_chain_alloc();
 
     if (chain == NULL) return NULL;
@@ -144,7 +144,7 @@ server_chain_t* server_chain_create(server_t* server, routeloader_lib_t* lib, se
     chain->thread_count = 0;
     chain->routeloader = lib;
     chain->server = server;
-    chain->broadcast = broadcast_attrs;
+    chain->broadcast_queue_attrs = broadcast_queue_attrs;
     chain->info = server_info;
     chain->prev = NULL;
     chain->next = NULL;
@@ -159,8 +159,8 @@ server_chain_t* server_chain_last() {
     return last_server_chain;
 }
 
-int server_chain_append(server_t* server, routeloader_lib_t* lib, server_info_t* server_info, broadcast_attrs_t* broadcast_attrs, int is_hard_reload) {
-    server_chain_t* chain = server_chain_create(server, lib, server_info, broadcast_attrs, is_hard_reload);
+int server_chain_append(server_t* server, routeloader_lib_t* lib, server_info_t* server_info, broadcast_queue_attrs_t* broadcast_queue_attrs, int is_hard_reload) {
+    server_chain_t* chain = server_chain_create(server, lib, server_info, broadcast_queue_attrs, is_hard_reload);
 
     if (chain == NULL) return -1;
 
@@ -193,6 +193,8 @@ void server_chain_destroy(server_chain_t* _server_chain) {
     server_free(_server_chain->server);
 
     routeloader_free(_server_chain->routeloader);
+
+    broadcast_queue_free(_server_chain->broadcast_queue_attrs);
 
     pthread_mutex_destroy(&_server_chain->mutex);
 

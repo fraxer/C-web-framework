@@ -16,8 +16,6 @@ typedef enum connection_state {
     CONNECTION_WAITCLOSE
 } connection_state_e;
 
-// struct broadcast_conn_queue;
-
 typedef struct connection {
     int fd;
     int basefd;
@@ -36,7 +34,6 @@ typedef struct connection {
     server_t* server;
     request_t* request;
     response_t* response;
-    // struct broadcast_conn_queue* broadcast_queue;
 
     int(*close)(struct connection*);
     void(*read)(struct connection*, char*, size_t);
