@@ -18,6 +18,7 @@
 #include "mimetype.h"
 #include "threadhandler.h"
 #include "threadworker.h"
+#include "threadbroadcast.h"
 #include "broadcast.h"
 #ifdef MySQL_FOUND
     #include "mysql.h"
@@ -35,6 +36,7 @@ int module_loader_init_modules();
 int module_loader_servers_load(int);
 int module_loader_thread_workers_load();
 int module_loader_thread_handlers_load();
+int module_loader_thread_broadcast_load();
 int module_loader_reload_is_hard();
 int module_loader_mimetype_load();
 int module_loader_set_http_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsontok_t*);
@@ -82,10 +84,6 @@ int module_loader_init_modules() {
 
     log_reinit();
 
-    server_chain_t* chain = server_chain_last();
-    if (chain)
-        chain->broadcast->is_deprecated = 1;
-
     if (module_loader_servers_load(reload_is_hard)) return -1;
 
     if (module_loader_mimetype_load() == -1) return -1;
@@ -94,10 +92,7 @@ int module_loader_init_modules() {
 
     if (module_loader_thread_handlers_load() == -1) goto failed;
 
-    // if (module_loader_broadcast_handlers_load() == -1) goto failed;
-
-    // broadcast_thread(server_chain_last()->broadcast);
-    broadcast_thread(server_chain_last()->broadcast);
+    if (module_loader_thread_broadcast_load() == -1) goto failed;
 
     result = 0;
 
@@ -570,8 +565,8 @@ int module_loader_servers_load(int reload_is_hard) {
     server_info_t* server_info = module_loader_server_info_load();
     if (server_info == NULL) goto failed;
 
-    broadcast_attrs_t* broadcast_attrs = broadcast_attrs_init();
-    if (broadcast_attrs == NULL) goto failed;
+    broadcast_queue_attrs_t* broadcast_queue_attrs = broadcast_queue_attrs_init();
+    if (broadcast_queue_attrs == NULL) goto failed;
 
     for (jsonit_t it_servers = json_init_it(token_object); !json_end_it(&it_servers); json_next_it(&it_servers)) {
         enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
@@ -592,7 +587,7 @@ int module_loader_servers_load(int reload_is_hard) {
 
         last_server = server;
 
-        server->broadcast = broadcast_init(broadcast_attrs);
+        server->broadcast = broadcast_init(broadcast_queue_attrs);
         if (!server->broadcast) goto failed;
 
         const jsontok_t* token_server = json_it_value(&it_servers);
@@ -744,7 +739,7 @@ int module_loader_servers_load(int reload_is_hard) {
         return -1;
     }
 
-    if (server_chain_append(first_server, first_lib, server_info, broadcast_attrs, reload_is_hard) == -1) goto failed;
+    if (server_chain_append(first_server, first_lib, server_info, broadcast_queue_attrs, reload_is_hard) == -1) goto failed;
 
     result = 0;
 
@@ -952,9 +947,7 @@ int module_loader_thread_workers_load() {
     server_chain_t* server_chain = server_chain_last();
     if (server_chain == NULL) return -1;
 
-    if (thread_worker_run(count, server_chain) == -1) return -1;
-
-    return 0;
+    return thread_worker_run(count, server_chain);
 }
 
 int module_loader_thread_handlers_load() {
@@ -986,7 +979,13 @@ int module_loader_thread_handlers_load() {
         return -1;
     }
 
-    if (thread_handler_run(count) == -1) return -1;
+    return thread_handler_run(count);
+}
 
-    return 0;
+int module_loader_thread_broadcast_load() {
+    server_chain_t* server_chain = server_chain_last();
+    if (server_chain == NULL) return -1;
+
+    const int count_threads = 2;
+    return thread_broadcast_run(count_threads, server_chain);
 }

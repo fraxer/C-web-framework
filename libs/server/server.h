@@ -38,6 +38,8 @@ typedef struct server_websockets {
     void(*default_handler)(void*, void*);
 } server_websockets_t;
 
+struct broadcast;
+
 typedef struct server {
     unsigned short int port;
     size_t root_length;
@@ -51,20 +53,16 @@ typedef struct server {
     db_t* database;
     openssl_t* openssl;
     server_info_t* info;
-    void* broadcast;
+    struct broadcast* broadcast;
     struct server* next;
 } server_t;
 
-struct broadcast;
-
-typedef struct broadcast_attrs {
-    pthread_t thread;
+typedef struct broadcast_queue_attrs {
     pthread_mutex_t scheduler_mutex;
     pthread_cond_t scheduler_cond;
-    atomic_bool is_deprecated;
     void* broadcast_queue;
     void* broadcast_queue_last;
-} broadcast_attrs_t;
+} broadcast_queue_attrs_t;
 
 typedef struct server_chain {
     int is_deprecated;
@@ -76,7 +74,7 @@ typedef struct server_chain {
     server_t* server;
     server_info_t* info;
     routeloader_lib_t* routeloader;
-    broadcast_attrs_t* broadcast;
+    broadcast_queue_attrs_t* broadcast_queue_attrs;
     struct server_chain* prev;
     struct server_chain* next;
     void(*destroy)(struct server_chain*);
@@ -88,11 +86,11 @@ index_t* server_create_index(const char*);
 
 void server_free(server_t*);
 
-server_chain_t* server_chain_create(server_t* server, routeloader_lib_t*, server_info_t*, broadcast_attrs_t*, int);
+server_chain_t* server_chain_create(server_t* server, routeloader_lib_t*, server_info_t*, broadcast_queue_attrs_t*, int);
 
 server_chain_t* server_chain_last();
 
-int server_chain_append(server_t*, routeloader_lib_t*, server_info_t*, broadcast_attrs_t*, int);
+int server_chain_append(server_t*, routeloader_lib_t*, server_info_t*, broadcast_queue_attrs_t*, int);
 
 void server_chain_destroy(server_chain_t*);
 

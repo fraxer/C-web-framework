@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12.4)
 
 FILE(GLOB SOURCES *.c *.h)
 
-set(LIB_NAME schedulers)
+set(LIB_NAME broadcast)
 
 add_library(${LIB_NAME} STATIC ${SOURCES})
 
