@@ -8,4 +8,4 @@ add_library(${LIB_NAME} STATIC ${SOURCES})
 
 target_include_directories(${LIB_NAME} PUBLIC .)
 
-target_link_libraries(${LIB_NAME} protocols request response connection domain ${PCRE_LIBRARIES})
+target_link_libraries(${LIB_NAME} config protocols request response connection domain ${PCRE_LIBRARIES})

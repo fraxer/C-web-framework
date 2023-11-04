@@ -16,23 +16,25 @@ int __listener_connection_set_event(connection_t*);
 void listener_read(connection_t* socket_connection, char* buffer, size_t buffer_size) {
     (void)buffer;
     (void)buffer_size;
-    connection_t* connection = connection_create(socket_connection);
+    connection_t* connection = connection_server_create(socket_connection);
     if (connection == NULL) return;
 
     __listener_create_connection(connection, socket_connection->server);
 }
 
 int __listener_create_connection(connection_t* connection, server_t* server) {
-    connection->server = server;
-
-    while (server) {
-        if (server->ip == connection->ip && server->port == connection->port) {
-            connection->server = server;
+    server_t* s = server;
+    while (s) {
+        if (s->ip == connection->ip && s->port == connection->port) {
+            connection->server = s;
             break;
         }
-
-        server = server->next;
+        s = s->next;
     }
+
+    connection->server = s;
+    if (s->openssl)
+        connection->ssl_ctx = s->openssl->ctx;
 
     if (connection->server->openssl)
         protmgr_set_tls(connection);
@@ -113,7 +115,6 @@ int listener_connection_close(connection_t* connection) {
 
     shutdown(connection->fd, 2);
     close(connection->fd);
-    connection->fd = 0;
 
     cqueue_lock(connection->queue);
     const int queue_empty = cqueue_empty(connection->queue);

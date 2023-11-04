@@ -1,0 +1,15 @@
+#ifndef __HTTP1PARSERCOMMON__
+#define __HTTP1PARSERCOMMON__
+
+enum http1parser_status {
+    HTTP1PARSER_ERROR = 0,
+    HTTP1PARSER_CONTINUE,
+    HTTP1PARSER_OUT_OF_MEMORY,
+    HTTP1PARSER_BAD_REQUEST,
+    HTTP1PARSER_HOST_NOT_FOUND,
+    HTTP1PARSER_PAYLOAD_LARGE
+};
+
+int http1parser_is_ctl(int);
+
+#endif

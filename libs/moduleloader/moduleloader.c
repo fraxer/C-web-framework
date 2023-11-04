@@ -32,6 +32,7 @@
 
 #include "moduleloader.h"
 
+void module_loader_pass_memory_sharedlib(routeloader_lib_t*, const char*);
 int module_loader_init_modules();
 int module_loader_servers_load(int);
 int module_loader_thread_workers_load();
@@ -41,7 +42,6 @@ int module_loader_mimetype_load();
 int module_loader_connection_queue_init();
 int module_loader_set_http_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsontok_t*);
 int module_loader_set_websockets_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsontok_t*);
-
 
 int module_loader_init(int argc, char* argv[]) {
     int result = -1;
@@ -77,6 +77,27 @@ int module_loader_reload() {
     return result;
 }
 
+void module_loader_pass_memory_sharedlib(routeloader_lib_t* first_lib, const char* lib_file) {
+    typedef struct {
+        const char* name;
+        void*(*function)();
+    } fn;
+
+    const int size = 2;
+    fn functions[size];
+
+    functions[0] = (fn){ "config_set", (void*(*)())config };
+    functions[1] = (fn){ "mimetype_set", (void*(*)())mimetype_config };
+
+    for (int i = 0; i < size; i++) {
+        void(*function)(void*);
+        *(void**)(&function) = routeloader_get_handler(first_lib, lib_file, functions[i].name);
+
+        if (function != NULL)
+            function(functions[i].function());
+    }
+}
+
 int module_loader_init_modules() {
     int result = -1;
     int reload_is_hard = module_loader_reload_is_hard();
@@ -85,9 +106,9 @@ int module_loader_init_modules() {
 
     log_reinit();
 
-    if (module_loader_servers_load(reload_is_hard)) return -1;
-
     if (module_loader_mimetype_load() == -1) return -1;
+
+    if (module_loader_servers_load(reload_is_hard)) return -1;
 
     if (module_loader_thread_workers_load() == -1) goto failed;
 
@@ -183,21 +204,15 @@ int module_loader_set_http_route(routeloader_lib_t** first_lib, routeloader_lib_
 
         {
             void(*function)(void*, void*);
-
             *(void**)(&function) = routeloader_get_handler(*first_lib, lib_file, lib_handler);
+            if (function == NULL)
+                return -1;
 
-            if (function == NULL) return -1;
-
-            if (route_set_http_handler(route, method, function) == -1) return -1;
+            if (route_set_http_handler(route, method, function) == -1)
+                return -1;
         }
 
-        {
-            void(*function)(const config_t*);
-            *(void**)(&function) = routeloader_get_handler(*first_lib, lib_file, "config_set");
-
-            if (function != NULL)
-                function(config());
-        }
+        module_loader_pass_memory_sharedlib(*first_lib, lib_file);
     }
 
     return 0;

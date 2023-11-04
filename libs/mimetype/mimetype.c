@@ -11,6 +11,7 @@ static hsearch_data_t* table_type = NULL;
 static mimetypelist_t* list = NULL;
 static mimetypelist_t* newlist = NULL;
 static mimetypelist_t* last_list = NULL;
+static hsearch_external_t config;
 
 static atomic_bool flag = 0;
 
@@ -28,6 +29,24 @@ void mimetype_lock() {
 
 void mimetype_unlock() {
     atomic_store(&flag, 0);
+}
+
+hsearch_external_t* mimetype_config() {
+    config.table_ext = table_ext;
+    config.table_type = table_type;
+    config.list = list;
+    config.newlist = newlist;
+    config.last_list = last_list;
+
+    return &config;
+}
+
+void mimetype_set(const hsearch_external_t* config) {
+    table_ext = config->table_ext;
+    table_type = config->table_type;
+    list = config->list;
+    newlist = config->newlist;
+    last_list = config->last_list;
 }
 
 int mimetype_init_ext(size_t size) {

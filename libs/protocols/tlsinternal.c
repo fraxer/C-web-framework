@@ -31,6 +31,18 @@ void tls_write(connection_t* connection, char* buffer, size_t size) {
     log_error("tls write\n");
 }
 
+void tls_client_read(connection_t* connection, char* buffer, size_t size) {
+    (void)connection;
+    (void)buffer;
+    (void)size;
+}
+
+void tls_client_write(connection_t* connection, char* buffer, size_t size) {
+    (void)buffer;
+    (void)size;
+    tls_client_handshake(connection);
+}
+
 int tls_sni_cb(SSL* ssl, int* al, void* arg) {
     (void)al;
 
@@ -66,7 +78,7 @@ int tls_sni_cb(SSL* ssl, int* al, void* arg) {
             int matches_count = pcre_exec(domain->pcre_template, NULL, server_name, server_name_length, 0, 0, vector, vector_size);
             if (matches_count > 0) {
                 connection->server = server;
-                SSL_set_SSL_CTX(connection->ssl, connection->server->openssl->ctx);
+                SSL_set_SSL_CTX(connection->ssl, connection->ssl_ctx);
 
                 return SSL_TLSEXT_ERR_OK;
             }
@@ -78,13 +90,11 @@ int tls_sni_cb(SSL* ssl, int* al, void* arg) {
 }
 
 void tls_handshake(connection_t* connection) {
-    int result = 0;
-
     if (connection->ssl == NULL) {
-        SSL_CTX_set_tlsext_servername_callback(connection->server->openssl->ctx, tls_sni_cb);
-        SSL_CTX_set_tlsext_servername_arg(connection->server->openssl->ctx, connection);
+        SSL_CTX_set_tlsext_servername_callback(connection->ssl_ctx, tls_sni_cb);
+        SSL_CTX_set_tlsext_servername_arg(connection->ssl_ctx, connection);
 
-        connection->ssl = SSL_new(connection->server->openssl->ctx);
+        connection->ssl = SSL_new(connection->ssl_ctx);
 
         if (connection->ssl == NULL) {
             log_error(TLS_ERROR_ALLOC_SSL);
@@ -100,11 +110,9 @@ void tls_handshake(connection_t* connection) {
         SSL_set_shutdown(connection->ssl, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
     }
 
-    result = SSL_do_handshake(connection->ssl);
-
+    int result = SSL_do_handshake(connection->ssl);
     if (result == 1) {
         protmgr_set_http1(connection);
-
         return;
     }
 
@@ -112,6 +120,27 @@ void tls_handshake(connection_t* connection) {
     case SSL_ERROR_SYSCALL:
     case SSL_ERROR_SSL:
         epoll_ssl_error:
+        connection->close(connection);
+        return;
+    case SSL_ERROR_WANT_READ:
+    case SSL_ERROR_WANT_WRITE:
+    case SSL_ERROR_WANT_ACCEPT:
+    case SSL_ERROR_WANT_CONNECT:
+    case SSL_ERROR_ZERO_RETURN:
+        return;
+    }
+}
+
+void tls_client_handshake(connection_t* connection) {
+    int result = SSL_do_handshake(connection->ssl);
+    if (result == 1) {
+        protmgr_set_client_http1(connection);
+        return;
+    }
+
+    switch (SSL_get_error(connection->ssl, result)) {
+    case SSL_ERROR_SYSCALL:
+    case SSL_ERROR_SSL:
         connection->close(connection);
         return;
     case SSL_ERROR_WANT_READ:

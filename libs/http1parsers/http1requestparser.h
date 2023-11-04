@@ -1,20 +1,12 @@
-#ifndef __HTTP1PARSER__
-#define __HTTP1PARSER__
+#ifndef __HTTP1REQUESTPARSER__
+#define __HTTP1REQUESTPARSER__
 
 #include "connection.h"
+#include "http1parsercommon.h"
 #include "http1request.h"
 #include "bufferdata.h"
 
-enum http1parser_status {
-    HTTP1PARSER_ERROR = 0,
-    HTTP1PARSER_CONTINUE,
-    HTTP1PARSER_OUT_OF_MEMORY,
-    HTTP1PARSER_BAD_REQUEST,
-    HTTP1PARSER_HOST_NOT_FOUND,
-    HTTP1PARSER_PAYLOAD_LARGE
-};
-
-typedef enum http1_request_stage {
+typedef enum http1requestparser_stage {
     HTTP1PARSER_METHOD = 0,
     HTTP1PARSER_URI,
     HTTP1PARSER_PROTOCOL,
@@ -26,10 +18,10 @@ typedef enum http1_request_stage {
     HTTP1PARSER_NEWLINE3,
     HTTP1PARSER_PAYLOAD,
     HTTP1PARSER_COMPLETE
-} http1_request_stage_e;
+} http1requestparser_stage_e;
 
-typedef struct http1parser {
-    http1_request_stage_e stage;
+typedef struct http1requestparser {
+    http1requestparser_stage_e stage;
     bufferdata_t buf;
     int host_found;
     size_t bytes_readed;
@@ -39,21 +31,21 @@ typedef struct http1parser {
     size_t content_saved_length;
     char* buffer;
     connection_t* connection;
-} http1parser_t;
+} http1requestparser_t;
 
-void http1parser_init(http1parser_t*);
+void http1parser_init(http1requestparser_t*);
 
-void http1parser_set_connection(http1parser_t*, connection_t*);
+void http1parser_set_connection(http1requestparser_t*, connection_t*);
 
-void http1parser_set_buffer(http1parser_t*, char*);
+void http1parser_set_buffer(http1requestparser_t*, char*);
 
-void http1parser_free(http1parser_t*);
+void http1parser_free(http1requestparser_t*);
 
-void http1parser_reset(http1parser_t*);
+void http1parser_reset(http1requestparser_t*);
 
-int http1parser_run(http1parser_t*);
+int http1parser_run(http1requestparser_t*);
 
-void http1parser_set_bytes_readed(http1parser_t*, int);
+void http1parser_set_bytes_readed(http1requestparser_t*, int);
 
 int http1parser_set_uri(http1request_t*, const char*, size_t);
 

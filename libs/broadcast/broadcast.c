@@ -364,6 +364,8 @@ void broadcast_remove(const char* broadcast_name, connection_t* connection) {
 }
 
 void broadcast_clear(connection_t* connection) {
+    if (connection->server == NULL) return;
+
     broadcast_list_t* list = __broadcast_lock_list(connection->server->broadcast->list);
     while (list) {
         broadcast_item_t* item = __broadcast_lock_item(list->item);

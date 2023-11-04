@@ -8,7 +8,7 @@
 
 void broadcast_clear(connection_t*);
 
-connection_t* connection_create(connection_t* socket_connection) {
+connection_t* connection_server_create(connection_t* socket_connection) {
     connection_t* result = NULL;
 
     struct sockaddr in_addr;
@@ -41,6 +41,10 @@ connection_t* connection_create(connection_t* socket_connection) {
     return result;
 }
 
+connection_t* connection_client_create(const int fd, const in_addr_t ip, const short port) {
+    return connection_alloc(fd, NULL, ip, port);
+}
+
 connection_t* connection_alloc(int fd, mpxapi_t* api, in_addr_t ip, unsigned short int port) {
     connection_t* connection = malloc(sizeof(connection_t));
     if (connection == NULL) return NULL;
@@ -48,13 +52,14 @@ connection_t* connection_alloc(int fd, mpxapi_t* api, in_addr_t ip, unsigned sho
     connection->fd = fd;
     connection->api = api;
     connection->keepalive_enabled = 0;
-    connection->timeout = 0;
     connection->ip = ip;
     connection->port = port;
     atomic_store(&connection->locked, 0);
     atomic_store(&connection->onwrite, 0);
     connection->ssl = NULL;
+    connection->ssl_ctx = NULL;
     connection->server = NULL;
+    connection->client = NULL;
     connection->request = NULL;
     connection->response = NULL;
     connection->close = NULL;
@@ -81,9 +86,10 @@ void connection_free(connection_t* connection) {
 
     broadcast_clear(connection);
 
-    if (connection->ssl) {
+    if (connection->ssl != NULL) {
         SSL_free_buffers(connection->ssl);
         SSL_free(connection->ssl);
+        connection->ssl = NULL;
     }
 
     if (connection->request != NULL) {
@@ -104,13 +110,11 @@ void connection_free(connection_t* connection) {
 void connection_reset(connection_t* connection) {
     if (connection == NULL) return;
 
-    if (connection->request != NULL) {
+    if (connection->request != NULL)
         connection->request->reset(connection->request);
-    }
 
-    if (connection->response != NULL) {
+    if (connection->response != NULL)
         connection->response->reset(connection->response);
-    }
 }
 
 int connection_trylock(connection_t* connection) {

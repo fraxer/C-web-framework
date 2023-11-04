@@ -2,6 +2,7 @@
 #include <string.h>
 #include <ctype.h>
 
+#include "helpers.h"
 #include "http1common.h"
 
 http1_header_t* http1_header_alloc();
@@ -36,9 +37,51 @@ http1_header_t* http1_header_create(const char* key, size_t key_length, const ch
 }
 
 void http1_header_free(http1_header_t* header) {
-    free((void*)header->key);
-    free((void*)header->value);
+    if (header->key)
+        free((void*)header->key);
+
+    if (header->value)
+        free((void*)header->value);
+
     free(header);
+}
+
+void http1_headers_free(http1_header_t* header) {
+    while (header) {
+        http1_header_t* next = header->next;
+        http1_header_free(header);
+        header = next;
+    }
+}
+
+http1_header_t* http1_header_delete(http1_header_t* header, const char* key) {
+    if (header == NULL) return NULL;
+
+    if (cmpstr_lower(header->key, header->key_length, key, strlen(key))) {
+        http1_header_t* next = header->next;
+        http1_header_free(header);
+        return next;
+    }
+
+    http1_header_t* first_header = header;
+    http1_header_t* prev_header = header;
+
+    header = header->next;
+
+    while (header) {
+        http1_header_t* next = header->next;
+
+        if (cmpstr_lower(header->key, header->key_length, key, strlen(key))) {
+            prev_header->next = next;
+            http1_header_free(header);
+            break;
+        }
+
+        prev_header = header;
+        header = next;
+    }
+
+    return first_header;
 }
 
 http1_query_t* http1_query_alloc() {
@@ -67,6 +110,14 @@ void http1_query_free(http1_query_t* query) {
     free((void*)query->key);
     free((void*)query->value);
     free(query);
+}
+
+void http1_queries_free(http1_query_t* query) {
+    while (query != NULL) {
+        http1_query_t* next = query->next;
+        http1_query_free(query);
+        query = next;
+    }
 }
 
 char* http1_set_field(const char* string, size_t length) {
@@ -151,6 +202,8 @@ http1_urlendec_t http1_urlencode(const char* string, size_t length) {
 
 http1_urlendec_t http1_urldecode(const char* string, size_t length) {
     char* buffer = malloc(length + 1);
+    if (buffer == NULL) return (http1_urlendec_t){ .string = NULL, .length = 0 };
+
     char* pbuffer = buffer;
 
     while (*string) {

@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <fcntl.h>
 
+#include "helpers.h"
 #include "websocketsrequest.h"
 #include "websocketsparser.h"
 
@@ -97,10 +98,9 @@ void websocketsrequest_payload_free(websockets_payload_t* payload) {
 int websockets_create_tmpfile(websockets_protocol_t* protocol, const char* tmp_dir) {
     if (protocol->payload.fd) return 1;
 
-    const char* template = "tmp.XXXXXX";
-    size_t path_length = strlen(tmp_dir) + strlen(template) + 2; // "/", "\0"
-    protocol->payload.path = malloc(path_length);
-    snprintf(protocol->payload.path, path_length, "%s/%s", tmp_dir, template);
+    protocol->payload.path = create_tmppath(tmp_dir);
+    if (protocol->payload.path == NULL)
+        return 0;
 
     protocol->payload.fd = mkstemp(protocol->payload.path);
     if (protocol->payload.fd == -1) {

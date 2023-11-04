@@ -1,7 +1,7 @@
 #include <string.h>
-#include <ctype.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 #include "http1response.h"
 #include "cookieparser.h"
@@ -9,27 +9,26 @@
 #include "log.h"
 #include "config.h"
 #include "http1common.h"
-#include "http1parser.h"
+#include "http1requestparser.h"
+#include "helpers.h"
 
-int http1parser_parse_payload(http1parser_t*);
-int http1parser_set_method(http1request_t*, http1parser_t*);
-int http1parser_set_protocol(http1request_t*, http1parser_t*);
-int http1parser_set_header_key(http1request_t*, http1parser_t*);
-int http1parser_set_header_value(http1request_t*, http1parser_t*);
+int http1parser_parse_payload(http1requestparser_t*);
+int http1parser_set_method(http1request_t*, http1requestparser_t*);
+int http1parser_set_protocol(http1request_t*, http1requestparser_t*);
+int http1parser_set_header_key(http1request_t*, http1requestparser_t*);
+int http1parser_set_header_value(http1request_t*, http1requestparser_t*);
 int http1parser_set_path(http1request_t*, const char*, size_t);
 int http1parser_set_ext(http1request_t*, const char*, size_t);
 int http1parser_set_query(http1request_t*, const char*, size_t, size_t);
-int http1parser_host_not_found(http1parser_t*);
-void http1parser_try_set_keepalive(http1parser_t*);
-void http1parser_try_set_range(http1parser_t*);
-void http1parser_try_set_cookie(http1parser_t*);
-void http1parser_try_set_content_length(http1parser_t*);
-int http1parser_cmplower(const char*, ssize_t, const char*, ssize_t);
-int http1parser_is_ctl(int);
-void http1parser_flush(http1parser_t*);
+int http1parser_host_not_found(http1requestparser_t*);
+void http1parser_try_set_keepalive(http1requestparser_t*);
+void http1parser_try_set_range(http1requestparser_t*);
+void http1parser_try_set_cookie(http1requestparser_t*);
+void http1parser_try_set_content_length(http1requestparser_t*);
+void http1parser_flush(http1requestparser_t*);
 
 
-void http1parser_init(http1parser_t* parser) {
+void http1parser_init(http1requestparser_t* parser) {
     parser->stage = HTTP1PARSER_METHOD;
     parser->host_found = 0;
     parser->bytes_readed = 0;
@@ -43,30 +42,30 @@ void http1parser_init(http1parser_t* parser) {
     bufferdata_init(&parser->buf);
 }
 
-void http1parser_set_connection(http1parser_t* parser, connection_t* connection) {
+void http1parser_set_connection(http1requestparser_t* parser, connection_t* connection) {
     parser->connection = connection;
 }
 
-void http1parser_set_buffer(http1parser_t* parser, char* buffer) {
+void http1parser_set_buffer(http1requestparser_t* parser, char* buffer) {
     parser->buffer = buffer;
 }
 
-void http1parser_free(http1parser_t* parser) {
+void http1parser_free(http1requestparser_t* parser) {
     http1parser_flush(parser);
     free(parser);
 }
 
-void http1parser_reset(http1parser_t* parser) {
+void http1parser_reset(http1requestparser_t* parser) {
     http1parser_flush(parser);
     http1parser_init(parser);
 }
 
-void http1parser_flush(http1parser_t* parser) {
+void http1parser_flush(http1requestparser_t* parser) {
     if (parser->buf.dynamic_buffer) free(parser->buf.dynamic_buffer);
     parser->buf.dynamic_buffer = NULL;
 }
 
-int http1parser_run(http1parser_t* parser) {
+int http1parser_run(http1requestparser_t* parser) {
     http1request_t* request = (http1request_t*)parser->connection->request;
     parser->pos_start = 0;
     parser->pos = 0;
@@ -231,11 +230,11 @@ int http1parser_run(http1parser_t* parser) {
     return HTTP1PARSER_CONTINUE;
 }
 
-void http1parser_set_bytes_readed(struct http1parser* parser, int readed) {
+void http1parser_set_bytes_readed(http1requestparser_t* parser, int readed) {
     parser->bytes_readed = readed;
 }
 
-int http1parser_parse_payload(http1parser_t* parser) {
+int http1parser_parse_payload(http1requestparser_t* parser) {
     http1request_t* request = (http1request_t*)parser->connection->request;
 
     if (!http1request_has_payload(request))
@@ -244,38 +243,32 @@ int http1parser_parse_payload(http1parser_t* parser) {
     parser->pos_start = parser->pos;
     parser->pos = parser->bytes_readed;
 
-    if (request->payload_.fd <= 0) {
-        const char* template = "tmp.XXXXXX";
-        const char* tmp_dir = config()->main.tmp;
+    if (request->payload_.file.fd <= 0) {
+        request->payload_.path = create_tmppath(config()->main.tmp);
+        if (request->payload_.path == NULL)
+            return HTTP1PARSER_ERROR;
 
-        size_t path_length = strlen(tmp_dir) + strlen(template) + 2; // "/", "\0"
-        request->payload_.path = malloc(path_length);
-        snprintf(request->payload_.path, path_length, "%s/%s", tmp_dir, template);
-
-        request->payload_.fd = mkstemp(request->payload_.path);
-        if (request->payload_.fd == -1) return HTTP1PARSER_ERROR;
+        request->payload_.file.fd = mkstemp(request->payload_.path);
+        if (request->payload_.file.fd == -1)
+            return HTTP1PARSER_ERROR;
     }
 
     size_t string_len = parser->pos - parser->pos_start;
-    off_t payload_length = lseek(request->payload_.fd, 0, SEEK_END);
-
-    if (payload_length + string_len > config()->main.client_max_body_size) {
+    if (parser->content_saved_length + string_len > config()->main.client_max_body_size) {
         return HTTP1PARSER_PAYLOAD_LARGE;
     }
 
-    int r = write(request->payload_.fd, &parser->buffer[parser->pos_start], string_len);
-    lseek(request->payload_.fd, 0, SEEK_SET);
-    if (r <= 0) return HTTP1PARSER_ERROR;
+    if (!request->payload_.file.append_content(&request->payload_.file, &parser->buffer[parser->pos_start], string_len))
+        return HTTP1PARSER_ERROR;
 
     parser->content_saved_length += string_len;
-
     if (parser->content_saved_length >= parser->content_length)
         return HTTP1PARSER_COMPLETE;
 
     return HTTP1PARSER_CONTINUE;
 }
 
-int http1parser_set_method(http1request_t* request, http1parser_t* parser) {
+int http1parser_set_method(http1request_t* request, http1requestparser_t* parser) {
     char* string = bufferdata_get(&parser->buf);
     size_t length = bufferdata_writed(&parser->buf);
 
@@ -307,6 +300,8 @@ int http1parser_set_uri(http1request_t* request, const char* string, size_t leng
         return HTTP1PARSER_BAD_REQUEST;
 
     http1_urlendec_t st = http1_urldecode(string, length);
+    if (st.string == NULL)
+        return HTTP1PARSER_BAD_REQUEST;
 
     free((void*)string);
 
@@ -352,7 +347,7 @@ int http1parser_set_uri(http1request_t* request, const char* string, size_t leng
     return HTTP1PARSER_CONTINUE;
 }
 
-int http1parser_set_protocol(http1request_t* request, http1parser_t* parser) {
+int http1parser_set_protocol(http1request_t* request, http1requestparser_t* parser) {
     char* string = bufferdata_get(&parser->buf);
 
     if (string[0] == 'H' && string[1] == 'T' && string[2] == 'T' && string[3] == 'P' && string[4] == '/'  && string[5] == '1' && string[6] == '.' && string[7] == '1') {
@@ -495,7 +490,7 @@ void http1parser_append_query(http1request_t* request, http1_query_t* query) {
     request->last_query = query;
 }
 
-int http1parser_host_not_found(http1parser_t* parser) {
+int http1parser_host_not_found(http1requestparser_t* parser) {
     if (parser->host_found) return HTTP1PARSER_CONTINUE;
 
     http1request_t* request = (http1request_t*)parser->connection->request;
@@ -504,9 +499,8 @@ int http1parser_host_not_found(http1parser_t* parser) {
     const char* host_key = "host";
     size_t host_key_length = 4;
 
-    for (size_t i = 0, j = 0; i < header->key_length && j < host_key_length; i++, j++) {
-        if (tolower(header->key[i]) != tolower(host_key[j])) return HTTP1PARSER_CONTINUE;
-    }
+    if (!cmpstr_lower(header->key, header->key_length, host_key, host_key_length))
+        return HTTP1PARSER_CONTINUE;
 
     const size_t MAX_DOMAIN_LENGTH = 255;
     char domain[MAX_DOMAIN_LENGTH];
@@ -553,7 +547,7 @@ int http1parser_host_not_found(http1parser_t* parser) {
     return HTTP1PARSER_HOST_NOT_FOUND;
 }
 
-void http1parser_try_set_keepalive(http1parser_t* parser) {
+void http1parser_try_set_keepalive(http1requestparser_t* parser) {
     http1request_t* request = (http1request_t*)parser->connection->request;
     http1_header_t* header = request->last_header;
 
@@ -563,24 +557,24 @@ void http1parser_try_set_keepalive(http1parser_t* parser) {
     ssize_t connection_value_length = 10;
 
     if ((ssize_t)header->key_length != connection_key_length) return;
-    if (!http1parser_cmplower(header->key, header->key_length, connection_key, connection_key_length)) return;
+    if (!cmpstr_lower(header->key, header->key_length, connection_key, connection_key_length)) return;
 
     parser->connection->keepalive_enabled = 0;
-    if (http1parser_cmplower(header->value, header->value_length, connection_value, connection_value_length)) {
+    if (cmpstr_lower(header->value, header->value_length, connection_value, connection_value_length)) {
         parser->connection->keepalive_enabled = 1;
     }
 }
 
-void http1parser_try_set_range(http1parser_t* parser) {
+void http1parser_try_set_range(http1requestparser_t* parser) {
     http1request_t* request = (http1request_t*)parser->connection->request;
     http1response_t* response = (http1response_t*)parser->connection->response;
 
-    if (http1parser_cmplower(request->last_header->key, request->last_header->key_length, "range", 5)) {
+    if (cmpstr_lower(request->last_header->key, request->last_header->key_length, "range", 5)) {
         response->ranges = http1parser_parse_range((char*)request->last_header->value, request->last_header->value_length);
     }
 }
 
-void http1parser_try_set_cookie(http1parser_t* parser) {
+void http1parser_try_set_cookie(http1requestparser_t* parser) {
     http1request_t* request = (http1request_t*)parser->connection->request;
     http1_header_t* header = request->last_header;
 
@@ -588,7 +582,7 @@ void http1parser_try_set_cookie(http1parser_t* parser) {
     ssize_t key_length = 6;
 
     if ((ssize_t)header->key_length != key_length) return;
-    if (!http1parser_cmplower(header->key, header->key_length, key, key_length)) return;
+    if (!cmpstr_lower(header->key, header->key_length, key, key_length)) return;
 
     cookieparser_t cparser;
     cookieparser_init(&cparser);
@@ -597,7 +591,7 @@ void http1parser_try_set_cookie(http1parser_t* parser) {
     request->cookie_ = cookieparser_cookie(&cparser);
 }
 
-void http1parser_try_set_content_length(http1parser_t* parser) {
+void http1parser_try_set_content_length(http1requestparser_t* parser) {
     http1request_t* request = (http1request_t*)parser->connection->request;
     http1_header_t* header = request->last_header;
 
@@ -605,18 +599,10 @@ void http1parser_try_set_content_length(http1parser_t* parser) {
     ssize_t key_length = 14;
 
     if ((ssize_t)header->key_length != key_length) return;
-    if (!http1parser_cmplower(header->key, header->key_length, key, key_length)) return;
+    if (!cmpstr_lower(header->key, header->key_length, key, key_length)) return;
     if (!http1request_has_payload(request)) return;
 
     parser->content_length = atoll(header->value);
-}
-
-int http1parser_cmplower(const char* a, ssize_t a_length, const char* b, ssize_t b_length) {
-    for (ssize_t i = 0, j = 0; i < a_length && j < b_length; i++, j++) {
-        if (tolower(a[i]) != tolower(b[j])) return 0;
-    }
-
-    return 1;
 }
 
 http1_ranges_t* http1parser_parse_range(char* str, size_t length) {
@@ -730,7 +716,7 @@ http1_ranges_t* http1parser_parse_range(char* str, size_t length) {
     return ranges;
 }
 
-int http1parser_set_header_key(http1request_t* request, http1parser_t* parser) {
+int http1parser_set_header_key(http1request_t* request, http1requestparser_t* parser) {
     char* string = bufferdata_get(&parser->buf);
     size_t length = bufferdata_writed(&parser->buf);
     http1_header_t* header = http1_header_create(string, length, NULL, 0);
@@ -756,7 +742,7 @@ int http1parser_set_header_key(http1request_t* request, http1parser_t* parser) {
     return HTTP1PARSER_CONTINUE;
 }
 
-int http1parser_set_header_value(http1request_t* request, http1parser_t* parser) {
+int http1parser_set_header_value(http1request_t* request, http1requestparser_t* parser) {
     char* string = bufferdata_get(&parser->buf);
     size_t length = bufferdata_writed(&parser->buf);
 
@@ -776,8 +762,4 @@ int http1parser_set_header_value(http1request_t* request, http1parser_t* parser)
     http1parser_try_set_content_length(parser);
 
     return HTTP1PARSER_CONTINUE;
-}
-
-int http1parser_is_ctl(int c) {
-    return (c >= 0 && c <= 31) || (c == 127);
 }

@@ -160,7 +160,7 @@ int __mpx_epoll_control(connection_t* connection, int action, uint32_t flags) {
     if (action == EPOLL_CTL_DEL) pevent = NULL;
 
     if (epoll_ctl(api->fd, action, connection->fd, pevent) == -1) {
-        log_error("Epoll error: Epoll_ctl failed\n");
+        log_error("Epoll error: Epoll_ctl failed %d %d\n", connection->fd, action);
         return 0;
     }
 
