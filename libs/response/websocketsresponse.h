@@ -19,6 +19,8 @@ typedef struct websocketsresponse {
     void(*textn)(struct websocketsresponse*, const char*, size_t);
     void(*binary)(struct websocketsresponse*, const char*);
     void(*binaryn)(struct websocketsresponse*, const char*, size_t);
+    void(*data)(struct websocketsresponse*, const char*);
+    void(*datan)(struct websocketsresponse*, const char*, size_t);
     int(*file)(struct websocketsresponse*, const char*);
     int(*filen)(struct websocketsresponse*, const char*, size_t);
 } websocketsresponse_t;

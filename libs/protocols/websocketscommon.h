@@ -4,6 +4,16 @@
 #include <stddef.h>
 #include <sys/types.h>
 
+typedef enum websockets_datatype {
+    WEBSOCKETS_NONE = 0,
+    WEBSOCKETS_CONTINUE = 0x80,
+    WEBSOCKETS_TEXT = 0x81,
+    WEBSOCKETS_BINARY = 0x82,
+    WEBSOCKETS_CLOSE = 0x88,
+    WEBSOCKETS_PING = 0x89,
+    WEBSOCKETS_PONG = 0x8A
+} websockets_datatype_e;
+
 typedef struct websockets_query {
     const char* key;
     const char* value;

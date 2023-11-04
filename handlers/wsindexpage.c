@@ -43,10 +43,5 @@ void test(websocketsrequest_t* request, websocketsresponse_t* response) {
 }
 
 void default_(websocketsrequest_t* request, websocketsresponse_t* response) {
-    if (request->type == WEBSOCKETS_TEXT) {
-        response->text(response, "default response");
-        return;
-    }
-
-    response->binary(response, "default response");
+    response->data(response, "default response");
 }
