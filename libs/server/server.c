@@ -15,6 +15,7 @@ server_info_t* server_info_alloc();
 gzip_mimetype_t* server_gzip_mimetype_alloc();
 void server_gzip_mimetype_free(gzip_mimetype_t*);
 void broadcast_free(struct broadcast* broadcast);
+void broadcast_queue_free(broadcast_queue_attrs_t* broadcast_queue);
 
 
 server_t* server_create() {

@@ -5,9 +5,13 @@
 #include <stdatomic.h>
 #include "connection.h"
 
+typedef struct broadcast_id {
+    void(*free)(void*);
+} broadcast_id_t;
+
 typedef struct broadcast_item {
     connection_t* connection;
-    void* id;
+    broadcast_id_t* id;
     void(*response_handler)(response_t* response, const char* payload, size_t size);
     atomic_bool locked;
     struct broadcast_item* next;
@@ -41,7 +45,7 @@ broadcast_t* broadcast_init(broadcast_queue_attrs_t* attrs);
 broadcast_queue_attrs_t* broadcast_queue_attrs_init();
 void broadcast_free(broadcast_t* broadcast);
 void broadcast_queue_free(broadcast_queue_attrs_t* broadcast_queue);
-int broadcast_add(const char* broadcast_name, connection_t* connection, void* id, int size_id, void(*response_handler)(response_t* response, const char* payload, size_t size));
+int broadcast_add(const char* broadcast_name, connection_t* connection, void* id, void(*response_handler)(response_t* response, const char* payload, size_t size));
 void broadcast_remove(const char* broadcast_name, connection_t* connection);
 void broadcast_clear(connection_t* connection);
 
