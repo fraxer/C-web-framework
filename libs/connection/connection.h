@@ -15,7 +15,6 @@ struct connection_queue_item;
 
 typedef struct connection {
     int fd;
-    int timeout;
     int keepalive_enabled;
     in_addr_t ip;
     unsigned short int port;
@@ -23,7 +22,9 @@ typedef struct connection {
     atomic_bool onwrite;
     struct mpxapi* api;
     SSL* ssl;
+    SSL_CTX* ssl_ctx;
     server_t* server;
+    void* client;
     request_t* request;
     response_t* response;
     cqueue_t* queue;
@@ -39,8 +40,10 @@ typedef struct connection {
     void(*switch_to_protocol)(struct connection*);
 } connection_t;
 
-connection_t* connection_create(connection_t*);
+connection_t* connection_server_create(connection_t*);
+connection_t* connection_client_create(const int, const in_addr_t, const short);
 connection_t* connection_alloc(int, struct mpxapi*, in_addr_t, unsigned short int);
+void connection_server_init(connection_t*, int, int, in_addr_t, unsigned short int);
 void connection_free(connection_t*);
 void connection_reset(connection_t*);
 int connection_trylock(connection_t*);

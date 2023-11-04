@@ -2,6 +2,7 @@
 #define __OPENSSL__
 
 #include <openssl/ssl.h>
+#include <openssl/err.h>
 
 typedef struct openssl {
     char* fullchain;

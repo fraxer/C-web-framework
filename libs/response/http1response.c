@@ -7,15 +7,18 @@
 #include <sys/stat.h>
 
 #include "log.h"
+#include "helpers.h"
 #include "json.h"
 #include "config.h"
 #include "mimetype.h"
 #include "http1response.h"
+#include "http1responseparser.h"
 
 void http1response_data(http1response_t*, const char*);
 void http1response_datan(http1response_t*, const char*, size_t);
 int http1response_file(http1response_t*, const char*);
 int http1response_filen(http1response_t*, const char*, size_t);
+http1_header_t* http1response_header(http1response_t*, const char*);
 int http1response_header_add(http1response_t*, const char*, const char*);
 int http1response_headern_add(http1response_t*, const char*, size_t, const char*, size_t);
 int http1response_headeru_add(http1response_t*, const char*, size_t, const char*, size_t);
@@ -26,27 +29,20 @@ size_t http1response_head_size(http1response_t*);
 int http1response_alloc_body(http1response_t*, const char*, size_t);
 int http1response_header_add_content_length(http1response_t*, size_t);
 const char* http1response_get_mimetype(const char*);
-const char* http1response_get_extention(const char*, size_t);
 void http1response_reset(http1response_t*);
 int http1response_keepalive_enabled(http1response_t*);
 void http1response_try_enable_gzip(http1response_t*, const char*);
 void http1response_try_enable_te(http1response_t*, const char*);
 int http1response_deflate(http1response_t*, const char*, size_t, int, ssize_t(*callback)(connection_t*, const char*, size_t, int));
+int http1response_inflate(http1response_t*, const char*, size_t);
 int http1response_cmpstr(const char*, const char*);
 int http1response_cmpsubstr(const char*, const char*);
 int http1response_prepare_body(http1response_t*, size_t);
 void http1response_cookie_add(http1response_t*, cookie_t);
+void http1response_payload_free(http1_payload_t*);
+void http1response_init_payload(http1response_t*);
+void http1response_payload_parse_plain(http1response_t*);
 
-
-void http1response_header_free(http1_header_t* header) {
-    while (header) {
-        http1_header_t* next = header->next;
-
-        http1_header_free(header);
-
-        header = next;
-    }
-}
 
 http1response_t* http1response_alloc() {
     return (http1response_t*)malloc(sizeof(http1response_t));
@@ -56,28 +52,37 @@ void http1response_free(void* arg) {
     http1response_t* response = (http1response_t*)arg;
 
     http1response_reset(response);
+    http1responseparser_free(response->parser);
 
     free(response);
 
     response = NULL;
 }
 
+int http1response_init_parser(http1response_t* response) {
+    response->parser = malloc(sizeof(http1responseparser_t));
+    if (response->parser == NULL) return 0;
+
+    http1responseparser_init(response->parser);
+
+    return 1;
+}
+
 http1response_t* http1response_create(connection_t* connection) {
     http1response_t* response = http1response_alloc();
-
     if (response == NULL) return NULL;
 
     response->status_code = 200;
     response->head_writed = 0;
     response->transfer_encoding = TE_NONE;
     response->content_encoding = CE_NONE;
+    response->content_length = 0;
     response->body.data = NULL;
     response->body.pos = 0;
     response->body.size = 0;
-    response->file_.fd = 0;
-    response->file_.pos = 0;
-    response->file_.size = 0;
-    response->header = NULL;
+    response->file_ = file_alloc();
+    response->file_pos = 0;
+    response->header_ = NULL;
     response->last_header = NULL;
     response->ranges = NULL;
     response->connection = connection;
@@ -85,6 +90,7 @@ http1response_t* http1response_create(connection_t* connection) {
     response->datan = http1response_datan;
     response->def = http1response_default;
     response->redirect = http1response_redirect;
+    response->header = http1response_header;
     response->header_add = http1response_header_add;
     response->headern_add = http1response_headern_add;
     response->headeru_add = http1response_headeru_add;
@@ -94,10 +100,18 @@ http1response_t* http1response_create(connection_t* connection) {
     response->file = http1response_file;
     response->filen = http1response_filen;
     response->deflate = http1response_deflate;
+    response->inflate = http1response_inflate;
     response->cookie_add = http1response_cookie_add;
     response->base.reset = (void(*)(void*))http1response_reset;
     response->base.free = (void(*)(void*))http1response_free;
     response->defstream.state = NULL;
+
+    http1response_init_payload(response);
+
+    if (!http1response_init_parser(response)) {
+        free(response);
+        return NULL;
+    }
 
     return response;
 }
@@ -114,24 +128,22 @@ void http1response_reset(http1response_t* response) {
         (void)deflateEnd(&response->defstream);
     }
 
-    if (response->file_.fd > 0) {
-        lseek(response->file_.fd, 0, SEEK_SET);
-        close(response->file_.fd);
-    }
+    http1response_payload_free(&response->payload_);
 
-    response->file_.fd = 0;
-    response->file_.pos = 0;
-    response->file_.size = 0;
+    response->file_.close(&response->file_);
+    response->file_pos = 0;
 
     if (response->body.data) free(response->body.data);
     response->body.data = NULL;
 
-    http1response_header_free(response->header);
-    response->header = NULL;
+    http1_headers_free(response->header_);
+    response->header_ = NULL;
     response->last_header = NULL;
 
     http1response_free_ranges(response->ranges);
     response->ranges = NULL;
+
+    http1responseparser_reset(response->parser);
 }
 
 size_t http1response_head_size(http1response_t* response) {
@@ -141,7 +153,7 @@ size_t http1response_head_size(http1response_t* response) {
 
     size += http1response_status_length(response->status_code);
 
-    http1_header_t* header = response->header;
+    http1_header_t* header = response->header_;
 
     while (header) {
         size += header->key_length;
@@ -262,7 +274,7 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
 
     lseek(response->file_.fd, 0, SEEK_SET);
 
-    const char* ext = http1response_get_extention(resultpath, resultpath_length);
+    const char* ext = file_extention(resultpath, resultpath_length);
     const char* mimetype = http1response_get_mimetype(ext);
     const char* connection = http1response_keepalive_enabled(response) ? "keep-alive" : "close";
     if (response->headeru_add(response, "Connection", 10, connection, strlen(connection)) == -1) return -1;
@@ -271,6 +283,20 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
     if (http1response_prepare_body(response, response->file_.size) == -1) return -1;
 
     return 0;
+}
+
+http1_header_t* http1response_header(http1response_t* response, const char* key) {
+    http1_header_t* header = response->header_;
+    size_t key_length = strlen(key);
+
+    while (header) {
+        if (cmpstr_lower(header->key, header->key_length, key, key_length))
+            return header;
+
+        header = header->next;
+    }
+
+    return NULL;
 }
 
 int http1response_header_add(http1response_t* response, const char* key, const char* value) {
@@ -286,20 +312,19 @@ int http1response_headern_add(http1response_t* response, const char* key, size_t
     }
     
     http1_header_t* header = http1_header_create(key, key_length, value, value_length);
-
     if (header == NULL) return -1;
-
-    if (response->header == NULL) {
-        response->header = header;
+    if (header->key == NULL || header->value == NULL) {
+        http1_header_free(header);
+        return -1;
     }
 
-    if (response->last_header != NULL) {
+    if (response->header_ == NULL)
+        response->header_ = header;
+
+    if (response->last_header != NULL)
         response->last_header->next = header;
-    }
 
     response->last_header = header;
-
-    if (header->key == NULL || header->value == NULL) return -1;
 
     if (!response->ranges) {
         if (http1response_cmpstr(header->key, "Content-Type")) {
@@ -325,7 +350,7 @@ int http1response_headeru_add(http1response_t* response, const char* key, size_t
 }
 
 int http1response_header_exist(http1response_t* response, const char* key) {
-    http1_header_t* header = response->header;
+    http1_header_t* header = response->header_;
     while (header) {
         if (http1response_cmpstr(header->key, key))
             return 1;
@@ -499,19 +524,6 @@ const char* http1response_get_mimetype(const char* extension) {
     return mimetype;
 }
 
-const char* http1response_get_extention(const char* path, size_t length) {
-    for (size_t i = length - 1; i > 0; i--) {
-        switch (path[i]) {
-        case '.':
-            return &path[i + 1];
-        case '/':
-            return NULL;
-        }
-    }
-
-    return NULL;
-}
-
 void http1response_default(http1response_t* response, int status_code) {
     http1response_reset(response);
     response->status_code = status_code;
@@ -564,7 +576,7 @@ http1response_head_t http1response_create_head(http1response_t* response) {
     if (http1response_data_append(head.data, &pos, "HTTP/1.1 ", 9) == -1) return head;
     if (http1response_data_append(head.data, &pos, http1response_status_string(response->status_code), http1response_status_length(response->status_code)) == -1) return head;
 
-    http1_header_t* header = response->header;
+    http1_header_t* header = response->header_;
     while (header) {
         if (http1response_data_append(head.data, &pos, header->key, header->key_length) == -1) return head;
         if (http1response_data_append(head.data, &pos, ": ", 2) == -1) return head;
@@ -624,6 +636,57 @@ int http1response_deflate(http1response_t* response, const char* data, size_t le
 
     if (end || !result)
         (void)deflateEnd(defstream);
+
+    return result;
+}
+
+int http1response_inflate(http1response_t* response, const char* data, size_t length) {
+    const size_t max_buffer_size = config()->main.read_buffer;
+    const size_t buffer_length = length < max_buffer_size ? max_buffer_size : length;
+    unsigned char buffer[buffer_length];
+    int result = 0;
+
+    z_stream* defstream = &response->defstream;
+    if (response->defstream.state == NULL) {
+        defstream->zalloc = Z_NULL;
+        defstream->zfree = Z_NULL;
+        defstream->opaque = Z_NULL;
+        defstream->avail_in = 0;
+        defstream->next_in = Z_NULL;
+
+        if (inflateInit2(defstream, MAX_WBITS + 16) != Z_OK)
+            goto failed;
+    }
+
+    defstream->avail_in = (uInt)(length);
+    defstream->next_in = (Bytef*)data;
+
+    int ret = 0;
+    do {
+        defstream->avail_out = buffer_length;
+        defstream->next_out = buffer;
+
+        ret = inflate(defstream, Z_NO_FLUSH);
+        switch (ret) {
+            case Z_NEED_DICT:
+            case Z_DATA_ERROR:
+            case Z_MEM_ERROR:
+            case Z_STREAM_ERROR:
+                (void)inflateEnd(defstream);
+                goto failed;
+        }
+
+        size_t writed = buffer_length - defstream->avail_out;
+        if (writed > 0 && !response->payload_.file.append_content(&response->payload_.file, (const char*)buffer, writed))
+            goto failed;
+    } while (defstream->avail_out == 0);
+
+    result = 1;
+
+    failed:
+
+    if (ret == Z_STREAM_END)
+        (void)inflateEnd(defstream);
 
     return result;
 }
@@ -872,4 +935,116 @@ int http1response_redirect_is_external(const char* url) {
         ) return 1;
 
     return 0;
+}
+
+int http1response_has_payload(http1response_t* response) {
+    return response->content_length > 0
+        || response->transfer_encoding != TE_NONE;
+}
+
+void http1response_payload_free(http1_payload_t* payload) {
+    if (payload->file.fd <= 0) return;
+
+    payload->file.close(&payload->file);
+    unlink(payload->path);
+
+    payload->pos = 0;
+
+    free(payload->path);
+    payload->path = NULL;
+
+    free(payload->boundary);
+    payload->boundary = NULL;
+
+    http1_payloadpart_free(payload->part);
+    payload->part = NULL;
+}
+
+void http1response_init_payload(http1response_t* response) {
+    response->payload_.pos = 0;
+    response->payload_.file = file_alloc();
+    response->payload_.path = NULL;
+    response->payload_.part = NULL;
+    response->payload_.boundary = NULL;
+    response->payload_.type = NONE;
+
+    response->payload = http1response_payload;
+    response->payload_file = http1response_payload_file;
+    response->payload_json = http1response_payload_json;
+}
+
+void http1response_payload_parse_plain(http1response_t* response) {
+    http1_payloadpart_t* part = http1_payloadpart_create();
+    if (part == NULL) return;
+
+    part->size = response->payload_.file.size;
+
+    response->payload_.type = PLAIN;
+    response->payload_.part = part;
+}
+
+char* http1response_payload(http1response_t* response) {
+    http1response_payload_parse_plain(response);
+
+    http1_payloadpart_t* part = response->payload_.part;
+    if (part == NULL) return NULL;
+
+    char* buffer = malloc(part->size + 1);
+    if (buffer == NULL) return NULL;
+
+    lseek(response->payload_.file.fd, part->offset, SEEK_SET);
+    int r = read(response->payload_.file.fd, buffer, part->size);
+    lseek(response->payload_.file.fd, 0, SEEK_SET);
+
+    buffer[part->size] = 0;
+
+    if (r < 0) {
+        free(buffer);
+        return NULL;
+    }
+
+    return buffer;
+}
+
+file_content_t http1response_payload_file(http1response_t* response) {
+    http1response_payload_parse_plain(response);
+
+    file_content_t file_content = file_content_create(0, NULL, 0, 0);
+    http1_payloadpart_t* part = response->payload_.part;
+    if (part == NULL) return file_content;
+
+    char* filename = NULL;
+    http1_payloadfield_t* pfield = part->field;
+
+    while (pfield) {
+        if (pfield->key && strcmp(pfield->key, "filename") == 0) {
+            filename = pfield->value;
+            break;
+        }
+        pfield = pfield->next;
+    }
+
+    const char* field = NULL;
+    file_content.ok = !(field != NULL && filename == NULL);
+    file_content.fd = response->payload_.file.fd;
+    file_content.offset = part->offset;
+    file_content.size = part->size;
+    file_content.set_filename(&file_content, filename);
+
+    return file_content;
+}
+
+jsondoc_t* http1response_payload_json(http1response_t* response) {
+    char* payload = http1response_payload(response);
+    if (payload == NULL) return NULL;
+
+    jsondoc_t* document = json_init();
+    if (!document) goto failed;
+    if (json_parse(document, payload) < 0) goto failed;
+
+    failed:
+
+    free(payload);
+
+    return document;
 }

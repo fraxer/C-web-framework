@@ -10,9 +10,18 @@ typedef struct mimetypelist {
     struct mimetypelist* next;
 } mimetypelist_t;
 
-void mimetype_lock();
+typedef struct {
+    hsearch_data_t* table_ext;
+    hsearch_data_t* table_type;
+    mimetypelist_t* list;
+    mimetypelist_t* newlist;
+    mimetypelist_t* last_list;
+} hsearch_external_t;
 
+void mimetype_lock();
 void mimetype_unlock();
+hsearch_external_t* mimetype_config();
+void mimetype_set(const hsearch_external_t*);
 
 int mimetype_init_ext(size_t);
 

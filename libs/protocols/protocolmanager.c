@@ -13,6 +13,11 @@ void protmgr_set_tls(connection_t* connection) {
     connection->write = tls_write;
 }
 
+void protmgr_set_client_tls(connection_t* connection) {
+    connection->read = tls_client_read;
+    connection->write = tls_client_write;
+}
+
 void protmgr_set_http1(connection_t* connection) {
     connection->read = http1_wrap_read;
     connection->write = http1_wrap_write;
@@ -28,6 +33,11 @@ void protmgr_set_http1(connection_t* connection) {
     }
 
     connection->response = (response_t*)http1response_create(connection);
+}
+
+void protmgr_set_client_http1(connection_t* connection) {
+    connection->read = http1_client_read;
+    connection->write = http1_client_write;
 }
 
 void protmgr_set_websockets_default(connection_t* connection) {

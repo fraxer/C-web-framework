@@ -3,6 +3,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <linux/limits.h>
+#include <ctype.h>
+#include <stdio.h>
 
 #include "helpers.h"
 
@@ -38,7 +40,14 @@ void helpers_free_null(void* ptr) {
     ptr = NULL;
 }
 
-int helpers_mkdir(const char* base_path, const char* path) {
+int helpers_mkdir(const char* path) {
+    if (path == NULL) return 0;
+    if (path[0] == 0) return 0;
+
+    return helpers_base_mkdir("/", path);
+}
+
+int helpers_base_mkdir(const char* base_path, const char* path) {
     if (strlen(path) == 0)
         return 0;
 
@@ -75,7 +84,62 @@ int helpers_mkdir(const char* base_path, const char* path) {
         if(mkdir(local_path, S_IRWXU) == -1) return 1;
 
     if (*p_path != 0)
-        if (!helpers_mkdir(local_path, p_path)) return 0;
+        if (!helpers_base_mkdir(local_path, p_path)) return 0;
 
     return 1;
+}
+
+int cmpstr_lower(const char* a, size_t a_length, const char* b, size_t b_length) {
+    for (size_t i = 0, j = 0; i < a_length && j < b_length; i++, j++)
+        if (tolower(a[i]) != tolower(b[j])) return 0;
+
+    return 1;
+}
+
+int append_to_filefd(int fd, const char* data, size_t size) {
+    if (fd <= 0) return 0;
+    if (data == NULL) return 0;
+    if (size == 0) return 0;
+
+    lseek(fd, 0, SEEK_END);
+    int r = write(fd, data, size);
+    lseek(fd, 0, SEEK_SET);
+
+    return r > 0;
+}
+
+char* create_tmppath(const char* tmp_path)
+{
+    const char* template = "tmp.XXXXXX";
+    const size_t path_length = strlen(tmp_path) + strlen(template) + 2; // "/", "\0"
+    char* path = malloc(path_length);
+    if (path == NULL)
+        return NULL;
+
+    snprintf(path, path_length, "%s/%s", tmp_path, template);
+
+    return path;
+}
+
+const char* file_extention(const char* path, size_t length) {
+    for (size_t i = length - 1; i > 0; i--) {
+        switch (path[i]) {
+        case '.':
+            return &path[i + 1];
+        case '/':
+            return NULL;
+        }
+    }
+
+    return NULL;
+}
+
+const char* absolute_path(char* fullpath, const char* rootdir, const char* filepath) {
+    const char* pfilepath = filepath;
+    if (pfilepath[0] == '/')
+        pfilepath++;
+
+    snprintf(fullpath, PATH_MAX, "%s/%s", rootdir, pfilepath);
+
+    return fullpath;
 }

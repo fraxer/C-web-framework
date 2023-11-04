@@ -1,3 +1,5 @@
+#include <linux/limits.h>
+
 #include "http1.h"
 #include "websockets.h"
 #include "log.h"
@@ -6,9 +8,6 @@
 
 void get(http1request_t* request, http1response_t* response) {
     (void)request;
-    // log_error("Error message\n");
-
-    // response->redirect(response, "/mysql", 301);
 
     response->cookie_add(response, (cookie_t){
         .name = "mytoken",
@@ -20,12 +19,35 @@ void get(http1request_t* request, http1response_t* response) {
         .same_site = "Lax"
     });
 
-    response->data(response, "Cookie");
+    response->data(response, "done");
+}
+
+void post_urlencoded(http1request_t* request, http1response_t* response) {
+    char* data = request->payloadf(request, "key1");
+
+    if (data == NULL) {
+        response->data(response, "payload empty");
+        return;
+    }
+
+    response->data(response, data);
+    free(data);
+}
+
+void post_formdata(http1request_t* request, http1response_t* response) {
+    char* data = request->payloadf(request, "key");
+
+    if (data == NULL) {
+        response->data(response, "payload empty");
+        return;
+    }
+
+    response->data(response, data);
+    free(data);
 }
 
 void post(http1request_t* request, http1response_t* response) {
     jsondoc_t* document = request->payload_json(request);
-
     if (!json_ok(document)) {
         response->data(response, json_error(document));
         json_free(document);
@@ -41,7 +63,6 @@ void post(http1request_t* request, http1response_t* response) {
     json_object_set(object, "mykey", json_create_string(document, "Hello"));
 
     response->header_add(response, "Content-Type", "application/json");
-
     response->data(response, json_stringify(document));
 
     json_free(document);
@@ -173,19 +194,24 @@ void payloadf(http1request_t* request, http1response_t* response) {
 }
 
 void payload_file(http1request_t* request, http1response_t* response) {
-    http1_payloadfile_t payloadfile = request->payload_file(request);
-
-    if (!payloadfile.ok) {
+    file_content_t payload_content = request->payload_file(request);
+    if (!payload_content.ok) {
         response->data(response, "file not found");
         return;
     }
 
-    if (!payloadfile.save(&payloadfile, "test", "file.txt")) {
+    const char* filename = NULL;
+    char fullpath[PATH_MAX] = {0};
+    snprintf(fullpath, PATH_MAX, "%s/%s", request->connection->server->root, "testdir");
+    file_t payload_file = payload_content.make_file(&payload_content, fullpath, filename);
+    if (!payload_file.ok) {
         response->data(response, "Error save file");
         return;
     }
 
-    char* data = payloadfile.read(&payloadfile);
+    char* data = payload_file.content(&payload_file);
+
+    payload_file.close(&payload_file);
 
     response->data(response, data);
 
@@ -193,20 +219,24 @@ void payload_file(http1request_t* request, http1response_t* response) {
 }
 
 void payload_filef(http1request_t* request, http1response_t* response) {
-    http1_payloadfile_t payloadfile = request->payload_filef(request, "myfile");
-
-    if (!payloadfile.ok) {
+    file_content_t payload_content = request->payload_filef(request, "myfile");
+    if (!payload_content.ok) {
         response->data(response, "file not found");
         return;
     }
 
-    const char* filenameFromPayload = NULL;
-    if (!payloadfile.save(&payloadfile, "test", filenameFromPayload)) {
+    const char* filename = NULL;
+    char fullpath[PATH_MAX] = {0};
+    snprintf(fullpath, PATH_MAX, "%s/%s", request->connection->server->root, "testdir");
+    file_t payload_file = payload_content.make_file(&payload_content, fullpath, filename);
+    if (!payload_file.ok) {
         response->data(response, "Error save file");
         return;
     }
 
-    char* data = payloadfile.read(&payloadfile);
+    char* data = payload_file.content(&payload_file);
+
+    payload_file.close(&payload_file);
 
     response->data(response, data);
 

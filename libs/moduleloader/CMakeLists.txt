@@ -8,4 +8,4 @@ add_library(${LIB_NAME} STATIC ${SOURCES})
 
 target_include_directories(${LIB_NAME} PUBLIC .)
 
-target_link_libraries(${LIB_NAME} config log redirect route domain server openssl mimetype thread json database broadcast ${CMAKE_DL_LIBS})
+target_link_libraries(${LIB_NAME} client config log redirect route domain server openssl mimetype thread json database broadcast ${CMAKE_DL_LIBS})
