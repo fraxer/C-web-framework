@@ -1,5 +1,8 @@
 #include "websockets.h"
 #include "broadcast.h"
+#include "mybroadcast.h"
+
+static const char* broadcast_name = "my_broadcast_name";
 
 void echo(websocketsrequest_t* request, websocketsresponse_t* response) {
     websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)request->protocol;
@@ -32,62 +35,36 @@ void echo(websocketsrequest_t* request, websocketsresponse_t* response) {
     response->text(response, "const echo");
 }
 
-void test(websocketsrequest_t* request, websocketsresponse_t* response) {
-    websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)request->protocol;
-    char* data = protocol->payload(protocol);
-    // const char* q = protocol->query(protocol, "myfield");
-    // const char* uri = protocol->uri;
-
-    response->text(response, data);
-
-    if (data) free(data);
-}
-
 void default_(websocketsrequest_t* request, websocketsresponse_t* response) {
+    (void)request;
     response->data(response, "default response");
 }
 
-void send_data(response_t* response, const char* data, size_t size) {
-    websocketsresponse_t* wsresponse = (websocketsresponse_t*)response;
-    wsresponse->textn(wsresponse, data, size);
+void channel_join(websocketsrequest_t* request, websocketsresponse_t* response) {
+    mybroadcast_id_t* id = mybroadcast_id_create();
+    if (id == NULL) {
+        response->data(response, "out of memory");
+        return;
+    }
+
+    broadcast_add(broadcast_name, request->connection, id, mybroadcast_send_data);
+    response->data(response, "done");
 }
 
-int check_key(void* sourceData, void* targetData) {
-    return strcmp(sourceData, targetData) == 0;
+void channel_leave(websocketsrequest_t* request, websocketsresponse_t* response) {
+    broadcast_remove(broadcast_name, request->connection);
+    response->data(response, "done");
 }
 
-void br(websocketsrequest_t* request, websocketsresponse_t* response) {
-    const char* broadcast_name = "br";
-    char* id = (char*)"asd";
+void channel_send(websocketsrequest_t* request, websocketsresponse_t* response) {
+    const char* data = "text data";
+    size_t length = strlen(data);
+    mybroadcast_id_t* id = mybroadcast_compare_id_create();
+    if (id == NULL) {
+        response->data(response, "out of memory");
+        return;
+    }
 
-    broadcast_add(broadcast_name, request->connection, id, sizeof(*id) * strlen(id) + 1, send_data);
-
-    if (request->type == WEBSOCKETS_TEXT)
-        response->text(response, "done");
-    else
-        response->binary(response, "done");
-}
-
-void br2(websocketsrequest_t* request, websocketsresponse_t* response) {
-    const char* broadcast_name = "br2";
-    broadcast_add(broadcast_name, request->connection, NULL, 0, send_data);
-
-    if (request->type == WEBSOCKETS_TEXT)
-        response->text(response, "done");
-    else
-        response->binary(response, "done");
-}
-
-void sn(websocketsrequest_t* request, websocketsresponse_t* response) {
-    const char* broadcast_name = "br";
-
-    char data[200] = {0};
-    int len = sprintf(data, "data %d", request->connection->fd);
-
-    broadcast_send_all(broadcast_name, request->connection, data, len);
-
-    if (request->type == WEBSOCKETS_TEXT)
-        response->text(response, "done");
-    else
-        response->binary(response, "done");
+    broadcast_send(broadcast_name, request->connection, data, length, id, mybroadcast_compare);
+    response->data(response, "done");
 }

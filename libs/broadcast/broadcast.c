@@ -49,28 +49,17 @@ void __broadcast_free_list(broadcast_list_t* list) {
     free(list);
 }
 
-broadcast_item_t* __broadcast_create_item(connection_t* connection, void* id, int size_id, void(*response_handler)(response_t*, const char*, size_t)) {
+broadcast_item_t* __broadcast_create_item(connection_t* connection, void* id, void(*response_handler)(response_t*, const char*, size_t)) {
     broadcast_item_t* item = malloc(sizeof * item);
     if (!item) return NULL;
-
-    broadcast_item_t* result = NULL;
 
     item->connection = connection;
     item->locked = 0;
     item->next = NULL;
     item->response_handler = response_handler;
-    item->id = malloc(size_id);
-    if (!item->id) goto failed;
-    memcpy(item->id, id, size_id);
+    item->id = id;
 
-    result = item;
-
-    failed:
-
-    if (!result)
-        free(item);
-
-    return result;
+    return item;
 }
 
 void __broadcast_free_item(broadcast_item_t* item) {
@@ -80,10 +69,7 @@ void __broadcast_free_item(broadcast_item_t* item) {
     item->locked = 0;
     item->next = NULL;
     item->response_handler = NULL;
-
-    if (item->id)
-        free(item->id);
-
+    item->id->free(item->id);
     item->id = NULL;
 
     free(item);
@@ -370,7 +356,7 @@ void broadcast_free(broadcast_t *broadcast) {
     free(broadcast);
 }
 
-int broadcast_add(const char* broadcast_name, connection_t* connection, void* id, int size_id, void(*response_handler)(response_t* response, const char* payload, size_t size)) {
+int broadcast_add(const char* broadcast_name, connection_t* connection, void* id, void(*response_handler)(response_t* response, const char* payload, size_t size)) {
     broadcast_list_t* list = __broadcast_get_list(broadcast_name, connection->server->broadcast->list);
     if (!list) {
         list = __broadcast_create_list(broadcast_name);
@@ -385,7 +371,7 @@ int broadcast_add(const char* broadcast_name, connection_t* connection, void* id
         return 0;
     }
 
-    broadcast_item_t* item = __broadcast_create_item(connection, id, size_id, response_handler);
+    broadcast_item_t* item = __broadcast_create_item(connection, id, response_handler);
     if (!item) {
         __broadcast_unlock_list(list);
         return 0;
@@ -509,6 +495,9 @@ void broadcast_send(const char* broadcast_name, connection_t* connection, const 
         __broadcast_unlock_list(list);
         list = next;
     }
+
+    if (id != NULL)
+        ((broadcast_id_t*)id)->free(id);
 }
 
 void broadcast_run(server_chain_t* server_chain) {
