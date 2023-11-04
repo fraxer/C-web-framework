@@ -6,12 +6,15 @@
 #include <sys/stat.h>
 
 #include "mimetype.h"
+#include "websocketsrequest.h"
 #include "websocketsresponse.h"
 
 void websocketsresponse_text(websocketsresponse_t*, const char*);
 void websocketsresponse_textn(websocketsresponse_t*, const char*, size_t);
 void websocketsresponse_binary(websocketsresponse_t*, const char*);
 void websocketsresponse_binaryn(websocketsresponse_t*, const char*, size_t);
+void websocketsresponse_data(websocketsresponse_t*, const char*);
+void websocketsresponse_datan(websocketsresponse_t*, const char*, size_t);
 int websocketsresponse_file(websocketsresponse_t*, const char*);
 int websocketsresponse_filen(websocketsresponse_t*, const char*, size_t);
 size_t websocketsresponse_data_size(size_t);
@@ -51,6 +54,8 @@ websocketsresponse_t* websocketsresponse_create(connection_t* connection) {
     response->textn = websocketsresponse_textn;
     response->binary = websocketsresponse_binary;
     response->binaryn = websocketsresponse_binaryn;
+    response->data = websocketsresponse_data;
+    response->datan = websocketsresponse_datan;
     response->file = websocketsresponse_file;
     response->filen = websocketsresponse_filen;
     response->base.reset = (void(*)(void*))websocketsresponse_reset;
@@ -179,8 +184,6 @@ void websocketsresponse_textn(websocketsresponse_t* response, const char* data, 
     response->body.size = websocketsresponse_data_size(length);
 
     websocketsresponse_prepare(response, data, length);
-
-    // printf("body: %s, %ld\n", response->body.data, response->body.size);
 }
 
 void websocketsresponse_binary(websocketsresponse_t* response, const char* data) {
@@ -193,8 +196,19 @@ void websocketsresponse_binaryn(websocketsresponse_t* response, const char* data
     response->body.size = websocketsresponse_data_size(length);
 
     websocketsresponse_prepare(response, data, length);
+}
 
-    // printf("body: %s, %ld\n", response->body.data, response->body.size);
+void websocketsresponse_data(websocketsresponse_t* response, const char* data) {
+    websocketsresponse_datan(response, data, strlen(data));
+}
+
+void websocketsresponse_datan(websocketsresponse_t* response, const char* data, size_t length) {
+    if (((websocketsrequest_t*)response->connection->request)->type == WEBSOCKETS_TEXT) {
+        websocketsresponse_textn(response, data, length);
+        return;
+    }
+
+    websocketsresponse_binaryn(response, data, length);
 }
 
 int websocketsresponse_file(websocketsresponse_t* response, const char* path) {

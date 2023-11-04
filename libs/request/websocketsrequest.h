@@ -6,16 +6,6 @@
 #include "websocketscommon.h"
 #include "request.h"
 
-typedef enum websockets_datatype {
-    WEBSOCKETS_NONE = 0,
-    WEBSOCKETS_CONTINUE = 0x80,
-    WEBSOCKETS_TEXT = 0x81,
-    WEBSOCKETS_BINARY = 0x82,
-    WEBSOCKETS_CLOSE = 0x88,
-    WEBSOCKETS_PING = 0x89,
-    WEBSOCKETS_PONG = 0x8A
-} websockets_datatype_e;
-
 struct websocketsrequest;
 
 typedef struct websockets_protocol {
