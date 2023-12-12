@@ -41,13 +41,12 @@ int module_loader_reload_is_hard();
 int module_loader_mimetype_load();
 int module_loader_set_http_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsontok_t*);
 int module_loader_set_websockets_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsontok_t*);
-server_info_t* module_loader_server_info_load();
 
 
 int module_loader_init(int argc, char* argv[]) {
     int result = -1;
 
-    if (config_init(argc, argv) == -1) return -1;
+    if (!config_init(argc, argv)) return -1;
 
     if (module_loader_init_modules() == -1) goto failed;
 
@@ -55,7 +54,8 @@ int module_loader_init(int argc, char* argv[]) {
 
     failed:
 
-    config_free();
+    if (result == -1)
+        config_free();
 
     return result;
 }
@@ -63,7 +63,7 @@ int module_loader_init(int argc, char* argv[]) {
 int module_loader_reload() {
     int result = -1;
 
-    if (config_reload() == -1) return -1;
+    if (!config_reload()) return -1;
 
     if (module_loader_init_modules() == -1) goto failed;
 
@@ -71,7 +71,8 @@ int module_loader_reload() {
 
     failed:
 
-    config_free();
+    if (result == -1)
+        config_free();
 
     return result;
 }
@@ -106,34 +107,10 @@ int module_loader_init_modules() {
 }
 
 int module_loader_reload_is_hard() {
-    const jsontok_t* token_main = config_get_section("main");
-    if (!token_main) {
-        log_error("Reload error: Section main not found\n");
-        return -1;
-    }
-
-    if (!json_is_object(token_main)) {
-        log_error("Reload error: Section main must be object type\n");
-        return -1;
-    }
-
-    const jsontok_t* token_reload = json_object_get(token_main, "reload");
-    if (!token_reload) {
-        log_error("Reload error: Field reload not found in section main\n");
-        return -1;
-    }
-
-    if (!json_is_string(token_reload)) {
-        log_error("Reload error: Field reload must be string type\n");
-        return -1;
-    }
-
-    const char* reload = json_string(token_reload);
-
-    if (strcmp(reload, "hard") == 0)
-        return 1;
-    if (strcmp(reload, "soft") == 0)
+    if (config()->main.reload == CONFIG_RELOAD_SOFT)
         return 0;
+    if (config()->main.reload == CONFIG_RELOAD_HARD)
+        return 1;
 
     log_error("Reload error: Reload type must be hard or soft\n");
 
@@ -554,21 +531,15 @@ int module_loader_check_unique_domains(server_t* first_server) {
 }
 
 int module_loader_servers_load(int reload_is_hard) {
-    const jsontok_t* token_object = config_get_section("servers");
-    if (!json_is_object(token_object)) return -1;
-
     int result = -1;
     server_t* first_server = NULL;
     server_t* last_server = NULL;
     routeloader_lib_t* first_lib = NULL;
 
-    server_info_t* server_info = module_loader_server_info_load();
-    if (server_info == NULL) goto failed;
-
     broadcast_queue_attrs_t* broadcast_queue_attrs = broadcast_queue_attrs_init();
     if (broadcast_queue_attrs == NULL) goto failed;
 
-    for (jsonit_t it_servers = json_init_it(token_object); !json_end_it(&it_servers); json_next_it(&it_servers)) {
+    for (jsonit_t it_servers = json_init_it(config()->servers); !json_end_it(&it_servers); json_next_it(&it_servers)) {
         enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
         enum fields { DOMAINS = 0, IP, PORT, ROOT, INDEX, HTTP, WEBSOCKETS, DATABASE, OPENSSL, FIELDS_COUNT };
 
@@ -576,8 +547,6 @@ int module_loader_servers_load(int reload_is_hard) {
 
         server_t* server = server_create();
         if (server == NULL) goto failed;
-
-        server->info = server_info;
 
         if (first_server == NULL)
             first_server = server;
@@ -739,7 +708,7 @@ int module_loader_servers_load(int reload_is_hard) {
         return -1;
     }
 
-    if (server_chain_append(first_server, first_lib, server_info, broadcast_queue_attrs, reload_is_hard) == -1) goto failed;
+    if (server_chain_append(first_server, first_lib, broadcast_queue_attrs, reload_is_hard) == -1) goto failed;
 
     result = 0;
 
@@ -755,14 +724,11 @@ int module_loader_servers_load(int reload_is_hard) {
 }
 
 int module_loader_mimetype_load() {
-    const jsontok_t* token_object = config_get_section("mimetypes");
-    if (!json_is_object(token_object)) return -1;
-
     int result = -1;
-    size_t table_type_size = json_object_size(token_object);
+    size_t table_type_size = json_object_size(config()->mimetypes);
     size_t table_ext_size = 0;
 
-    for (jsonit_t it = json_init_it(token_object); !json_end_it(&it); json_next_it(&it)) {
+    for (jsonit_t it = json_init_it(config()->mimetypes); !json_end_it(&it); json_next_it(&it)) {
         const jsontok_t* token_array = json_it_value(&it);
         if (!json_is_array(token_array)) return -1;
 
@@ -778,7 +744,7 @@ int module_loader_mimetype_load() {
     if (mimetype_init_type(table_type_size) == -1) goto failed;
     if (mimetype_init_ext(table_ext_size) == -1) goto failed;
 
-    for (jsonit_t it_object = json_init_it(token_object); !json_end_it(&it_object); json_next_it(&it_object)) {
+    for (jsonit_t it_object = json_init_it(config()->mimetypes); !json_end_it(&it_object); json_next_it(&it_object)) {
         const char* mimetype = json_it_key(&it_object);
         const jsontok_t* token_array = json_it_value(&it_object);
 
@@ -816,129 +782,8 @@ int module_loader_mimetype_load() {
     return result;
 }
 
-server_info_t* module_loader_server_info_load() {
-    server_info_t* result = NULL;
-    server_info_t* server_info = server_info_create();
-    if (server_info == NULL) return NULL;
-
-    const jsontok_t* token_main = config_get_section("main");
-    if (!token_main) return NULL;
-    if (!json_is_object(token_main)) return NULL;
-
-    enum fields { HEAD_BUFFER = 0, CLIENT, TMP, GZIP, FIELDS_COUNT };
-
-    int finded_fields[FIELDS_COUNT] = {0};
-
-    for (jsonit_t it = json_init_it(token_main); !json_end_it(&it); json_next_it(&it)) {
-        const char* key = json_it_key(&it);
-        const jsontok_t* token_value = json_it_value(&it);
-
-        if (strcmp(key, "read_buffer") == 0) {
-            if (!json_is_int(token_value)) goto failed;
-
-            finded_fields[HEAD_BUFFER] = 1;
-
-            server_info->read_buffer = json_int(token_value);
-        }
-        else if (strcmp(key, "client_max_body_size") == 0) {
-            if (!json_is_int(token_value)) goto failed;
-
-            finded_fields[CLIENT] = 1;
-
-            server_info->client_max_body_size = json_int(token_value);
-        }
-        else if (strcmp(key, "tmp") == 0) {
-            if (!json_is_string(token_value)) goto failed;
-
-            finded_fields[TMP] = 1;
-
-            const char* value = json_string(token_value);
-            size_t value_length = strlen(value);
-            if (value[value_length - 1] == '/') {
-                value_length--;
-            }
-
-            server_info->tmp_dir = (char*)malloc(value_length + 1);
-            if (server_info->tmp_dir == NULL) goto failed;
-
-            strncpy(server_info->tmp_dir, value, value_length);
-            server_info->tmp_dir[value_length] = 0;
-        }
-        else if (strcmp(key, "gzip") == 0) {
-            if (!json_is_array(token_value)) goto failed;
-
-            finded_fields[GZIP] = 1;
-
-            gzip_mimetype_t* last_gzip = NULL;
-
-            for (jsonit_t it_gzip = json_init_it(token_value); !json_end_it(&it_gzip); json_next_it(&it_gzip)) {
-                const jsontok_t* token_gzip_value = json_it_value(&it_gzip);
-                if (!json_is_string(token_gzip_value)) goto failed;
-
-                gzip_mimetype_t* gzip_mimetype = server_gzip_mimetype_create(json_string(token_gzip_value));
-                if (gzip_mimetype == NULL) goto failed;
-
-                if (last_gzip == NULL)
-                    server_info->gzip_mimetype = gzip_mimetype;
-                else
-                    last_gzip->next = gzip_mimetype;
-
-                last_gzip = gzip_mimetype;
-            }
-        }
-    }
-
-    if (finded_fields[TMP] == 0) {
-        const char* value = "/tmp";
-
-        server_info->tmp_dir = (char*)malloc(strlen(value) + 1);
-        if (server_info->tmp_dir == NULL) goto failed;
-
-        strcpy(server_info->tmp_dir, value);
-    }
-
-    for (int i = 0; i < FIELDS_COUNT; i++) {
-        if (finded_fields[i] == 0) {
-            log_error("Error: Fill main section\n");
-            goto failed;
-        }
-    }
-
-    result = server_info;
-
-    failed:
-
-    if (result == NULL) {
-        server_info_free(server_info);
-    }
-
-    return result;
-}
-
 int module_loader_thread_workers_load() {
-    const jsontok_t* token_main = config_get_section("main");
-    if (!token_main) {
-        log_error("Reload error: Section main not found\n");
-        return -1;
-    }
-
-    if (!json_is_object(token_main)) {
-        log_error("Reload error: Section main must be object type\n");
-        return -1;
-    }
-
-    const jsontok_t* token_workers = json_object_get(token_main, "workers");
-    if (!token_workers) {
-        log_error("Reload error: Field workers not found in section main\n");
-        return -1;
-    }
-
-    if (!json_is_int(token_workers)) {
-        log_error("Reload error: Field workers must be int type\n");
-        return -1;
-    }
-
-    const int count = json_int(token_workers);
+    const int count = config()->main.workers;
     if (count <= 0) {
         log_error("Thread error: Set the number of workers\n");
         return -1;
@@ -951,29 +796,7 @@ int module_loader_thread_workers_load() {
 }
 
 int module_loader_thread_handlers_load() {
-    const jsontok_t* token_main = config_get_section("main");
-    if (!token_main) {
-        log_error("Reload error: Section main not found\n");
-        return -1;
-    }
-
-    if (!json_is_object(token_main)) {
-        log_error("Reload error: Section main must be object type\n");
-        return -1;
-    }
-
-    const jsontok_t* token_threads = json_object_get(token_main, "threads");
-    if (!token_threads) {
-        log_error("Reload error: Field threads not found in section main\n");
-        return -1;
-    }
-
-    if (!json_is_int(token_threads)) {
-        log_error("Reload error: Field threads must be int type\n");
-        return -1;
-    }
-
-    const int count = json_int(token_threads);
+    const int count = config()->main.threads;
     if (count <= 0) {
         log_error("Thread error: Set the number of threads\n");
         return -1;

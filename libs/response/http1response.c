@@ -6,6 +6,8 @@
 #include <ctype.h>
 #include <sys/stat.h>
 
+#include "json.h"
+#include "config.h"
 #include "mimetype.h"
 #include "http1response.h"
 
@@ -641,15 +643,17 @@ int http1response_alloc_body(http1response_t* response, const char* data, size_t
 }
 
 void http1response_try_enable_gzip(http1response_t* response, const char* directive) {
-    gzip_mimetype_t* gzip_mimetype = response->connection->server->info->gzip_mimetype;
+    const jsontok_t* token_gzip = config()->main.gzip;
 
-    while (gzip_mimetype) {
-        if (http1response_cmpsubstr(gzip_mimetype->value, directive)) {
+    for (jsonit_t it = json_init_it(token_gzip); !json_end_it(&it); it = json_next_it(&it)) {
+        jsontok_t* token_mimetype = json_it_value(&it);
+        if (!json_is_string(token_mimetype)) return;
+
+        const char* mimetype = json_string(token_mimetype);
+        if (http1response_cmpsubstr(mimetype, directive)) {
             response->content_encoding = CE_GZIP;
             break;
         }
-
-        gzip_mimetype = gzip_mimetype->next;
     }
 }
 

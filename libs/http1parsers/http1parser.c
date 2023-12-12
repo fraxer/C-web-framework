@@ -7,6 +7,7 @@
 #include "cookieparser.h"
 #include "domain.h"
 #include "log.h"
+#include "config.h"
 #include "http1common.h"
 #include "http1parser.h"
 
@@ -245,7 +246,7 @@ int http1parser_parse_payload(http1parser_t* parser) {
 
     if (request->payload_.fd <= 0) {
         const char* template = "tmp.XXXXXX";
-        const char* tmp_dir = parser->connection->server->info->tmp_dir;
+        const char* tmp_dir = config()->main.tmp;
 
         size_t path_length = strlen(tmp_dir) + strlen(template) + 2; // "/", "\0"
         request->payload_.path = malloc(path_length);
@@ -258,7 +259,7 @@ int http1parser_parse_payload(http1parser_t* parser) {
     size_t string_len = parser->pos - parser->pos_start;
     off_t payload_length = lseek(request->payload_.fd, 0, SEEK_END);
 
-    if (payload_length + string_len > parser->connection->server->info->client_max_body_size) {
+    if (payload_length + string_len > config()->main.client_max_body_size) {
         return HTTP1PARSER_PAYLOAD_LARGE;
     }
 

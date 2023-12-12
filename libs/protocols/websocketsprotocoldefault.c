@@ -2,6 +2,7 @@
 
 #include "websocketsprotocoldefault.h"
 #include "websocketsparser.h"
+#include "config.h"
 
 int websocketsrequest_get_default(connection_t*);
 void websockets_protocol_default_reset(void*);
@@ -46,12 +47,12 @@ int websockets_protocol_default_payload_parse(websocketsrequest_t* request, char
     for (size_t i = 0; i < length; i++)
         string[i] ^= parser->frame.mask[parser->payload_index++ % 4];
 
-    const char* tmp_dir = request->connection->server->info->tmp_dir;
+    const char* tmp_dir = config()->main.tmp;
     if (!websockets_create_tmpfile(request->protocol, tmp_dir))
         return 0;
 
     off_t payloadlength = lseek(request->protocol->payload.fd, 0, SEEK_END);
-    if (payloadlength + length > request->connection->server->info->client_max_body_size)
+    if (payloadlength + length > config()->main.client_max_body_size)
         return 0;
 
     int r = write(request->protocol->payload.fd, string, length);

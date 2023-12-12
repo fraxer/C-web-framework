@@ -11,6 +11,7 @@
 #include <errno.h>
 
 #include "helpers.h"
+#include "config.h"
 #include "urlencodedparser.h"
 #include "formdataparser.h"
 #include "multipartparser.h"
@@ -482,7 +483,7 @@ void http1request_payload_parse_multipart(http1request_t* request, const char* h
     multipartparser_t mparser;
     multipartparser_init(&mparser, request->payload_.fd, boundary);
 
-    size_t buffer_size = request->connection->server->info->read_buffer;
+    size_t buffer_size = config()->main.read_buffer;
     char* buffer = malloc(buffer_size);
     if (buffer == NULL) {
         free(boundary);
@@ -508,7 +509,7 @@ void http1request_payload_parse_multipart(http1request_t* request, const char* h
 }
 
 void http1request_payload_parse_urlencoded(http1request_t* request) {
-    size_t buffer_size = request->connection->server->info->read_buffer;
+    size_t buffer_size = config()->main.read_buffer;
     char* buffer = malloc(buffer_size);
     if (buffer == NULL) return;
 
