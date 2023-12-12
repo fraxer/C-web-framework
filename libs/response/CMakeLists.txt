@@ -8,4 +8,4 @@ add_library(${LIB_NAME} STATIC ${SOURCES})
 
 target_include_directories(${LIB_NAME} PUBLIC .)
 
-target_link_libraries(${LIB_NAME} mimetype protocols connection log request misc ${ZLIB_LIBRARIES})
+target_link_libraries(${LIB_NAME} mimetype protocols connection log request config misc ${ZLIB_LIBRARIES})

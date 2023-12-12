@@ -2,6 +2,7 @@
 
 #include "websocketsprotocolresource.h"
 #include "websocketsparser.h"
+#include "config.h"
 
 static const size_t method_max_length = 6;
 
@@ -205,12 +206,12 @@ int websockets_protocol_resource_payload_parse(websocketsrequest_t* request, cha
         if (!websocketsrequest_has_payload(protocol))
             return 0;
 
-        const char* tmp_dir = request->connection->server->info->tmp_dir;
+        const char* tmp_dir = config()->main.tmp;
         if (!websockets_create_tmpfile(request->protocol, tmp_dir))
             return 0;
 
         off_t payloadlength = lseek(request->protocol->payload.fd, 0, SEEK_END);
-        if (payloadlength + length > request->connection->server->info->client_max_body_size)
+        if (payloadlength + length > config()->main.client_max_body_size)
             return 0;
 
         int r = write(request->protocol->payload.fd, &string[offset], length - offset);

@@ -1,22 +1,38 @@
 #ifndef __CONFIG__
 #define __CONFIG__
 
-#include "../json/json.h"
+#include "json.h"
 
-char* config_get_path(int argc, char* argv[]);
+typedef enum config_reload {
+    CONFIG_RELOAD_SOFT = 0,
+    CONFIG_RELOAD_HARD,
+} config_reload_e;
 
-int config_save_path(const char* path);
+typedef struct config_main {
+    unsigned int workers;
+    unsigned int threads;
+    config_reload_e reload;
+    unsigned int read_buffer;
+    unsigned int client_max_body_size;
+    const char* tmp;
+    const jsontok_t* gzip;
+} config_main_t;
 
-int config_load(const char* path);
+typedef struct config_migrations {
+    const char* source_directory;
+} config_migrations_t;
+
+typedef struct config {
+    config_main_t main;
+    config_migrations_t migrations;
+    const jsontok_t* servers;
+    const jsontok_t* mimetypes;
+} config_t;
 
 int config_reload();
-
 int config_init(int argc, char* argv[]);
+void config_free();
 
-int config_free();
-
-int config_parse_data(const char* data);
-
-const jsontok_t* config_get_section(const char*);
+const config_t* config();
 
 #endif

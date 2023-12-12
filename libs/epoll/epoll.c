@@ -6,6 +6,7 @@
 #include <sys/epoll.h>
 
 #include "log.h"
+#include "config.h"
 #include "server.h"
 #include "socket.h"
 #include "connection.h"
@@ -62,7 +63,7 @@ void epoll_run(void* chain) {
     int basefd = epoll_init(&first_socket, server_chain->server);
     if (basefd == -1) goto failed;
 
-    char* buffer = epoll_buffer_alloc(server_chain->info->read_buffer);
+    char* buffer = epoll_buffer_alloc(config()->main.read_buffer);
     if (buffer == NULL) goto failed;
 
     epoll_event_t events[EPOLL_MAX_EVENTS];
@@ -100,12 +101,12 @@ void epoll_run(void* chain) {
             }
             else if (ev->events & EPOLLIN) {
                 connection_set_state(connection, CONNECTION_READ);
-                connection->read(connection, buffer, server_chain->info->read_buffer);
+                connection->read(connection, buffer, config()->main.read_buffer);
                 connection_set_state(connection, CONNECTION_WAITWRITE);
             }
             else if (ev->events & EPOLLOUT) {
                 connection_set_state(connection, CONNECTION_WRITE);
-                connection->write(connection, buffer, server_chain->info->read_buffer);
+                connection->write(connection, buffer, config()->main.read_buffer);
                 connection_set_state(connection, CONNECTION_WAITREAD);
             }
 
