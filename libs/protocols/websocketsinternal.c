@@ -10,10 +10,29 @@
 #include "websocketsparser.h"
 #include "websocketsinternal.h"
 
+void websockets_read(connection_t*, char*, size_t);
+void websockets_write(connection_t*, char*, size_t);
+ssize_t websockets_read_internal(connection_t*, char*, size_t);
+ssize_t websockets_write_internal(connection_t*, const char*, size_t);
 void websockets_handle(connection_t*, websocketsparser_t*);
 int websockets_get_resource(connection_t*);
 int websockets_get_file(connection_t*);
 
+void websockets_wrap_read(connection_t* connection, char* buffer, size_t buffer_size) {
+    if (!connection_lock(connection))
+        return;
+
+    websockets_read(connection, buffer, buffer_size);
+    connection_unlock(connection);
+}
+
+void websockets_wrap_write(connection_t* connection, char* buffer, size_t buffer_size) {
+    if (!connection_lock(connection))
+        return;
+
+    websockets_write(connection, buffer, buffer_size);
+    connection_unlock(connection);
+}
 
 void websockets_read(connection_t* connection, char* buffer, size_t buffer_size) {
     websocketsparser_t* parser = ((websocketsrequest_t*)connection->request)->parser;

@@ -8,4 +8,4 @@ add_library(${LIB_NAME} STATIC ${SOURCES})
 
 target_include_directories(${LIB_NAME} PUBLIC .)
 
-target_link_libraries(${LIB_NAME} connection epoll server broadcast log)
+target_link_libraries(${LIB_NAME} connection multiplexing server broadcast log)

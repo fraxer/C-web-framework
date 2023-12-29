@@ -1,12 +1,12 @@
 #define _GNU_SOURCE
 #include <stddef.h>
-#include <sys/epoll.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <signal.h>
 
 #include "log.h"
-#include "epoll.h"
+#include "multiplexing.h"
+#include "multiplexingserver.h"
 #include "threadworker.h"
 
 typedef struct thread_worker_item {
@@ -24,18 +24,7 @@ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 void* thread_worker(void* arg) {
     thread_worker_item_t* thread_worker = (thread_worker_item_t*)arg;
 
-    // if (fd_handler == THREAD_EPOLL) {
-        epoll_run(thread_worker->server_chain);
-    // }
-    // if (fd_handler == THREAD_SELECT) {
-    //     select_run();
-    // }
-    // if (fd_handler == THREAD_POLL) {
-    //     poll_run();
-    // }
-    // if (fd_handler == THREAD_KQUEUE) {
-    //     kqueue_run();
-    // }
+    mpxserver_run(thread_worker->server_chain);
 
     if (pthread_mutex_trylock(&mutex) == 0) {
         server_chain_t* chain = thread_worker->server_chain;

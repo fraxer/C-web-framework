@@ -10,14 +10,10 @@ typedef struct socket {
     struct socket* next;
 } socket_t;
 
-socket_t* socket_listen_create(in_addr_t, unsigned short int, void*(*)());
-
-void socket_free(socket_t*);
-
-socket_t* socket_find(int, socket_t*);
-
+socket_t* socket_alloc();
+socket_t* socket_listen_create(in_addr_t, unsigned short int);
+void socket_free(socket_t*, int);
 int socket_set_nonblocking(int);
-
 int socket_set_keepalive(int);
 
 #endif

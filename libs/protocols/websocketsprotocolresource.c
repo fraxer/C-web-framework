@@ -1,8 +1,8 @@
 #include <string.h>
 
+#include "config.h"
 #include "websocketsprotocolresource.h"
 #include "websocketsparser.h"
-#include "config.h"
 
 static const size_t method_max_length = 6;
 
@@ -87,8 +87,9 @@ int websocketsrequest_get_resource(connection_t* connection) {
         if (route->is_primitive && route_compare_primitive(route, protocol->path, protocol->path_length)) {
             if (route->handler[protocol->method] == NULL) return 0;
 
-            connection->handle = route->handler[protocol->method];
-            connection->queue_push(connection);
+            if (!websockets_queue_handler_add(connection, route->handler[protocol->method]))
+                return 0;
+
             return 1;
         }
 
@@ -118,8 +119,9 @@ int websocketsrequest_get_resource(connection_t* connection) {
 
             if (route->handler[protocol->method] == NULL) return 0;
 
-            connection->handle = route->handler[protocol->method];
-            connection->queue_push(connection);
+            if (!websockets_queue_handler_add(connection, route->handler[protocol->method]))
+                return 0;
+
             return 1;
         }
     }
@@ -206,8 +208,7 @@ int websockets_protocol_resource_payload_parse(websocketsrequest_t* request, cha
         if (!websocketsrequest_has_payload(protocol))
             return 0;
 
-        const char* tmp_dir = config()->main.tmp;
-        if (!websockets_create_tmpfile(request->protocol, tmp_dir))
+        if (!websockets_create_tmpfile(request->protocol, config()->main.tmp))
             return 0;
 
         off_t payloadlength = lseek(request->protocol->payload.fd, 0, SEEK_END);

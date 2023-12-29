@@ -52,3 +52,39 @@ void websockets_frame_init(websockets_frame_t* frame) {
     frame->mask[3] = 0;
     frame->payload_length = 0;
 }
+
+int websockets_queue_handler_add(connection_t* connection, void(*handle)(void *, void *)) {
+    connection_queue_item_t* item = connection_queue_item_create();
+    if (item == NULL) return 0;
+
+    item->handle = websockets_queue_handler;
+    item->connection = connection;
+    item->data = (connection_queue_item_data_t*)websockets_queue_data_create(handle);
+
+    if (item->data == NULL) {
+        item->free(item);
+        return 0;
+    }
+
+    connection->queue_prepend(item);
+
+    return 1;
+}
+
+void websockets_queue_handler(void* arg) {
+    connection_queue_item_t* item = arg;
+    connection_queue_websockets_data_t* data = (connection_queue_websockets_data_t*)item->data;
+
+    data->handler(item->connection->request, item->connection->response);
+    item->connection->queue_pop(item->connection);
+}
+
+connection_queue_websockets_data_t* websockets_queue_data_create(void(*handle)(void *, void *)) {
+    connection_queue_websockets_data_t* data = malloc(sizeof * data);
+    if (data == NULL) return NULL;
+
+    data->base.free = free;
+    data->handler = handle;
+
+    return data;
+}
