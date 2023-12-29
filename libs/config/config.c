@@ -152,16 +152,24 @@ const config_t* config() {
     return _config;
 }
 
+void config_set(const config_t* config) {
+    _config = (config_t*)config;
+}
+
 int __config_fill_struct() {
     const jsontok_t* root = json_root(_document);
 
     const jsontok_t* token_migrations = json_object_get(root, "migrations");
-    if (!json_is_object(token_migrations)) return 0;
+    if (token_migrations == NULL) {
+        _config->migrations.source_directory = "";
+    }
+    else {
+        if (!json_is_object(token_migrations)) return 0;
 
-    const jsontok_t* token_source_directory = json_object_get(token_migrations, "source_directory");
-    if (!json_is_string(token_source_directory)) return 0;
-    _config->migrations.source_directory = json_string(token_source_directory);
-
+        const jsontok_t* token_source_directory = json_object_get(token_migrations, "source_directory");
+        if (!json_is_string(token_source_directory)) return 0;
+        _config->migrations.source_directory = json_string(token_source_directory);
+    }
 
     const jsontok_t* token_main = json_object_get(root, "main");
     if (!json_is_object(token_main)) return 0;

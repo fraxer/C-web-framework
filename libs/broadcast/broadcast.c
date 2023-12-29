@@ -1,13 +1,20 @@
-#define _GNU_SOURCE
 #include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
-#include <sys/time.h>
-#include <pthread.h>
 #include <unistd.h>
 
 #include "log.h"
 #include "broadcast.h"
+
+typedef struct connection_queue_broadcast_data {
+    connection_queue_item_data_t base;
+    char* payload;
+    size_t size;
+    void(*handler)(response_t*, const char*, size_t);
+} connection_queue_broadcast_data_t;
+
+void __broadcast_queue_handler(void*);
+connection_queue_broadcast_data_t* __broadcast_queue_data_create(const char*, size_t, void(*)(response_t*, const char*, size_t));
+void __broadcast_queue_data_free(connection_queue_broadcast_data_t*);
 
 broadcast_list_t* __broadcast_create_list(const char* broadcast_name) {
     broadcast_list_t* list = malloc(sizeof * list);
@@ -196,139 +203,66 @@ void __broadcast_append_item(broadcast_list_t* list, broadcast_item_t* item) {
     list->item_last = item;
 }
 
-void __broadcast_queue_free(broadcast_queue_t* queue) {
-    if (queue == NULL)
-        return;
+void __broadcast_queue_add(connection_t* connection, const char* payload, size_t size, void(*handle)(response_t* response, const char* payload, size_t size)) {
+    connection_queue_item_t* item = connection_queue_item_create();
+    if (item == NULL) return;
 
-    queue->connection = NULL;
-    queue->next = NULL;
-    queue->response_handler = NULL;
-    queue->size = 0;
-    if (queue->payload)
-        free(queue->payload);
-    queue->payload = NULL;
+    item->handle = __broadcast_queue_handler;
+    item->connection = connection;
+    item->data = (connection_queue_item_data_t*)__broadcast_queue_data_create(payload, size, handle);
 
-    free(queue);
-}
-
-void broadcast_queue_free(broadcast_queue_attrs_t* attrs) {
-    if (attrs == NULL) return;
-
-    pthread_mutex_destroy(&attrs->scheduler_mutex);
-    pthread_cond_destroy(&attrs->scheduler_cond);
-    attrs->broadcast_queue_last = NULL;
-
-    broadcast_queue_t* queue = attrs->broadcast_queue;
-    while (queue) {
-        connection_t* connection = queue->connection;
-        if (connection_lock(connection) == 0) {
-            if (connection_alive(connection))
-                connection->close(connection);
-
-            connection->queue_count--;
-            if (!connection_alive(connection) && connection->queue_count == 0) {
-                connection_free(connection);
-                connection = NULL;
-            }
-
-            connection_unlock(connection);
-        }
-
-        broadcast_queue_t* next = queue->next;
-        __broadcast_queue_free(queue);
-        queue = next;
-    }
-
-    free(attrs);
-}
-
-void __broadcast_queue_add(connection_t* connection, const char* payload, size_t size, void(*response_handler)(response_t* response, const char* payload, size_t size)) {
-    broadcast_queue_t* queue = malloc(sizeof * queue);
-    if (queue == NULL)
-        return;
-
-    queue->locked = 0;
-    queue->connection = connection;
-    queue->next = NULL;
-    queue->response_handler = response_handler;
-    queue->size = size;
-    queue->payload = malloc(size);
-    if (queue->payload == NULL) {
-        __broadcast_queue_free(queue);
+    if (item->data == NULL) {
+        item->free(item);
         return;
     }
-    memcpy(queue->payload, payload, size);
 
-    connection->queue_count++;
-
-    broadcast_queue_attrs_t* attrs = connection->server->broadcast->broadcast_queue_attrs;
-    pthread_mutex_lock(&attrs->scheduler_mutex);
-
-    if (attrs->broadcast_queue == NULL)
-        attrs->broadcast_queue = queue;
-
-    broadcast_queue_t* queue_last = attrs->broadcast_queue_last;
-    if (queue_last)
-        queue_last->next = queue;
-
-    attrs->broadcast_queue_last = queue;
-
-    pthread_cond_signal(&attrs->scheduler_cond);
-    pthread_mutex_unlock(&attrs->scheduler_mutex);
+    connection->queue_append(item);
 }
 
-int __broadcast_alive_conn_exist(server_chain_t* server_chain) {
-    server_t* server = server_chain->server;
-    while (server) {
-        broadcast_list_t* list = __broadcast_lock_list(server->broadcast->list);
-        while (list) {
-            broadcast_item_t* item = __broadcast_lock_item(list->item);
-            while (item) {
-                if (connection_alive(item->connection)) {
-                    __broadcast_unlock_item(item);
-                    __broadcast_unlock_list(list);
-                    return 1;
-                }
+void __broadcast_queue_handler(void* arg) {
+    connection_queue_item_t* item = arg;
+    connection_queue_broadcast_data_t* data = (connection_queue_broadcast_data_t*)item->data;
 
-                broadcast_item_t* next_item = __broadcast_lock_item(item->next);
-                __broadcast_unlock_item(item);
-                item = next_item;
-            }
+    data->handler(item->connection->response, data->payload, data->size);
+    item->connection->queue_pop(item->connection);
+}
 
-            broadcast_list_t* next = __broadcast_lock_list(list->next);
-            __broadcast_unlock_list(list);
-            list = next;
-        }
+connection_queue_broadcast_data_t* __broadcast_queue_data_create(const char* payload, size_t size, void(*handle)(response_t*, const char*, size_t)) {
+    connection_queue_broadcast_data_t* data = malloc(sizeof * data);
+    if (data == NULL) return NULL;
 
-        server = server->next;
+    data->base.free = free;
+    data->payload = malloc(size);
+    data->size = size;
+    data->handler = handle;
+
+    if (data->payload == NULL) {
+        data->base.free(data);
+        return NULL;
     }
 
-    return 0;
+    memcpy(data->payload, payload, size);
+
+    return data;
 }
 
-broadcast_t* broadcast_init(broadcast_queue_attrs_t* attrs) {
+void __broadcast_queue_data_free(connection_queue_broadcast_data_t* data) {
+    if (data == NULL) return;
+
+    if (data->payload) free(data->payload);
+
+    free(data);
+}
+
+broadcast_t* broadcast_init() {
     broadcast_t* broadcast = malloc(sizeof * broadcast);
     if (!broadcast) return NULL;
 
-    broadcast->broadcast_queue_attrs = attrs;
     broadcast->locked = 0;
     broadcast->list = NULL;
     broadcast->list_last = NULL;
 
     return broadcast;
-}
-
-broadcast_queue_attrs_t *broadcast_queue_attrs_init()
-{
-    broadcast_queue_attrs_t* attrs = malloc(sizeof * attrs);
-    if (attrs == NULL) return NULL;
-
-    attrs->broadcast_queue = NULL;
-    attrs->broadcast_queue_last = NULL;
-    pthread_cond_init(&attrs->scheduler_cond, NULL);
-    pthread_mutex_init(&attrs->scheduler_mutex, NULL);
-
-    return attrs;
 }
 
 void broadcast_free(broadcast_t *broadcast) {
@@ -349,7 +283,7 @@ void broadcast_free(broadcast_t *broadcast) {
         list = next;
     }
 
-    broadcast->broadcast_queue_attrs = NULL;
+    broadcast->locked = 0;
     broadcast->list = NULL;
     broadcast->list_last = NULL;
 
@@ -430,8 +364,6 @@ void broadcast_remove(const char* broadcast_name, connection_t* connection) {
 }
 
 void broadcast_clear(connection_t* connection) {
-    if (*connection->counter == 0) return;
-
     broadcast_list_t* list = __broadcast_lock_list(connection->server->broadcast->list);
     while (list) {
         broadcast_item_t* item = __broadcast_lock_item(list->item);
@@ -498,62 +430,4 @@ void broadcast_send(const char* broadcast_name, connection_t* connection, const 
 
     if (id != NULL)
         ((broadcast_id_t*)id)->free(id);
-}
-
-void broadcast_run(server_chain_t* server_chain) {
-    broadcast_queue_attrs_t* attrs = server_chain->broadcast_queue_attrs;
-    struct timespec timeToWait = {0};
-    struct timeval now;
-
-    while (1) {
-        gettimeofday(&now, NULL);
-        timeToWait.tv_sec = now.tv_sec + 1;
-
-        pthread_mutex_lock(&attrs->scheduler_mutex);
-        pthread_cond_timedwait(&attrs->scheduler_cond, &attrs->scheduler_mutex, &timeToWait);
-
-        broadcast_queue_t* queue = attrs->broadcast_queue;
-
-        attrs->broadcast_queue = NULL;
-        attrs->broadcast_queue_last = NULL;
-
-        pthread_mutex_unlock(&attrs->scheduler_mutex);
-
-        while (queue) {
-            connection_t* connection = queue->connection;
-            if (connection_lock(connection) == 0) {
-                if (connection_alive(connection)) {
-                    if (connection_state(connection) != CONNECTION_WAITREAD) {
-                        connection_unlock(connection);
-                        continue;
-                    }
-
-                    queue->response_handler(connection->response, queue->payload, queue->size);
-                    connection->state = CONNECTION_WAITWRITE;
-                    connection->queue_pop(connection);
-                }
-
-                connection->queue_count--;
-                if (!connection_alive(connection) && connection->queue_count == 0) {
-                    connection_free(connection);
-                    connection = NULL;
-                }
-
-                connection_unlock(connection);
-            }
-
-            broadcast_queue_t* next = queue->next;
-            __broadcast_queue_free(queue);
-            queue = next;
-        }
-
-        if (server_chain->is_deprecated && server_chain->is_hard_reload)
-            break;
-        else if (server_chain->is_deprecated && !server_chain->is_hard_reload && !__broadcast_alive_conn_exist(server_chain))
-            break;
-    }    
-
-    pthread_mutex_lock(&server_chain->mutex);
-    server_chain->thread_count--;
-    pthread_mutex_unlock(&server_chain->mutex);
 }

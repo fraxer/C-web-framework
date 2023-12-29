@@ -26,8 +26,8 @@ websockets_protocol_t* websockets_protocol_default_create() {
 }
 
 int websocketsrequest_get_default(connection_t* connection) {
-    connection->handle = connection->server->websockets.default_handler;
-    connection->queue_push(connection);
+    if (!websockets_queue_handler_add(connection, connection->server->websockets.default_handler))
+        return 0;
 
     return 1;
 }

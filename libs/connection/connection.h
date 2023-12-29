@@ -2,68 +2,51 @@
 #define __CONNECTION__
 
 #include <stdatomic.h>
+
 #include "socket.h"
 #include "server.h"
 #include "openssl.h"
 #include "request.h"
 #include "response.h"
+#include "cqueue.h"
 
-typedef enum connection_state {
-    CONNECTION_WAITREAD = 0,
-    CONNECTION_READ,
-    CONNECTION_WAITWRITE,
-    CONNECTION_WRITE,
-    CONNECTION_WAITCLOSE
-} connection_state_e;
+struct mpxapi;
+struct connection_queue_item;
 
 typedef struct connection {
     int fd;
-    int basefd;
-    atomic_int queue_count;
-    int keepalive_enabled;
     int timeout;
-    int server_finded;
+    int keepalive_enabled;
     in_addr_t ip;
     unsigned short int port;
     atomic_bool locked;
-    connection_state_e state;
-    int* counter;
-    void* apidata;
-    void* protocol;
+    atomic_bool onwrite;
+    struct mpxapi* api;
     SSL* ssl;
     server_t* server;
     request_t* request;
     response_t* response;
+    cqueue_t* queue;
 
     int(*close)(struct connection*);
     void(*read)(struct connection*, char*, size_t);
-    void(*handle)(void*, void*);
     void(*write)(struct connection*, char*, size_t);
     int(*after_read_request)(struct connection*);
     int(*after_write_request)(struct connection*);
-    int(*queue_push)(struct connection*);
+    int(*queue_prepend)(struct connection_queue_item*);
+    int(*queue_append)(struct connection_queue_item*);
     int(*queue_pop)(struct connection*);
     void(*switch_to_protocol)(struct connection*);
 } connection_t;
 
-connection_t* connection_create(socket_t*, int);
-
-connection_t* connection_alloc(int, int, in_addr_t, unsigned short int);
-
+connection_t* connection_create(connection_t*);
+connection_t* connection_alloc(int, struct mpxapi*, in_addr_t, unsigned short int);
 void connection_free(connection_t*);
-
 void connection_reset(connection_t*);
-
 int connection_trylock(connection_t*);
-
 int connection_lock(connection_t*);
-
 int connection_unlock(connection_t*);
-
-void connection_set_state(connection_t*, int);
-
-int connection_state(connection_t*);
-
 int connection_alive(connection_t*);
+int connection_trylockwrite(connection_t*);
 
 #endif

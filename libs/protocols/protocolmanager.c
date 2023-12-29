@@ -14,8 +14,8 @@ void protmgr_set_tls(connection_t* connection) {
 }
 
 void protmgr_set_http1(connection_t* connection) {
-    connection->read = http1_read;
-    connection->write = http1_write;
+    connection->read = http1_wrap_read;
+    connection->write = http1_wrap_write;
 
     if (connection->request != NULL) {
         connection->request->free(connection->request);
@@ -31,8 +31,8 @@ void protmgr_set_http1(connection_t* connection) {
 }
 
 void protmgr_set_websockets_default(connection_t* connection) {
-    connection->read = websockets_read;
-    connection->write = websockets_write;
+    connection->read = websockets_wrap_read;
+    connection->write = websockets_wrap_write;
 
     if (connection->request != NULL) {
         connection->request->free(connection->request);
@@ -50,8 +50,8 @@ void protmgr_set_websockets_default(connection_t* connection) {
 }
 
 void protmgr_set_websockets_resource(connection_t* connection) {
-    connection->read = websockets_read;
-    connection->write = websockets_write;
+    connection->read = websockets_wrap_read;
+    connection->write = websockets_wrap_write;
 
     if (connection->request != NULL) {
         connection->request->free(connection->request);

@@ -34,5 +34,6 @@ int config_init(int argc, char* argv[]);
 void config_free();
 
 const config_t* config();
+void config_set(const config_t*);
 
 #endif

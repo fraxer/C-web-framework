@@ -6,11 +6,22 @@
 #include "log.h"
 #include "openssl.h"
 #include "route.h"
+#include "connection_queue.h"
 #include "http1request.h"
 #include "http1response.h"
 #include "http1parser.h"
 #include "http1internal.h"
 
+typedef struct connection_queue_http1_data {
+    connection_queue_item_data_t base;
+    void(*handler)(void*, void*);
+} connection_queue_http1_data_t;
+
+void http1_read(connection_t*, char*, size_t);
+void http1_write(connection_t*, char*, size_t);
+ssize_t http1_read_internal(connection_t*, char*, size_t);
+ssize_t http1_write_internal(connection_t*, const char*, size_t);
+ssize_t http1_write_chunked(connection_t*, const char*, size_t, int);
 void http1_handle(connection_t*);
 int http1_write_head(connection_t*);
 int http1_write_body(connection_t*, char*, size_t, size_t);
@@ -20,7 +31,26 @@ int http1_get_redirect(connection_t*);
 int http1_apply_redirect(connection_t*);
 char* http1_get_fullpath(connection_t*);
 void http1_prepare_range(http1response_t*, ssize_t*, ssize_t*, size_t*, const size_t);
+int http1_queue_handler_add(connection_t*, void(*)(void*, void*));
+void http1_queue_handler(void*);
+connection_queue_http1_data_t* http1_queue_data_create(void(*)(void *, void *));
 
+
+void http1_wrap_read(connection_t* connection, char* buffer, size_t buffer_size) {
+    if (!connection_lock(connection))
+        return;
+
+    http1_read(connection, buffer, buffer_size);
+    connection_unlock(connection);
+}
+
+void http1_wrap_write(connection_t* connection, char* buffer, size_t buffer_size) {
+    if (!connection_lock(connection))
+        return;
+
+    http1_write(connection, buffer, buffer_size);
+    connection_unlock(connection);
+}
 
 void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
     http1parser_t* parser = ((http1request_t*)connection->request)->parser;
@@ -154,6 +184,7 @@ ssize_t http1_write_internal(connection_t* connection, const char* response, siz
 ssize_t http1_write_chunked(connection_t* connection, const char* data, size_t length, int end) {
     size_t buf_length = 10 + length + 2 + 5;
     char* buf = malloc(buf_length);
+    if (buf == NULL) return -1;
 
     int pos = 0;
     pos = snprintf(buf, buf_length, "%x\r\n", (unsigned int)length);
@@ -195,15 +226,10 @@ int http1_write_body(connection_t* connection, char* buffer, size_t payload_size
 
     if (response->transfer_encoding == TE_CHUNKED) {
         if (response->content_encoding == CE_GZIP) {
-            size_t source_size = size;
-            int end = payload_size <= source_size;
+            const size_t source_size = size;
+            const int end = payload_size <= source_size;
 
-            http1response_string_t string = response->deflate(response, buffer, size, end);
-            if (string.data == NULL) goto failed;
-
-            writed = http1_write_chunked(connection, string.data, string.size, end);
-
-            free(string.data);
+            if (!response->deflate(response, buffer, size, end, http1_write_chunked)) goto failed;
 
             writed = source_size;
         } else {
@@ -250,10 +276,9 @@ int http1_get_resource(connection_t* connection) {
         if (route->is_primitive && route_compare_primitive(route, request->path, request->path_length)) {
             if (route->handler[request->method] == NULL) return -1;
 
-            connection->handle = route->handler[request->method];
-            connection->queue_push(connection);
-            // route->handler[request->method](connection->request, connection->response);
-            // connection->after_read_request(connection);
+            if (!http1_queue_handler_add(connection, route->handler[request->method]))
+                return -1;
+
             return 0;
         }
 
@@ -278,10 +303,8 @@ int http1_get_resource(connection_t* connection) {
 
             if (route->handler[request->method] == NULL) return -1;
 
-            connection->handle = route->handler[request->method];
-            connection->queue_push(connection);
-            // route->handler[request->method](connection->request, connection->response);
-            // connection->after_read_request(connection);
+            if (!http1_queue_handler_add(connection, route->handler[request->method]))
+                return -1;
 
             return 0;
         }
@@ -378,4 +401,40 @@ void http1_prepare_range(http1response_t* response, ssize_t* pos, ssize_t* end, 
 
     *pos = response->ranges->pos;
     *payload_size = *end + 1 - response->ranges->pos;
+}
+
+int http1_queue_handler_add(connection_t* connection, void(*handle)(void *, void *)) {
+    connection_queue_item_t* item = connection_queue_item_create();
+    if (item == NULL) return 0;
+
+    item->handle = http1_queue_handler;
+    item->connection = connection;
+    item->data = (connection_queue_item_data_t*)http1_queue_data_create(handle);
+
+    if (item->data == NULL) {
+        item->free(item);
+        return 0;
+    }
+
+    connection->queue_prepend(item);
+
+    return 1;
+}
+
+void http1_queue_handler(void* arg) {
+    connection_queue_item_t* item = arg;
+    connection_queue_http1_data_t* data = (connection_queue_http1_data_t*)item->data;
+
+    data->handler(item->connection->request, item->connection->response);
+    item->connection->queue_pop(item->connection);
+}
+
+connection_queue_http1_data_t* http1_queue_data_create(void(*handle)(void *, void *)) {
+    connection_queue_http1_data_t* data = malloc(sizeof * data);
+    if (data == NULL) return NULL;
+
+    data->base.free = free;
+    data->handler = handle;
+
+    return data;
 }

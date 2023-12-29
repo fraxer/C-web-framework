@@ -36,8 +36,7 @@ typedef struct http1response {
     http1_ranges_t* ranges;
 
     connection_t* connection;
-    z_stream* defstream;
-    int defstream_init;
+    z_stream defstream;
 
     void(*data)(struct http1response*, const char*);
     void(*datan)(struct http1response*, const char*, size_t);
@@ -51,7 +50,7 @@ typedef struct http1response {
     int(*headern_remove)(struct http1response*, const char*, size_t);
     int(*file)(struct http1response*, const char*);
     int(*filen)(struct http1response*, const char*, size_t);
-    http1response_string_t(*deflate)(struct http1response*, const char*, size_t, int);
+    int(*deflate)(struct http1response*, const char*, size_t, int, ssize_t(*)(connection_t*, const char*, size_t, int));
     void(*cookie_add)(struct http1response*, cookie_t);
 } http1response_t;
 
@@ -64,8 +63,6 @@ http1response_head_t http1response_create_head(http1response_t*);
 void http1response_redirect(http1response_t*, const char*, int);
 
 int http1response_data_append(char*, size_t*, const char*, size_t);
-
-http1response_string_t http1response_deflate(http1response_t*, const char*, size_t, int);
 
 http1_ranges_t* http1response_init_ranges();
 

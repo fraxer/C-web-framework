@@ -2,10 +2,11 @@
 #include <stddef.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "log.h"
-#include "connection_queue.h"
 #include "threadhandler.h"
+#include "connection_queue.h"
 
 typedef struct thread_handler_item {
     int is_deprecated;
@@ -17,24 +18,46 @@ static int thread_handler_count = 0;
 
 static thread_handler_item_t** thread_handlers = NULL;
 
-
 void* thread_handler(void* arg) {
     thread_handler_item_t* thread_handler = arg;
+    if (thread_handler == NULL) pthread_exit(NULL);
 
     while (1) {
-        connection_t* connection = connection_queue_guard_pop();
-        if (connection_lock(connection) == 0) {
-            if (connection->handle)
-                connection->handle(connection->request, connection->response);
+        connection_queue_item_t* item = connection_queue_guard_pop();
+        if (item == NULL) {
+            if (thread_handler->is_deprecated)
+                break;
 
-            connection->queue_pop(connection);            
-            connection_unlock(connection);
+            continue;
         }
 
-        if (thread_handler->is_deprecated) break;
+        // connection already locked
+        connection_t* connection = item->connection;
+        if (!connection_alive(connection)) {
+            item->free(item);
+
+            cqueue_lock(connection->queue);
+            const int queue_empty = cqueue_empty(connection->queue);
+            cqueue_unlock(connection->queue);
+
+            if (queue_empty) {
+                connection_free(connection);
+                connection = NULL;
+            }
+
+            connection_unlock(connection);    
+            continue;
+        }
+
+        item->handle(item);
+        item->free(item);
+        connection_unlock(connection);
+
+        if (thread_handler->is_deprecated)
+            break;
     }
 
-    if (thread_handler) free(thread_handler);
+    free(thread_handler);
 
     pthread_exit(NULL);
 }
@@ -129,4 +152,8 @@ int thread_handler_run(int handler_count) {
     thread_handlers = threads;
 
     return 0;
+}
+
+void thread_handlers_stop() {
+    connection_queue_broadcast();
 }

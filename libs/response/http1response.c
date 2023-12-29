@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <sys/stat.h>
 
+#include "log.h"
 #include "json.h"
 #include "config.h"
 #include "mimetype.h"
@@ -30,7 +31,7 @@ void http1response_reset(http1response_t*);
 int http1response_keepalive_enabled(http1response_t*);
 void http1response_try_enable_gzip(http1response_t*, const char*);
 void http1response_try_enable_te(http1response_t*, const char*);
-http1response_string_t http1response_deflate(http1response_t*, const char*, size_t, int);
+int http1response_deflate(http1response_t*, const char*, size_t, int, ssize_t(*callback)(connection_t*, const char*, size_t, int));
 int http1response_cmpstr(const char*, const char*);
 int http1response_cmpsubstr(const char*, const char*);
 int http1response_prepare_body(http1response_t*, size_t);
@@ -56,8 +57,6 @@ void http1response_free(void* arg) {
 
     http1response_reset(response);
 
-    if (response->defstream) free(response->defstream);
-
     free(response);
 
     response = NULL;
@@ -82,8 +81,6 @@ http1response_t* http1response_create(connection_t* connection) {
     response->last_header = NULL;
     response->ranges = NULL;
     response->connection = connection;
-    response->defstream = malloc(sizeof(z_stream));
-    response->defstream_init = 0;
     response->data = http1response_data;
     response->datan = http1response_datan;
     response->def = http1response_default;
@@ -100,6 +97,7 @@ http1response_t* http1response_create(connection_t* connection) {
     response->cookie_add = http1response_cookie_add;
     response->base.reset = (void(*)(void*))http1response_reset;
     response->base.free = (void(*)(void*))http1response_free;
+    response->defstream.state = NULL;
 
     return response;
 }
@@ -107,11 +105,14 @@ http1response_t* http1response_create(connection_t* connection) {
 void http1response_reset(http1response_t* response) {
     response->status_code = 200;
     response->head_writed = 0;
-    response->defstream_init = 0;
     response->transfer_encoding = TE_NONE;
     response->content_encoding = CE_NONE;
     response->body.pos = 0;
     response->body.size = 0;
+
+    if (response->defstream.state != NULL) {
+        (void)deflateEnd(&response->defstream);
+    }
 
     if (response->file_.fd > 0) {
         lseek(response->file_.fd, 0, SEEK_SET);
@@ -578,26 +579,13 @@ http1response_head_t http1response_create_head(http1response_t* response) {
     return head;
 }
 
-http1response_string_t http1response_deflate(http1response_t* response, const char* data, size_t length, int end) {
-    const size_t max_buffer_size = 32768;
-    size_t buffer_length = length < max_buffer_size ? max_buffer_size : length;
+int http1response_deflate(http1response_t* response, const char* data, size_t length, int end, ssize_t(*callback)(connection_t*, const char*, size_t, int)) {
+    const size_t buffer_length = config()->main.read_buffer;
     unsigned char buffer[buffer_length];
-    http1response_string_t result = {
-        .data = NULL,
-        .size = 0
-    };
+    int result = 0;
 
-    char* string = malloc(buffer_length);
-    if (string == NULL) return result;
-
-    z_stream* defstream = response->defstream;
-    defstream->avail_in = (uInt)(length);
-    defstream->next_in = (Bytef*)data;
-    defstream->avail_out = buffer_length;
-    defstream->next_out = buffer;
-
-    if (response->defstream_init == 0) {
-        response->defstream_init = 1;
+    z_stream* defstream = &response->defstream;
+    if (defstream->state == NULL) {
         defstream->zalloc = Z_NULL;
         defstream->zfree = Z_NULL;
         defstream->opaque = Z_NULL;
@@ -606,27 +594,36 @@ http1response_string_t http1response_deflate(http1response_t* response, const ch
             goto failed;
     }
 
-    int flush = end ? Z_FINISH : Z_SYNC_FLUSH;
+    defstream->avail_in = (uInt)length;
+    defstream->next_in = (Bytef*)data;
 
-    if (deflate(defstream, flush) == Z_STREAM_ERROR) goto failed;
+    const int flush = end ? Z_FINISH : Z_SYNC_FLUSH;
+    do {
+        defstream->avail_out = buffer_length;
+        defstream->next_out = buffer;
 
-    size_t writed = buffer_length - defstream->avail_out;
+        int ret = deflate(defstream, flush);
+        switch (ret) {
+            case Z_NEED_DICT:
+            case Z_DATA_ERROR:
+            case Z_MEM_ERROR:
+            case Z_BUF_ERROR:
+            case Z_STREAM_ERROR:
+                (void)deflateEnd(defstream);
+                goto failed;
+        }
 
-    memcpy(string, buffer, writed);
+        size_t writed = buffer_length - defstream->avail_out;
+        if (writed > 0 && !callback(response->connection, (const char*)buffer, writed, end))
+            goto failed;
+    } while (defstream->avail_out == 0);
 
-    result.data = string;
-    result.size = writed;
+    result = 1;
 
     failed:
 
-    if (end) {
-        int r = deflateEnd(defstream);
-        if (r == Z_STREAM_END || r == Z_ERRNO) goto failed;
-    }
-
-    if (result.data == NULL) {
-        free(string);
-    }
+    if (end || !result)
+        (void)deflateEnd(defstream);
 
     return result;
 }

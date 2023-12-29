@@ -57,14 +57,24 @@ void channel_leave(websocketsrequest_t* request, websocketsresponse_t* response)
 }
 
 void channel_send(websocketsrequest_t* request, websocketsresponse_t* response) {
-    const char* data = "text data";
+    websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)request->protocol;
+
+    char* data = protocol->payload(protocol);
+    if (data == NULL) {
+        response->data(response, "empty data");
+        return;
+    }
+
     size_t length = strlen(data);
     mybroadcast_id_t* id = mybroadcast_compare_id_create();
     if (id == NULL) {
         response->data(response, "out of memory");
+        free(data);
         return;
     }
 
     broadcast_send(broadcast_name, request->connection, data, length, id, mybroadcast_compare);
+    free(data);
+
     response->data(response, "done");
 }

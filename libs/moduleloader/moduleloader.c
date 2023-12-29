@@ -18,8 +18,8 @@
 #include "mimetype.h"
 #include "threadhandler.h"
 #include "threadworker.h"
-#include "threadbroadcast.h"
 #include "broadcast.h"
+#include "connection_queue.h"
 #ifdef MySQL_FOUND
     #include "mysql.h"
 #endif
@@ -36,9 +36,9 @@ int module_loader_init_modules();
 int module_loader_servers_load(int);
 int module_loader_thread_workers_load();
 int module_loader_thread_handlers_load();
-int module_loader_thread_broadcast_load();
 int module_loader_reload_is_hard();
 int module_loader_mimetype_load();
+int module_loader_connection_queue_init();
 int module_loader_set_http_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsontok_t*);
 int module_loader_set_websockets_route(routeloader_lib_t**, routeloader_lib_t**, route_t* route, const jsontok_t*);
 
@@ -93,7 +93,7 @@ int module_loader_init_modules() {
 
     if (module_loader_thread_handlers_load() == -1) goto failed;
 
-    if (module_loader_thread_broadcast_load() == -1) goto failed;
+    if (module_loader_connection_queue_init() == -1) goto failed;
 
     result = 0;
 
@@ -181,13 +181,23 @@ int module_loader_set_http_route(routeloader_lib_t** first_lib, routeloader_lib_
             *last_lib = routeloader_lib;
         }
 
-        void(*function)(void*, void*);
+        {
+            void(*function)(void*, void*);
 
-        *(void**)(&function) = routeloader_get_handler(*first_lib, lib_file, lib_handler);
+            *(void**)(&function) = routeloader_get_handler(*first_lib, lib_file, lib_handler);
 
-        if (function == NULL) return -1;
+            if (function == NULL) return -1;
 
-        if (route_set_http_handler(route, method, function) == -1) return -1;
+            if (route_set_http_handler(route, method, function) == -1) return -1;
+        }
+
+        {
+            void(*function)(const config_t*);
+            *(void**)(&function) = routeloader_get_handler(*first_lib, lib_file, "config_set");
+
+            if (function != NULL)
+                function(config());
+        }
     }
 
     return 0;
@@ -536,9 +546,6 @@ int module_loader_servers_load(int reload_is_hard) {
     server_t* last_server = NULL;
     routeloader_lib_t* first_lib = NULL;
 
-    broadcast_queue_attrs_t* broadcast_queue_attrs = broadcast_queue_attrs_init();
-    if (broadcast_queue_attrs == NULL) goto failed;
-
     for (jsonit_t it_servers = json_init_it(config()->servers); !json_end_it(&it_servers); json_next_it(&it_servers)) {
         enum required_fields { R_DOMAINS = 0, R_IP, R_PORT, R_ROOT, R_FIELDS_COUNT };
         enum fields { DOMAINS = 0, IP, PORT, ROOT, INDEX, HTTP, WEBSOCKETS, DATABASE, OPENSSL, FIELDS_COUNT };
@@ -556,7 +563,7 @@ int module_loader_servers_load(int reload_is_hard) {
 
         last_server = server;
 
-        server->broadcast = broadcast_init(broadcast_queue_attrs);
+        server->broadcast = broadcast_init();
         if (!server->broadcast) goto failed;
 
         const jsontok_t* token_server = json_it_value(&it_servers);
@@ -708,7 +715,7 @@ int module_loader_servers_load(int reload_is_hard) {
         return -1;
     }
 
-    if (server_chain_append(first_server, first_lib, broadcast_queue_attrs, reload_is_hard) == -1) goto failed;
+    if (server_chain_append(first_server, first_lib, reload_is_hard) == -1) goto failed;
 
     result = 0;
 
@@ -802,13 +809,11 @@ int module_loader_thread_handlers_load() {
         return -1;
     }
 
+    thread_handlers_stop();
+
     return thread_handler_run(count);
 }
 
-int module_loader_thread_broadcast_load() {
-    server_chain_t* server_chain = server_chain_last();
-    if (server_chain == NULL) return -1;
-
-    const int count_threads = 2;
-    return thread_broadcast_run(count_threads, server_chain);
+int module_loader_connection_queue_init() {
+    return connection_queue_init();
 }
