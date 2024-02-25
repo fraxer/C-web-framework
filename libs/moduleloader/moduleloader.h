@@ -5,9 +5,7 @@
 #include "json.h"
 
 int module_loader_init(int, char*[]);
-
 int module_loader_reload();
-
-db_t* module_loader_databases_load(const jsontok_t*);
+int module_loader_databases_load_token(const jsontok_t*);
 
 #endif

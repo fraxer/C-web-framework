@@ -7,6 +7,9 @@
 #include "log.h"
 #include "database.h"
 
+static db_t* _list = NULL;
+static db_t* _last_item = NULL;
+
 db_t* db_alloc() {
     return (db_t*)malloc(sizeof(db_t));
 }
@@ -22,11 +25,9 @@ const char* db_alloc_id(const char* db_id) {
 db_t* db_create(const char* db_id) {
     db_t* result = NULL;
     db_t* db = db_alloc();
-
     if (db == NULL) return NULL;
 
     db->id = db_alloc_id(db_id);
-
     if (db->id == NULL) goto failed;
 
     atomic_init(&db->lock_connection, 0);
@@ -38,11 +39,45 @@ db_t* db_create(const char* db_id) {
 
     failed:
 
-    if (result == NULL) {
+    if (result == NULL)
         free(db);
-    }
 
     return result;
+}
+
+int db_add(db_t* database) {
+    if (_list == NULL)
+        _list = database;
+
+    if (_last_item != NULL)
+        _last_item->next = database;
+
+    _last_item = database;
+
+    return 1;
+}
+
+void db_clear() {
+    db_free(_list);
+
+    _list = NULL;
+    _last_item = NULL;
+}
+
+db_t* database() {
+    return _list;
+}
+
+void db_set(db_t* database) {
+    _list = database;
+
+    db_t* db = database;
+    while (db) {
+        if (db->next == NULL)
+            _last_item = db;
+
+        db = db->next;
+    }
 }
 
 dbhost_t* db_host_create() {

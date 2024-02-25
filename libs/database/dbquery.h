@@ -3,7 +3,7 @@
 
 #include "database.h"
 
-dbinstance_t dbinstance(db_t*, const char*);
+dbinstance_t dbinstance(const char*);
 
 dbresult_t dbquery(dbinstance_t*, const char*, ...);
 

@@ -30,7 +30,6 @@ server_t* server_create() {
     server->http.redirect = NULL;
     server->websockets.default_handler = NULL;
     server->websockets.route = NULL;
-    server->database = NULL;
     server->openssl = NULL;
     server->broadcast = NULL;
     server->next = NULL;
@@ -74,9 +73,6 @@ void server_free(server_t* server) {
 
         if (server->websockets.route) route_free(server->websockets.route);
         server->websockets.route = NULL;
-
-        if (server->database) db_free(server->database);
-        server->database = NULL;
 
         if (server->openssl) openssl_free(server->openssl);
         server->openssl = NULL;

@@ -7,7 +7,6 @@
 #include "redirect.h"
 #include "route.h"
 #include "routeloader.h"
-#include "database.h"
 #include "domain.h"
 #include "openssl.h"
 
@@ -38,7 +37,6 @@ typedef struct server {
     char* root;
     domain_t* domain;
     index_t* index;
-    db_t* database;
     openssl_t* openssl;
     struct broadcast* broadcast;
     struct server* next;

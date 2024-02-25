@@ -4,6 +4,7 @@
 #include "route.h"
 #include "connection.h"
 #include "websocketscommon.h"
+#include "json.h"
 #include "request.h"
 
 struct websocketsrequest;
@@ -28,8 +29,6 @@ typedef struct websocketsrequest {
     int* keepalive_enabled;
 
     connection_t* connection;
-
-    db_t*(*database_list)(struct websocketsrequest*);
 } websocketsrequest_t;
 
 websocketsrequest_t* websocketsrequest_create(connection_t*);

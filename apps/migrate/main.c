@@ -170,17 +170,12 @@ const char* mg_config_read(const char* config_path) {
 
 int mg_database_parse(mgconfig_t* config, const jsontok_t* token_object) {
     if (token_object == NULL) return -1;
+    if (!json_is_object(token_object)) return -1;
 
-    const jsontok_t* token_server = json_object_get(token_object, config->server);
-    if (token_server == NULL) return -1;
-    if (!json_is_object(token_server)) return -1;
+    if (module_loader_databases_load_token(token_object) == -1)
+        return -1;
 
-    const jsontok_t* token_databases = json_object_get(token_server, "databases");
-    if (token_databases == NULL) return -1;
-    if (!json_is_object(token_databases)) return -1;
-
-    config->database = module_loader_databases_load(token_databases);
-    if (config->database == NULL) return -1;
+    config->database = database();
 
     return 0;
 }
@@ -606,10 +601,10 @@ int main(int argc, char* argv[]) {
     jsontok_t* token_object = json_root(document);
     if (!json_is_object(token_object)) goto failed;
 
-    const jsontok_t* token_servers = json_object_get(token_object, "servers");
-    if (token_servers == NULL) goto failed;
+    const jsontok_t* token_databases = json_object_get(token_object, "databases");
+    if (token_databases == NULL) goto failed;
 
-    if (mg_database_parse(&config, token_servers) == -1) goto failed;
+    if (mg_database_parse(&config, token_databases) == -1) goto failed;
 
     if (config.action == CREATE) {
         if (mg_migration_create(token_object, &config) == -1) goto failed;

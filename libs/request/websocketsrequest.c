@@ -9,7 +9,6 @@
 #include "websocketsparser.h"
 
 int websocketsrequest_init_parser(websocketsrequest_t*);
-db_t* websocketsrequest_database_list(websocketsrequest_t*);
 void websocketsrequest_payload_free(websockets_payload_t*);
 int websocketsrequest_get_default(connection_t*);
 int websocketsrequest_get_resource(connection_t*);
@@ -52,7 +51,6 @@ websocketsrequest_t* websocketsrequest_create(connection_t* connection) {
     request->type = WEBSOCKETS_NONE;
     request->can_reset = 1;
     request->connection = connection;
-    request->database_list = websocketsrequest_database_list;
     request->base.reset = (void(*)(void*))websocketsrequest_reset;
     request->base.free = (void(*)(void*))websocketsrequest_free;
 
@@ -77,10 +75,6 @@ void websocketsrequest_reset(websocketsrequest_t* request) {
     }
 
     request->can_reset = 1;
-}
-
-db_t* websocketsrequest_database_list(websocketsrequest_t* request) {
-    return request->connection->server->database;
 }
 
 void websocketsrequest_payload_free(websockets_payload_t* payload) {
