@@ -290,6 +290,9 @@ int http1parser_set_method(http1request_t* request, http1requestparser_t* parser
     else if (length == 7 && string[0] == 'O' && string[1] == 'P' && string[2] == 'T' && string[3] == 'I' && string[4] == 'O' && string[5] == 'N' && string[6] == 'S') {
         request->method = ROUTE_OPTIONS;
     }
+    else if (length == 4 && string[0] == 'H' && string[1] == 'E' && string[2] == 'A' && string[3] == 'D') {
+        request->method = ROUTE_HEAD;
+    }
     else return 0;
 
     return 1;
@@ -499,7 +502,7 @@ int http1parser_host_not_found(http1requestparser_t* parser) {
     const char* host_key = "host";
     size_t host_key_length = 4;
 
-    if (!cmpstr_lower(header->key, header->key_length, host_key, host_key_length))
+    if (!cmpstrn_lower(header->key, header->key_length, host_key, host_key_length))
         return HTTP1PARSER_CONTINUE;
 
     const size_t MAX_DOMAIN_LENGTH = 255;
@@ -557,10 +560,10 @@ void http1parser_try_set_keepalive(http1requestparser_t* parser) {
     ssize_t connection_value_length = 10;
 
     if ((ssize_t)header->key_length != connection_key_length) return;
-    if (!cmpstr_lower(header->key, header->key_length, connection_key, connection_key_length)) return;
+    if (!cmpstrn_lower(header->key, header->key_length, connection_key, connection_key_length)) return;
 
     parser->connection->keepalive_enabled = 0;
-    if (cmpstr_lower(header->value, header->value_length, connection_value, connection_value_length)) {
+    if (cmpstrn_lower(header->value, header->value_length, connection_value, connection_value_length)) {
         parser->connection->keepalive_enabled = 1;
     }
 }
@@ -569,7 +572,7 @@ void http1parser_try_set_range(http1requestparser_t* parser) {
     http1request_t* request = (http1request_t*)parser->connection->request;
     http1response_t* response = (http1response_t*)parser->connection->response;
 
-    if (cmpstr_lower(request->last_header->key, request->last_header->key_length, "range", 5)) {
+    if (cmpstrn_lower(request->last_header->key, request->last_header->key_length, "range", 5)) {
         response->ranges = http1parser_parse_range((char*)request->last_header->value, request->last_header->value_length);
     }
 }
@@ -582,7 +585,7 @@ void http1parser_try_set_cookie(http1requestparser_t* parser) {
     ssize_t key_length = 6;
 
     if ((ssize_t)header->key_length != key_length) return;
-    if (!cmpstr_lower(header->key, header->key_length, key, key_length)) return;
+    if (!cmpstrn_lower(header->key, header->key_length, key, key_length)) return;
 
     cookieparser_t cparser;
     cookieparser_init(&cparser);
@@ -599,7 +602,7 @@ void http1parser_try_set_content_length(http1requestparser_t* parser) {
     ssize_t key_length = 14;
 
     if ((ssize_t)header->key_length != key_length) return;
-    if (!cmpstr_lower(header->key, header->key_length, key, key_length)) return;
+    if (!cmpstrn_lower(header->key, header->key_length, key, key_length)) return;
     if (!http1request_has_payload(request)) return;
 
     parser->content_length = atoll(header->value);

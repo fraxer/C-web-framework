@@ -89,7 +89,14 @@ int helpers_base_mkdir(const char* base_path, const char* path) {
     return 1;
 }
 
-int cmpstr_lower(const char* a, size_t a_length, const char* b, size_t b_length) {
+int cmpstr_lower(const char* a, const char* b) {
+    size_t a_length = strlen(a);
+    size_t b_length = strlen(b);
+
+    return cmpstrn_lower(a, a_length, b, b_length);
+}
+
+int cmpstrn_lower(const char *a, size_t a_length, const char *b, size_t b_length) {
     for (size_t i = 0, j = 0; i < a_length && j < b_length; i++, j++)
         if (tolower(a[i]) != tolower(b[j])) return 0;
 
@@ -121,7 +128,8 @@ char* create_tmppath(const char* tmp_path)
     return path;
 }
 
-const char* file_extention(const char* path, size_t length) {
+const char* file_extention(const char* path) {
+    const size_t length = strlen(path);
     for (size_t i = length - 1; i > 0; i--) {
         switch (path[i]) {
         case '.':
@@ -134,12 +142,23 @@ const char* file_extention(const char* path, size_t length) {
     return NULL;
 }
 
-const char* absolute_path(char* fullpath, const char* rootdir, const char* filepath) {
-    const char* pfilepath = filepath;
-    if (pfilepath[0] == '/')
-        pfilepath++;
+int cmpsubstr_lower(const char* a, const char* b) {
+    size_t a_length = strlen(a);
+    size_t b_length = strlen(b);
+    size_t cmpsize = 0;
 
-    snprintf(fullpath, PATH_MAX, "%s/%s", rootdir, pfilepath);
+    for (size_t i = 0, j = 0; i < a_length && j < b_length; i++) {
+        if (tolower(a[i]) != tolower(b[j])) {
+            cmpsize = 0;
+            j = 0;
+            continue;
+        }
 
-    return fullpath;
+        cmpsize++;
+        j++;
+
+        if (cmpsize == b_length) return 1;
+    }
+
+    return cmpsize == b_length;
 }

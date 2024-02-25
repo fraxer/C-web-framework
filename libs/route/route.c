@@ -89,6 +89,7 @@ route_t* route_init_route() {
     route->handler[ROUTE_DELETE] = NULL;
     route->handler[ROUTE_OPTIONS] = NULL;
     route->handler[ROUTE_PATCH] = NULL;
+    route->handler[ROUTE_HEAD] = NULL;
 
     route->location_erroffset = 0;
     route->location = NULL;
@@ -334,6 +335,9 @@ int route_set_http_handler(route_t* route, const char* method, void(*function)(v
     }
     else if (method[0] == 'P' && method[1] == 'A' && method[2] == 'T' && method[3] == 'C' && method[4] == 'H') {
         m = ROUTE_PATCH;
+    }
+    else if (method[0] == 'H' && method[1] == 'E' && method[2] == 'A' && method[3] == 'D') {
+        m = ROUTE_HEAD;
     }
 
     if (m == ROUTE_NONE) return -1;

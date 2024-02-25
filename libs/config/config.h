@@ -28,6 +28,7 @@ typedef struct config {
     const jsontok_t* servers;
     const jsontok_t* mimetypes;
     const jsontok_t* databases;
+    const jsontok_t* storages;
 } config_t;
 
 int config_reload();

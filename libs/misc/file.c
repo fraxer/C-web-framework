@@ -1,20 +1,17 @@
+#include <stdio.h>
 #include <stdlib.h>
-#include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/sendfile.h>
 #include <errno.h>
-#include <linux/limits.h>
 
 #include "file.h"
 #include "log.h"
 #include "helpers.h"
-
-static const size_t max_filename = 255;
+#include "config.h"
 
 size_t __file_size(const int fd);
-const char* __file_name(file_t* file);
 int __file_set_name(file_t* file, const char* name);
 char* __file_content(file_t* file);
 int __file_set_content(file_t* file, const char* data, const size_t size);
@@ -24,45 +21,48 @@ int __file_truncate(file_t* file, const off_t offset);
 void __file_reset(file_t* file);
 int __file_content_set_name(file_content_t* file_content, const char* name);
 file_t __file_content_make_file(file_content_t* file_content, const char* path, const char* name);
+file_t __file_content_make_tmpfile(file_content_t* file_content);
 char* __file_content_content(file_content_t* file_content);
 int __file_internal_set_name(char* dest, const char* src);
 char* __file_internal_content(const int fd, const off_t offset, const size_t size);
 
-file_t file_create(const char* filename) {
+file_t file_create_tmp(const char* filename) {
     file_t file = file_alloc();
     file.set_name(&file, filename);
     file.ok = 1;
+    file.tmp = 1;
+
+    char* path = create_tmppath(config()->main.tmp);
+    if (path == NULL) {
+        file.ok = 0;
+        return file;
+    }
+
+    file.fd = mkstemp(path);
+    free(path);
+
+    if (file.fd == -1)
+        file.ok = 0;
 
     return file;
 }
 
-file_t file_open(const char* path) {
+file_t file_open(const char* path, const int flags) {
     file_t file = file_alloc();
     if (path == NULL) return file;
     if (path[0] == 0) return file;
-
-    {
-        char fullpath[PATH_MAX] = {0};
-        strcpy(fullpath, path);
-
-        const char* dirpath = dirname(fullpath);
-        struct stat st;
-        if (!(stat(dirpath, &st) == 0 && S_ISDIR(st.st_mode)))
-            if (!helpers_mkdir(dirpath))
-                return file;
-    }
 
     const char* filename = basename((char*)path);
     if (strcmp(filename, "/") == 0) return file;
     if (strcmp(filename, ".") == 0) return file;
     if (strcmp(filename, "..") == 0) return file;
 
-    file.fd = open(path, O_CREAT | O_RDWR, S_IRWXU);
+    file.fd = open(path, flags, S_IRWXU);
     if (file.fd < 0) return file;
 
     file.ok = 1;
     file.size = __file_size(file.fd);
-    file.set_name(&file, basename((char*)path));
+    file.set_name(&file, filename);
 
     return file;
 }
@@ -73,10 +73,11 @@ file_content_t file_content_create(const int fd, const char* filename, const off
         .ok = 1,
         .offset = offset,
         .size = size,
-        ._filename = {0},
+        .filename = {0},
 
         .set_filename = __file_content_set_name,
         .make_file = __file_content_make_file,
+        .make_tmpfile = __file_content_make_tmpfile,
         .content = __file_content_content
     };
     file_content.set_filename(&file_content, filename);
@@ -89,9 +90,8 @@ file_t file_alloc() {
         .fd = 0,
         .ok = 0,
         .size = 0,
-        ._name = {0},
+        .name = {0},
 
-        .name = __file_name,
         .set_name = __file_set_name,
         .content = __file_content,
         .set_content = __file_set_content,
@@ -108,12 +108,8 @@ size_t __file_size(const int fd) {
     return r == 0 ? stat_buf.st_size : -1;
 }
 
-const char* __file_name(file_t* file) {
-    return file->_name;
-}
-
 int __file_set_name(file_t* file, const char* name) {
-    return __file_internal_set_name(file->_name, name);
+    return __file_internal_set_name(file->name, name);
 }
 
 char* __file_content(file_t* file) {
@@ -152,7 +148,19 @@ int __file_append_content(file_t* file, const char* data, const size_t size) {
 int __file_close(file_t* file) {
     if (file->fd == 0) return 1;
 
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "/proc/self/fd/%d", file->fd);
+    char filePath[PATH_MAX];
+    const int tmp = file->tmp;
     const int status = close(file->fd);
+
+    if (tmp) {
+        const int rlresult = readlink(path, filePath, PATH_MAX);
+        if (rlresult == -1)
+            log_error("File: readlink error");
+        if (rlresult >= 0)
+            unlink(filePath);
+    }
 
     __file_reset(file);
 
@@ -175,17 +183,17 @@ void __file_reset(file_t* file) {
     file->fd = 0;
     file->ok = 0;
     file->size = 0;
-    memset(file->_name, 0, max_filename);
+    memset(file->name, 0, NAME_MAX);
 }
 
 int __file_content_set_name(file_content_t* file_content, const char* name) {
-    return __file_internal_set_name(file_content->_filename, name);
+    return __file_internal_set_name(file_content->filename, name);
 }
 
 file_t __file_content_make_file(file_content_t* file_content, const char* path, const char* name) {
     if (file_content == NULL) return file_alloc();
     if (name == NULL)
-        name = file_content->_filename;
+        name = file_content->filename;
 
     const char* pname = name;
     if (pname[0] == '/')
@@ -197,7 +205,7 @@ file_t __file_content_make_file(file_content_t* file_content, const char* path, 
         strcat(fullpath, "/");
 
     strcat(fullpath, pname);
-    file_t file = file_open(fullpath);
+    file_t file = file_open(fullpath, O_CREAT | O_RDWR);
     if (!file.ok) return file;
 
     lseek(file_content->fd, 0, SEEK_SET);
@@ -206,6 +214,28 @@ file_t __file_content_make_file(file_content_t* file_content, const char* path, 
         log_error("File error: %s\n", strerror(errno));
         file.close(&file);
         unlink(fullpath);
+        return file;
+    }
+
+    lseek(file_content->fd, 0, SEEK_SET);
+    lseek(file.fd, 0, SEEK_SET);
+
+    file.ok = 1;
+    file.size = file_content->size;
+
+    return file;
+}
+
+file_t __file_content_make_tmpfile(file_content_t* file_content) {
+    if (file_content == NULL) return file_alloc();
+
+    file_t file = file_create_tmp(file_content->filename);
+
+    lseek(file_content->fd, 0, SEEK_SET);
+    off_t offset = file_content->offset;
+    if (sendfile(file.fd, file_content->fd, &offset, file_content->size) == -1) {
+        log_error("Tmpfile error: %s\n", strerror(errno));
+        file.close(&file);
         return file;
     }
 
@@ -238,8 +268,8 @@ int __file_internal_set_name(char* dest, const char* src) {
     if (strcmp(filename, "..") == 0) return 0;
 
     size_t length = strlen(filename);
-    if (length >= max_filename)
-        length = max_filename - 1;
+    if (length >= NAME_MAX)
+        length = NAME_MAX - 1;
 
     strncpy(dest, filename, length);
     dest[length] = 0;

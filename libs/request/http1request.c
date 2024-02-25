@@ -43,11 +43,13 @@ int http1request_append_formdata_text(http1request_t*, const char*, const char*)
 int http1request_append_formdata_json(http1request_t*, const char*, jsondoc_t*);
 int http1request_append_formdata_filepath(http1request_t*, const char*, const char*);
 int http1request_append_formdata_file(http1request_t*, const char*, file_t*);
+int http1request_append_formdata_file_content(http1request_t*, const char*, file_content_t*);
 int http1request_set_payload_raw(http1request_t*, const char*, const char*);
 int http1request_set_payload_text(http1request_t*, const char*);
 int http1request_set_payload_json(http1request_t*, jsondoc_t*);
 int http1request_set_payload_filepath(http1request_t*, const char*);
-int http1request_set_payload_file(http1request_t*, file_t*);
+int http1request_set_payload_file(http1request_t*, const file_t*);
+int http1request_set_payload_file_content(http1request_t*, const file_content_t*);
 
 int http1request_init_parser(http1request_t* request) {
     request->parser = malloc(sizeof(http1requestparser_t));
@@ -124,11 +126,13 @@ http1request_t* http1request_create(connection_t* connection) {
     request->append_formdata_json = http1request_append_formdata_json;
     request->append_formdata_filepath = http1request_append_formdata_filepath;
     request->append_formdata_file = http1request_append_formdata_file;
+    request->append_formdata_file_content = http1request_append_formdata_file_content;
     request->set_payload_raw = http1request_set_payload_raw;
     request->set_payload_text = http1request_set_payload_text;
     request->set_payload_json = http1request_set_payload_json;
     request->set_payload_filepath = http1request_set_payload_filepath;
     request->set_payload_file = http1request_set_payload_file;
+    request->set_payload_file_content = http1request_set_payload_file_content;
     request->base.reset = (void(*)(void*))http1request_reset;
     request->base.free = (void(*)(void*))http1request_free;
 
@@ -378,29 +382,6 @@ int http1request_has_payload(http1request_t* request) {
     return 0;
 }
 
-int cmpstr(const char* a, const char* b) {
-    size_t a_length = strlen(a);
-    size_t b_length = strlen(b);
-
-    for (size_t i = 0, j = 0; i < a_length && j < b_length; i++, j++) {
-        if (tolower(a[i]) != tolower(b[j])) return 0;
-    }
-
-    return 1;
-}
-
-int cmpsubstr(const char* a, const char* b) {
-    size_t a_length = strlen(a);
-    size_t b_length = strlen(b);
-
-    for (size_t i = 0, j = 0; i < a_length && j < b_length; i++, j++) {
-        if (tolower(a[i]) != tolower(b[j])) return 0;
-        if (i + 1 == a_length || j + 1 == b_length) return 1;
-    }
-
-    return 1;
-}
-
 void http1request_payload_parse_multipart(http1request_t* request, const char* header_value) {
     size_t payload_size = strlen(header_value);
     formdataparser_t fdparser;
@@ -491,7 +472,7 @@ void http1request_payload_parse(http1request_t* request) {
     http1_header_t* header = request->header_;
 
     while (header) {
-        if (cmpstr(header->key, "content-type"))
+        if (cmpstr_lower(header->key, "content-type"))
             break;
 
         header = header->next;
@@ -502,9 +483,9 @@ void http1request_payload_parse(http1request_t* request) {
         return;
     }
 
-    if (cmpsubstr(header->value, "multipart/form-data"))
+    if (cmpsubstr_lower(header->value, "multipart/form-data"))
         http1request_payload_parse_multipart(request, header->value);
-    else if (cmpstr(header->value, "application/x-www-form-urlencoded"))
+    else if (cmpstr_lower(header->value, "application/x-www-form-urlencoded"))
         http1request_payload_parse_urlencoded(request);
     else
         http1request_payload_parse_plain(request);
@@ -557,6 +538,7 @@ const char* http1request_method_string(route_methods_e method) {
     case ROUTE_DELETE: return "DELETE";
     case ROUTE_OPTIONS: return "OPTIONS";
     case ROUTE_PATCH: return "PATCH";
+    case ROUTE_HEAD: return "HEAD";
     }
 
     return 0;
@@ -571,6 +553,7 @@ size_t http1request_method_length(route_methods_e method) {
     case ROUTE_DELETE: return 6;
     case ROUTE_OPTIONS: return 7;
     case ROUTE_PATCH: return 5;
+    case ROUTE_HEAD: return 4;
     }
 
     return 0;
@@ -797,93 +780,30 @@ int http1request_append_formdata_json(http1request_t* request, const char* key, 
 }
 
 int http1request_append_formdata_filepath(http1request_t* request, const char* key, const char* filepath) {
-    http1_payload_t* payload = &request->payload_;
-    file_t* file = &payload->file;
+    file_t file = file_open(filepath, O_RDONLY);
+    if (!file.ok) return 0;
 
-    if (payload->type != NONE && payload->type != MULTIPART)
-        return 0;
-
-    const int target_filefd = open(filepath, O_RDONLY, S_IRUSR | S_IWUSR);
-    if (target_filefd <= 0)
-        return 0;
-
-    int result = 0;
-    if (file->fd <= 0) {
-        if (!http1request_create_payload_file(payload))
-            goto failed;
-
-        if (!http1request_create_payload_boundary(payload, boundary_size))
-            goto failed;
-
-        request->header_del(request, "Content-Type");
-        if (!http1request_add_header_multipart(request))
-            goto failed;
-    }
-    else {
-        file->size -= strlen(payload->boundary) + 6; // --boundary--\r\n
-    }
-
-    if (!file->append_content(file, "--", 2))
-        goto failed;
-    if (!file->append_content(file, payload->boundary, boundary_size))
-        goto failed;
-    if (!file->append_content(file, "\r\n", 2))
-        goto failed;
-
-    const char* filename = basename((char*)filepath);
-    if (strcmp(filename, "/") == 0) goto failed;
-    if (strcmp(filename, ".") == 0) goto failed;
-    if (strcmp(filename, "..") == 0) goto failed;
-    if (!http1request_insert_content_disposition_file_header_payload(payload, key, filename))
-        goto failed;
-
-    const char* ext = file_extention(filename, strlen(filename));
-    const char* mimetype = mimetype_find_type(ext);
-    if (mimetype == NULL)
-        mimetype = "text/plain";
-
-    if (!http1request_insert_header_payload(payload, "Content-Type: %s\r\n\r\n", mimetype))
-        goto failed;
-
-    off_t offset = 0;
-    size_t filesize = helpers_file_size(target_filefd);
-
-    lseek(file->fd, file->size, SEEK_SET);
-    size_t sended = sendfile(file->fd, target_filefd, &offset, filesize);
-    lseek(file->fd, 0, SEEK_SET);
-    file->size += sended;
-
-    if (sended != filesize)
-        goto failed;
-
-    if (!file->append_content(file, "\r\n", 2))
-        goto failed;
-    if (!file->append_content(file, "--", 2))
-        goto failed;
-    if (!file->append_content(file, payload->boundary, boundary_size))
-        goto failed;
-    if (!file->append_content(file, "--\r\n", 4))
-        goto failed;
-
-    result = 1;
-
-    payload->type = MULTIPART;
-
-    failed:
-
-    close(target_filefd);
+    const int result = http1request_append_formdata_file(request, key, &file);
+    file.close(&file);
 
     return result;
 }
 
-int http1request_append_formdata_file(http1request_t* request, const char* key, file_t* target_file) {
+int http1request_append_formdata_file(http1request_t* request, const char* key, file_t* file) {
+    file_content_t file_content = file_content_create(file->fd, file->name, 0, file->size);
+
+    return http1request_append_formdata_file_content(request, key, &file_content);
+}
+
+int http1request_append_formdata_file_content(http1request_t* request, const char* key, file_content_t* file_content) {
     http1_payload_t* payload = &request->payload_;
     file_t* file = &payload->file;
 
     if (payload->type != NONE && payload->type != MULTIPART)
         return 0;
-
-    if (target_file->fd <= 0)
+    if (!file_content->ok)
+        return 0;
+    if (file_content->fd <= 0)
         return 0;
 
     int result = 0;
@@ -908,10 +828,10 @@ int http1request_append_formdata_file(http1request_t* request, const char* key, 
         goto failed;
     if (!file->append_content(file, "\r\n", 2))
         goto failed;
-    if (!http1request_insert_content_disposition_file_header_payload(payload, key, target_file->name(target_file)))
+    if (!http1request_insert_content_disposition_file_header_payload(payload, key, file_content->filename))
         goto failed;
 
-    const char* ext = file_extention(target_file->name(target_file), strlen(target_file->name(target_file)));
+    const char* ext = file_extention(file_content->filename);
     const char* mimetype = mimetype_find_type(ext);
     if (mimetype == NULL)
         mimetype = "text/plain";
@@ -919,15 +839,13 @@ int http1request_append_formdata_file(http1request_t* request, const char* key, 
     if (!http1request_insert_header_payload(payload, "Content-Type: %s\r\n\r\n", mimetype))
         goto failed;
 
-    off_t offset = 0;
-    size_t filesize = helpers_file_size(target_file->fd);
-
+    off_t offset = file_content->offset;
     lseek(file->fd, file->size, SEEK_SET);
-    size_t sended = sendfile(file->fd, target_file->fd, &offset, filesize);
+    size_t sended = sendfile(file->fd, file_content->fd, &offset, file_content->size);
     lseek(file->fd, 0, SEEK_SET);
     file->size += sended;
 
-    if (sended != filesize)
+    if (sended != file_content->size)
         goto failed;
 
     if (!file->append_content(file, "\r\n", 2))
@@ -984,69 +902,30 @@ int http1request_set_payload_json(http1request_t* request, jsondoc_t* document) 
 }
 
 int http1request_set_payload_filepath(http1request_t* request, const char* filepath) {
-    http1_payload_t* payload = &request->payload_;
-    file_t* file = &payload->file;
+    file_t file = file_open(filepath, O_RDONLY);
+    if (!file.ok) return 0;
 
-    if (payload->type != NONE && payload->type != PLAIN)
-        return 0;
-
-    const int target_filefd = open(filepath, O_RDONLY, S_IRUSR | S_IWUSR);
-    if (target_filefd <= 0)
-        return 0;
-
-    int result = 0;
-    if (file->fd <= 0) {
-        if (!http1request_create_payload_file(payload))
-            goto failed;
-    }
-    else {
-        if (!file->truncate(file, 0))
-            goto failed;
-    }
-
-    const char* filename = basename((char*)filepath);
-    if (strcmp(filename, "/") == 0) goto failed;
-    if (strcmp(filename, ".") == 0) goto failed;
-    if (strcmp(filename, "..") == 0) goto failed;
-
-    const char* ext = file_extention(filename, strlen(filename));
-    const char* mimetype = mimetype_find_type(ext);
-    if (mimetype == NULL)
-        mimetype = "text/plain";
-
-    request->header_del(request, "Content-Type");
-    request->header_add(request, "Content-Type", mimetype);
-
-    off_t offset = 0;
-    size_t filesize = helpers_file_size(target_filefd);
-
-    lseek(file->fd, file->size, SEEK_SET);
-    size_t sended = sendfile(file->fd, target_filefd, &offset, filesize);
-    lseek(file->fd, 0, SEEK_SET);
-    file->size += sended;
-
-    if (sended != filesize)
-        goto failed;
-
-    result = 1;
-
-    payload->type = PLAIN;
-
-    failed:
-
-    close(target_filefd);
+    const int result = http1request_set_payload_file(request, &file);
+    file.close(&file);
 
     return result;
 }
 
-int http1request_set_payload_file(http1request_t* request, file_t* target_file) {
+int http1request_set_payload_file(http1request_t* request, const file_t* file) {
+    file_content_t file_content = file_content_create(file->fd, file->name, 0, file->size);
+
+    return http1request_set_payload_file_content(request, &file_content);
+}
+
+int http1request_set_payload_file_content(http1request_t* request, const file_content_t* file_content) {
     http1_payload_t* payload = &request->payload_;
     file_t* file = &payload->file;
 
     if (payload->type != NONE && payload->type != PLAIN)
         return 0;
-
-    if (target_file->fd <= 0)
+    if (!file_content->ok)
+        return 0;
+    if (file_content->fd <= 0)
         return 0;
 
     int result = 0;
@@ -1059,7 +938,7 @@ int http1request_set_payload_file(http1request_t* request, file_t* target_file) 
             goto failed;
     }
 
-    const char* ext = file_extention(target_file->name(target_file), strlen(target_file->name(target_file)));
+    const char* ext = file_extention(file_content->filename);
     const char* mimetype = mimetype_find_type(ext);
     if (mimetype == NULL)
         mimetype = "text/plain";
@@ -1067,11 +946,11 @@ int http1request_set_payload_file(http1request_t* request, file_t* target_file) 
     request->header_del(request, "Content-Type");
     request->header_add(request, "Content-Type", mimetype);
 
-    off_t offset = 0;
-    size_t filesize = helpers_file_size(target_file->fd);
+    off_t offset = file_content->offset;
+    size_t filesize = file_content->size;
 
     lseek(file->fd, file->size, SEEK_SET);
-    size_t sended = sendfile(file->fd, target_file->fd, &offset, filesize);
+    size_t sended = sendfile(file->fd, file_content->fd, &offset, filesize);
     lseek(file->fd, 0, SEEK_SET);
     file->size += sended;
 

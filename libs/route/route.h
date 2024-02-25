@@ -13,7 +13,8 @@ typedef enum route_methods {
     ROUTE_PUT,
     ROUTE_DELETE,
     ROUTE_OPTIONS,
-    ROUTE_PATCH
+    ROUTE_PATCH,
+    ROUTE_HEAD
 } route_methods_e;
 
 typedef struct route_param {
@@ -34,7 +35,7 @@ typedef struct route {
     pcre* location;
     route_param_t* param;
     struct route* next;
-    void(*handler[6])(void*, void*);
+    void(*handler[7])(void*, void*);
 } route_t;
 
 route_t* route_create(const char*);

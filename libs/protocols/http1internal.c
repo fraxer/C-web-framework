@@ -228,7 +228,7 @@ void http1_client_write(connection_t* connection, char* buffer, size_t buffer_si
     }
 
     // payload
-    if (request->payload_.file.fd > 0 && request->payload_.pos < request->payload_.file.size) {
+    while (request->payload_.file.fd > 0 && request->payload_.pos < request->payload_.file.size) {
         size_t payload_size = request->payload_.file.size - request->payload_.pos;
         ssize_t pos = request->payload_.pos;
         size_t size = payload_size > buffer_size ? buffer_size : payload_size;
@@ -241,7 +241,6 @@ void http1_client_write(connection_t* connection, char* buffer, size_t buffer_si
         if (writed < 0) goto write;
        
         request->payload_.pos += writed;
-        if (request->payload_.pos < request->payload_.file.size) return;
     }
 
     write:
@@ -262,7 +261,7 @@ ssize_t http1_write_internal(connection_t* connection, const char* response, siz
 }
 
 ssize_t http1_write_chunked(connection_t* connection, const char* data, size_t length, int end) {
-    size_t buf_length = 10 + length + 2 + 5;
+    const size_t buf_length = 10 + length + 2 + 5;
     char* buf = malloc(buf_length);
     if (buf == NULL) return -1;
 
