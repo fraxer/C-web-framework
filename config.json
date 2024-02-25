@@ -52,38 +52,6 @@
                     }
                 }
             },
-            "databases": {
-                "postgresql": [
-                    {
-                        "ip": "127.0.0.1",
-                        "port": 5432,
-                        "dbname": "dbname",
-                        "user": "root",
-                        "password": "",
-                        "connection_timeout": 3,
-                        "migration": true
-                    }
-                ],
-                "mysql": [
-                    {
-                        "ip": "127.0.0.1",
-                        "port": 3306,
-                        "dbname": "dbname",
-                        "user": "root",
-                        "password": "",
-                        "migration": false
-                    }
-                ],
-                "redis": [
-                    {
-                        "ip": "127.0.0.1",
-                        "port": 6379,
-                        "dbindex": 0,
-                        "user": "",
-                        "password": ""
-                    }
-                ]
-            },
             "tls": {
                 "fullchain": "/var/www/server/fullchain.pem",
                 "private": "/var/www/server/privkey.pem",
@@ -106,6 +74,38 @@
                 }
             }
         }
+    },
+    "databases": {
+        "postgresql": [
+            {
+                "ip": "127.0.0.1",
+                "port": 5432,
+                "dbname": "dbname",
+                "user": "root",
+                "password": "",
+                "connection_timeout": 3,
+                "migration": true
+            }
+        ],
+        "mysql": [
+            {
+                "ip": "127.0.0.1",
+                "port": 3306,
+                "dbname": "dbname",
+                "user": "root",
+                "password": "",
+                "migration": false
+            }
+        ],
+        "redis": [
+            {
+                "ip": "127.0.0.1",
+                "port": 6379,
+                "dbindex": 0,
+                "user": "",
+                "password": ""
+            }
+        ]
     },
     "mimetypes": {
         "text/html": ["html", "htm", "shtml"],

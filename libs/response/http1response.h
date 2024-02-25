@@ -3,6 +3,7 @@
 
 #include "connection.h"
 #include "http1common.h"
+#include "json.h"
 #include "response.h"
 
 typedef struct http1response_head {

@@ -80,33 +80,24 @@ typedef struct db {
 } db_t;
 
 db_t* db_alloc();
-
 db_t* db_create(const char*);
+int db_add(db_t*);
+void db_clear();
+db_t* database();
+void db_set(db_t*);
 
 dbhost_t* db_host_create();
-
 void db_next_host(dbhosts_t*);
-
 void db_free(db_t*);
-
 void db_host_free(dbhost_t*);
-
 void db_hosts_free(dbhosts_t*);
-
 void db_cell_free(db_table_cell_t*);
-
 dbconnection_t* db_connection_find(dbconnection_t*);
-
 void db_connection_append(dbinstance_t*, dbconnection_t*);
-
 void db_connection_pop(dbinstance_t*, dbconnection_t*);
-
 int db_connection_trylock(dbconnection_t*);
-
 int db_connection_lock(dbconnection_t*);
-
 void db_connection_unlock(dbconnection_t*);
-
 void db_connection_free(dbconnection_t*);
 
 #endif

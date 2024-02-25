@@ -73,7 +73,8 @@ void websocket(http1request_t* request, http1response_t* response) {
 }
 
 void mysql(http1request_t* request, http1response_t* response) {
-    dbinstance_t dbinst = dbinstance(request->database_list(request), "mysql");
+    (void)request;
+    dbinstance_t dbinst = dbinstance("mysql");
 
     if (!dbinst.ok) {
         response->data(response, "db not found");

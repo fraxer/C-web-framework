@@ -14,6 +14,7 @@ typedef struct routeloader_lib {
 
 routeloader_lib_t* routeloader_load_lib(const char*);
 
+void* routeloader_get_handler_silent(routeloader_lib_t*, const char*, const char*);
 void* routeloader_get_handler(routeloader_lib_t*, const char*, const char*);
 
 void routeloader_free(routeloader_lib_t*);

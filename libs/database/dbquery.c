@@ -6,7 +6,7 @@
 
 #include "dbquery.h"
 
-dbinstance_t dbinstance(db_t* db, const char* dbid) {
+dbinstance_t dbinstance(const char* dbid) {
     dbinstance_t inst = {
         .ok = 0,
         .hosts = NULL,
@@ -17,6 +17,7 @@ dbinstance_t dbinstance(db_t* db, const char* dbid) {
         .table_migration_create_sql = NULL
     };
 
+    db_t* db = database();
     while (db) {
         if (strcmp(db->id, dbid) == 0) {
             inst.ok = 1;

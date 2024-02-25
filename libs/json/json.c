@@ -823,6 +823,7 @@ jsonit_t json_init_it(const jsontok_t* token) {
 
 int json_end_it(const jsonit_t* iterator) {
     if (iterator == NULL) return 1;
+    if (iterator->parent == NULL) return 1;
 
     return iterator->index == iterator->parent->size;
 }

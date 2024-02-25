@@ -27,6 +27,7 @@ typedef struct config {
     config_migrations_t migrations;
     const jsontok_t* servers;
     const jsontok_t* mimetypes;
+    const jsontok_t* databases;
 } config_t;
 
 int config_reload();

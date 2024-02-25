@@ -33,7 +33,6 @@ int http1request_header_add(http1request_t*, const char*, const char*);
 int http1request_headern_add(http1request_t*, const char*, size_t, const char*, size_t);
 int http1request_header_del(http1request_t*, const char*);
 const char* http1request_cookie(http1request_t*, const char*);
-db_t* http1request_database_list(http1request_t*);
 void http1request_payload_free(http1_payload_t*);
 void http1request_payload_parse(http1request_t*);
 http1_payloadpart_t* http1request_multipart_part(http1request_t*, const char*);
@@ -130,7 +129,6 @@ http1request_t* http1request_create(connection_t* connection) {
     request->set_payload_json = http1request_set_payload_json;
     request->set_payload_filepath = http1request_set_payload_filepath;
     request->set_payload_file = http1request_set_payload_file;
-    request->database_list = http1request_database_list;
     request->base.reset = (void(*)(void*))http1request_reset;
     request->base.free = (void(*)(void*))http1request_free;
 
@@ -230,10 +228,6 @@ const char* http1request_cookie(http1request_t* request, const char* key) {
     }
 
     return NULL;
-}
-
-db_t* http1request_database_list(http1request_t* request) {
-    return request->connection->server->database;
 }
 
 void http1request_payload_free(http1_payload_t* payload) {

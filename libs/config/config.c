@@ -13,6 +13,7 @@ static char* _config_path = NULL;
 static jsondoc_t* _document = NULL;
 static config_t* _config = NULL;
 
+config_t* __config_create();
 int __config_load(const char* path);
 int __config_parse_data(const char* data);
 const char* __config_get_path(int argc, char* argv[]);
@@ -68,7 +69,27 @@ int __config_save_path(const char* path) {
     return 1;
 }
 
-int __config_load(const char* path) {
+config_t* __config_create() {
+    config_t* config = malloc(sizeof * config);
+    if (config == NULL)
+        return NULL;
+
+    config->main.client_max_body_size = 0;
+    config->main.gzip = NULL;
+    config->main.read_buffer = 0;
+    config->main.reload = 0;
+    config->main.threads = 0;
+    config->main.tmp = NULL;
+    config->main.workers = 0;
+    config->migrations.source_directory = "";
+    config->servers = NULL;
+    config->mimetypes = NULL;
+    config->databases = NULL;
+
+    return config;
+}
+
+int __config_load(const char *path) {
     if (path == NULL) return 0;
 
     int fd = open(path, O_RDONLY);
@@ -106,7 +127,7 @@ int config_reload() {
 }
 
 int config_init(int argc, char* argv[]) {
-    _config = malloc(sizeof * _config);
+    _config = __config_create();
     if (_config == NULL)
         return 0;
 
@@ -213,6 +234,10 @@ int __config_fill_struct() {
     const jsontok_t* token_servers = json_object_get(root, "servers");
     if (!json_is_object(token_servers)) return 0;
     _config->servers = token_servers;
+
+    const jsontok_t* token_databases = json_object_get(root, "databases");
+    if (!json_is_object(token_databases)) return 0;
+    _config->databases = token_databases;
 
     const jsontok_t* token_mimetypes = json_object_get(root, "mimetypes");
     if (!json_is_object(token_mimetypes)) return 0;

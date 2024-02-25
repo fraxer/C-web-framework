@@ -34,6 +34,7 @@
 
 void module_loader_pass_memory_sharedlib(routeloader_lib_t*, const char*);
 int module_loader_init_modules();
+int module_loader_databases_load();
 int module_loader_servers_load(int);
 int module_loader_thread_workers_load();
 int module_loader_thread_handlers_load();
@@ -88,10 +89,11 @@ void module_loader_pass_memory_sharedlib(routeloader_lib_t* first_lib, const cha
 
     functions[0] = (fn){ "config_set", (void*(*)())config };
     functions[1] = (fn){ "mimetype_set", (void*(*)())mimetype_config };
+    functions[1] = (fn){ "db_set", (void*(*)())database };
 
     for (int i = 0; i < size; i++) {
         void(*function)(void*);
-        *(void**)(&function) = routeloader_get_handler(first_lib, lib_file, functions[i].name);
+        *(void**)(&function) = routeloader_get_handler_silent(first_lib, lib_file, functions[i].name);
 
         if (function != NULL)
             function(functions[i].function());
@@ -107,6 +109,8 @@ int module_loader_init_modules() {
     log_reinit();
 
     if (module_loader_mimetype_load() == -1) return -1;
+
+    if (module_loader_databases_load() == -1) return -1;
 
     if (module_loader_servers_load(reload_is_hard)) return -1;
 
@@ -397,10 +401,12 @@ domain_t* module_loader_domains_load(const jsontok_t* token_array) {
     return result;
 }
 
-db_t* module_loader_databases_load(const jsontok_t* token_object) {
-    db_t* result = NULL;
-    db_t* database_first = NULL;
-    db_t* database_last = NULL;
+int module_loader_databases_load() {
+    return module_loader_databases_load_token(config()->databases);
+}
+
+int module_loader_databases_load_token(const jsontok_t* token_object) {
+    int result = -1;
 
     for (jsonit_t it = json_init_it(token_object); !json_end_it(&it); json_next_it(&it)) {
         jsontok_t* token_array = json_it_value(&it);
@@ -413,21 +419,18 @@ db_t* module_loader_databases_load(const jsontok_t* token_object) {
         db_t* database = NULL;
 
         #ifdef PostgreSQL_FOUND
-        if (strcmp(driver, "postgresql") == 0) {
+        if (strcmp(driver, "postgresql") == 0)
             database = postgresql_load(driver, token_array);
-        }
         #endif
 
         #ifdef MySQL_FOUND
-        if (strcmp(driver, "mysql") == 0) {
+        if (strcmp(driver, "mysql") == 0)
             database = my_load(driver, token_array);
-        }
         #endif
 
         #ifdef Redis_FOUND
-        if (strcmp(driver, "redis") == 0) {
+        if (strcmp(driver, "redis") == 0)
             database = redis_load(driver, token_array);
-        }
         #endif
 
         if (database == NULL) {
@@ -435,21 +438,16 @@ db_t* module_loader_databases_load(const jsontok_t* token_object) {
             goto failed;
         }
 
-        if (database_first == NULL) database_first = database;
-
-        if (database_last != NULL) {
-            database_last->next = database;
-        }
-        database_last = database;
+        if (!db_add(database))
+            goto failed;
     }
 
-    result = database_first;
+    result = 0;
 
     failed:
 
-    if (result == NULL) {
-        db_free(database_first);
-    }
+    if (result == -1)
+        db_clear();
 
     return result;
 }
@@ -676,18 +674,6 @@ int module_loader_servers_load(int reload_is_hard) {
                 module_loader_websockets_default_load(&server->websockets.default_handler, &first_lib, json_object_get(token_value, "default"));
 
                 server->websockets.route = module_loader_websockets_routes_load(&first_lib, json_object_get(token_value, "routes"));
-            }
-            else if (strcmp(key, "databases") == 0) {
-                finded_fields[DATABASE] = 1;
-
-                if (!json_is_object(token_value)) goto failed;
-
-                server->database = module_loader_databases_load(token_value);
-
-                if (server->database == NULL) {
-                    log_error("Error: Can't load database\n");
-                    goto failed;
-                }
             }
             else if (strcmp(key, "tls") == 0) {
                 finded_fields[OPENSSL] = 1;

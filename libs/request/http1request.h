@@ -47,8 +47,6 @@ typedef struct http1request {
 
     const char*(*cookie)(struct http1request*, const char*);
 
-    db_t*(*database_list)(struct http1request*);
-
     char*(*payload)(struct http1request*);
     char*(*payloadf)(struct http1request*, const char*);
     file_content_t(*payload_file)(struct http1request*);
