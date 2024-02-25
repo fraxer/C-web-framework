@@ -4,6 +4,7 @@
 #include "json.h"
 #include "helpers.h"
 #include "httpclient.h"
+#include "storage.h"
 
 void client_get(http1request_t* request, http1response_t* response) {
     (void)request;
@@ -111,9 +112,7 @@ void client_post_formdata(http1request_t* request, http1response_t* response) {
     req->append_formdata_json(req, "key2", doc);
     json_free(doc);
 
-    char abspath[PATH_MAX];
-    absolute_path(abspath, response->connection->server->root, "/file.txt");
-    file_t file = file_open(abspath);
+    file_t file = storage_file_get("server", "/file.txt");
     if (file.ok) {
         req->append_formdata_file(req, "key", &file);
         file.close(&file);

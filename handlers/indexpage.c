@@ -203,7 +203,7 @@ void payload_file(http1request_t* request, http1response_t* response) {
 
     const char* filename = NULL;
     char fullpath[PATH_MAX] = {0};
-    snprintf(fullpath, PATH_MAX, "%s/%s", request->connection->server->root, "testdir");
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", request->connection->server->root, "testdir");
     file_t payload_file = payload_content.make_file(&payload_content, fullpath, filename);
     if (!payload_file.ok) {
         response->data(response, "Error save file");
@@ -228,7 +228,7 @@ void payload_filef(http1request_t* request, http1response_t* response) {
 
     const char* filename = NULL;
     char fullpath[PATH_MAX] = {0};
-    snprintf(fullpath, PATH_MAX, "%s/%s", request->connection->server->root, "testdir");
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", request->connection->server->root, "testdir");
     file_t payload_file = payload_content.make_file(&payload_content, fullpath, filename);
     if (!payload_file.ok) {
         response->data(response, "Error save file");

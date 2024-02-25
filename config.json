@@ -35,6 +35,24 @@
                     },
                     "/wss": {
                         "GET": ["<project directory path>/build/exec/handlers/libindexpage.so", "websocket"]
+                    },
+                    "/file_create_tmpfile": {
+                        "GET": ["<project directory path>/build/exec/handlers/libfilepage.so", "file_create_tmpfile"]
+                    },
+                    "/file_get_content": {
+                        "GET": ["<project directory path>/build/exec/handlers/libfilepage.so", "file_get_content"]
+                    },
+                    "/file_put_storage": {
+                        "GET": ["<project directory path>/build/exec/handlers/libfilepage.so", "file_put_storage"]
+                    },
+                    "/file_remove_storage": {
+                        "GET": ["<project directory path>/build/exec/handlers/libfilepage.so", "file_remove_storage"]
+                    },
+                    "/file_upload_and_put_storage": {
+                        "POST": ["<project directory path>/build/exec/handlers/libfilepage.so", "file_upload_and_put_storage"]
+                    },
+                    "/file_duplicate_to_storage": {
+                        "GET": ["<project directory path>/build/exec/handlers/libfilepage.so", "file_duplicate_to_storage"]
                     }
                 },
                 "redirects": {
@@ -106,6 +124,21 @@
                 "password": ""
             }
         ]
+    },
+    "storages": {
+        "local": {
+            "type": "filesystem",
+            "root": "/path/to/folder"
+        },
+        "remote": {
+            "type": "s3",
+            "access_id": "*",
+            "access_secret": "*",
+            "protocol": "https",
+            "host": "*",
+            "port": "",
+            "bucket": "*"
+        }
     },
     "mimetypes": {
         "text/html": ["html", "htm", "shtml"],

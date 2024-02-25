@@ -85,6 +85,7 @@ config_t* __config_create() {
     config->servers = NULL;
     config->mimetypes = NULL;
     config->databases = NULL;
+    config->storages = NULL;
 
     return config;
 }
@@ -238,6 +239,10 @@ int __config_fill_struct() {
     const jsontok_t* token_databases = json_object_get(root, "databases");
     if (!json_is_object(token_databases)) return 0;
     _config->databases = token_databases;
+
+    const jsontok_t* token_storages = json_object_get(root, "storages");
+    if (!json_is_object(token_storages)) return 0;
+    _config->storages = token_storages;
 
     const jsontok_t* token_mimetypes = json_object_get(root, "mimetypes");
     if (!json_is_object(token_mimetypes)) return 0;

@@ -1374,7 +1374,7 @@ int __json_stringify_token(jsondoc_t* document, jsontok_t* token) {
         {
             size_t buffer_size = 32;
             char buffer[buffer_size];
-            size_t size = snprintf(buffer, buffer_size - 1, "%lld", token->value._llong);
+            size_t size = snprintf(buffer, sizeof(buffer), "%lld", token->value._llong);
 
             if (!__json_stringify_insert(document, buffer, size)) return 0;
         }
@@ -1383,7 +1383,7 @@ int __json_stringify_token(jsondoc_t* document, jsontok_t* token) {
         {
             size_t buffer_size = 16;
             char buffer[buffer_size];
-            size_t size = snprintf(buffer, buffer_size - 1, "%d", token->value._int);
+            size_t size = snprintf(buffer, sizeof(buffer), "%d", token->value._int);
 
             if (!__json_stringify_insert(document, buffer, size)) return 0;
         }
@@ -1392,7 +1392,7 @@ int __json_stringify_token(jsondoc_t* document, jsontok_t* token) {
         {
             size_t buffer_size = 16;
             char buffer[buffer_size];
-            size_t size = snprintf(buffer, buffer_size - 1, "%u", token->value._uint);
+            size_t size = snprintf(buffer, sizeof(buffer), "%u", token->value._uint);
 
             if (!__json_stringify_insert(document, buffer, size)) return 0;
         }
@@ -1401,7 +1401,7 @@ int __json_stringify_token(jsondoc_t* document, jsontok_t* token) {
         {
             size_t buffer_size = 32;
             char buffer[buffer_size];
-            size_t size = snprintf(buffer, buffer_size - 1, "%f", token->value._double);
+            size_t size = snprintf(buffer, sizeof(buffer), "%f", token->value._double);
 
             if (!__json_stringify_insert(document, buffer, size)) return 0;
         }

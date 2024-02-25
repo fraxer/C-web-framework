@@ -431,12 +431,11 @@ int __httpclient_set_header_host(httpclient_t* client) {
     http1request_t* request = (http1request_t*)client->request;
     request->header_del(request, "Host");
 
-    const short host_length = 512;
-    char host[host_length];
+    char host[128];
     if (client->port == 80 || client->port == 443)
-        snprintf(host, host_length - 1, "%s", client->host);
+        snprintf(host, sizeof(host), "%s", client->host);
     else
-        snprintf(host, host_length - 1, "%s:%d", client->host, client->port);
+        snprintf(host, sizeof(host), "%s:%d", client->host, client->port);
 
     request->header_add(request, "Host", host);
 

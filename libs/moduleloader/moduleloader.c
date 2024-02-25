@@ -16,6 +16,8 @@
 #include "websockets.h"
 #include "openssl.h"
 #include "mimetype.h"
+#include "storagefs.h"
+#include "storages3.h"
 #include "threadhandler.h"
 #include "threadworker.h"
 #include "broadcast.h"
@@ -35,6 +37,11 @@
 void module_loader_pass_memory_sharedlib(routeloader_lib_t*, const char*);
 int module_loader_init_modules();
 int module_loader_databases_load();
+int module_loader_storages_load();
+int module_loader_storage_fs_load(const jsontok_t*, const char*);
+int module_loader_storage_s3_load(const jsontok_t*, const char*);
+void module_loader_remove_slashes_end(char*);
+const char* module_loader_storage_field(const char*, const jsontok_t*, const char*);
 int module_loader_servers_load(int);
 int module_loader_thread_workers_load();
 int module_loader_thread_handlers_load();
@@ -84,12 +91,13 @@ void module_loader_pass_memory_sharedlib(routeloader_lib_t* first_lib, const cha
         void*(*function)();
     } fn;
 
-    const int size = 2;
+    const int size = 4;
     fn functions[size];
 
     functions[0] = (fn){ "config_set", (void*(*)())config };
     functions[1] = (fn){ "mimetype_set", (void*(*)())mimetype_config };
-    functions[1] = (fn){ "db_set", (void*(*)())database };
+    functions[2] = (fn){ "db_set", (void*(*)())database };
+    functions[3] = (fn){ "storage_set", (void*(*)())storages };
 
     for (int i = 0; i < size; i++) {
         void(*function)(void*);
@@ -111,6 +119,8 @@ int module_loader_init_modules() {
     if (module_loader_mimetype_load() == -1) return -1;
 
     if (module_loader_databases_load() == -1) return -1;
+
+    if (module_loader_storages_load() == -1) return -1;
 
     if (module_loader_servers_load(reload_is_hard)) return -1;
 
@@ -410,6 +420,11 @@ int module_loader_databases_load_token(const jsontok_t* token_object) {
 
     for (jsonit_t it = json_init_it(token_object); !json_end_it(&it); json_next_it(&it)) {
         jsontok_t* token_array = json_it_value(&it);
+        if (!json_is_array(token_array)) {
+            log_error("Database driver must be array\n");
+            goto failed;
+        }
+
         if (json_array_size(token_array) == 0) {
             log_error("Database driver not found\n");
             goto failed;
@@ -450,6 +465,142 @@ int module_loader_databases_load_token(const jsontok_t* token_object) {
         db_clear();
 
     return result;
+}
+
+int module_loader_storages_load() {
+    int result = -1;
+
+    for (jsonit_t it = json_init_it(config()->storages); !json_end_it(&it); json_next_it(&it)) {
+        jsontok_t* token_object = json_it_value(&it);
+        if (!json_is_object(token_object)) {
+            log_error("Storage must be object\n");
+            goto failed;
+        }
+
+        const char* storage_name = json_it_key(&it);
+        jsontok_t* token_storage_type = json_object_get(token_object, "type");
+        if (!json_is_string(token_storage_type)) {
+            log_error("Field type must be string in storage %s\n", storage_name);
+            goto failed;
+        }
+
+        const char* storage_type = json_string(token_storage_type);
+        if (strcmp(storage_type, "filesystem") == 0) {
+            if (!module_loader_storage_fs_load(token_object, storage_name))
+                goto failed;
+        }
+        else if (strcmp(storage_type, "s3") == 0) {
+            if (!module_loader_storage_s3_load(token_object, storage_name))
+                goto failed;
+        }
+        else goto failed;
+    }
+
+    result = 0;
+
+    failed:
+
+    if (result == -1)
+        storage_clear_list();
+
+    return result;
+}
+
+int module_loader_storage_fs_load(const jsontok_t* token_object, const char* storage_name) {
+    int result = 0;
+
+    const char* root = module_loader_storage_field(storage_name, token_object, "root");
+    if (root == NULL)
+        goto failed;
+
+    char _root[PATH_MAX];
+    strcpy(_root, root);
+    module_loader_remove_slashes_end(_root);
+    if (strlen(_root) == 0) {
+        log_error("Storage %s has empty path\n", storage_name);
+        goto failed;
+    }
+
+    storagefs_t* storage = storage_create_fs(storage_name, _root);
+    if (storage == NULL)
+        goto failed;
+
+    if (!storage_add_to_list(storage))
+        goto failed;
+
+    result = 1;
+
+    failed:
+
+    return result;
+}
+
+int module_loader_storage_s3_load(const jsontok_t* token_object, const char* storage_name) {
+    int result = 0;
+
+    const char* access_id = module_loader_storage_field(storage_name, token_object, "access_id");
+    if (access_id == NULL)
+        goto failed;
+
+    const char* access_secret = module_loader_storage_field(storage_name, token_object, "access_secret");
+    if (access_secret == NULL)
+        goto failed;
+
+    const char* protocol = module_loader_storage_field(storage_name, token_object, "protocol");
+    if (protocol == NULL)
+        goto failed;
+
+    const char* host = module_loader_storage_field(storage_name, token_object, "host");
+    if (host == NULL)
+        goto failed;
+
+    const char* port = module_loader_storage_field(storage_name, token_object, "port");
+    if (port == NULL)
+        goto failed;
+
+    const char* bucket = module_loader_storage_field(storage_name, token_object, "bucket");
+    if (bucket == NULL)
+        goto failed;
+
+    storages3_t* storage = storage_create_s3(storage_name, access_id, access_secret, protocol, host, port, bucket);
+    if (storage == NULL)
+        goto failed;
+
+    if (!storage_add_to_list(storage))
+        goto failed;
+
+    result = 1;
+
+    failed:
+
+    return result;
+}
+
+void module_loader_remove_slashes_end(char* path) {
+    size_t path_length = strlen(path);
+    while (path_length > 0) {
+        path_length--;
+        if (path[path_length] == '/')
+            path[path_length] = 0;
+        else
+            break;
+    }
+}
+
+const char* module_loader_storage_field(const char* storage_name, const jsontok_t* token_object, const char* key) {
+    jsontok_t* token_value = json_object_get(token_object, key);
+    if (!json_is_string(token_value)) {
+        log_error("Field %s must be string in storage %s\n", key, storage_name);
+        return NULL;
+    }
+
+    const char* value = json_string(token_value);
+    if (value[0] == 0) {
+        log_error("Field %s is empty in storage %s\n", key, storage_name);
+        return NULL;
+    }
+
+    return value;
 }
 
 openssl_t* module_loader_openssl_load(const jsontok_t* token_object) {

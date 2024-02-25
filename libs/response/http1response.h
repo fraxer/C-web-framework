@@ -57,6 +57,7 @@ typedef struct http1response {
     int(*headern_remove)(struct http1response*, const char*, size_t);
     int(*file)(struct http1response*, const char*);
     int(*filen)(struct http1response*, const char*, size_t);
+    int(*filef)(struct http1response*, const char*, const char*, ...);
     int(*deflate)(struct http1response*, const char*, size_t, int, ssize_t(*)(connection_t*, const char*, size_t, int));
     int(*inflate)(struct http1response*, const char*, size_t);
     void(*cookie_add)(struct http1response*, cookie_t);

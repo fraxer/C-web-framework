@@ -11,7 +11,7 @@ add_compile_definitions(CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
 find_package(Threads REQUIRED)
 find_package(PCRE REQUIRED)
 find_package(ZLIB REQUIRED)
-find_package(OpenSSL)
+find_package(OpenSSL REQUIRED)
 
 if(INCLUDE_MYSQL STREQUAL yes)
 	find_package(MySQL)

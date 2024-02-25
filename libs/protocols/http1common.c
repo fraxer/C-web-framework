@@ -57,7 +57,7 @@ void http1_headers_free(http1_header_t* header) {
 http1_header_t* http1_header_delete(http1_header_t* header, const char* key) {
     if (header == NULL) return NULL;
 
-    if (cmpstr_lower(header->key, header->key_length, key, strlen(key))) {
+    if (cmpstrn_lower(header->key, header->key_length, key, strlen(key))) {
         http1_header_t* next = header->next;
         http1_header_free(header);
         return next;
@@ -71,7 +71,7 @@ http1_header_t* http1_header_delete(http1_header_t* header, const char* key) {
     while (header) {
         http1_header_t* next = header->next;
 
-        if (cmpstr_lower(header->key, header->key_length, key, strlen(key))) {
+        if (cmpstrn_lower(header->key, header->key_length, key, strlen(key))) {
             prev_header->next = next;
             http1_header_free(header);
             break;

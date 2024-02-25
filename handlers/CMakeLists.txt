@@ -10,5 +10,5 @@ foreach(FILEPATH ${FILEPATHS})
 
 	add_library(${FILENAME} SHARED ${FILEPATH})
 
-	target_link_libraries(${FILENAME} misc database json request response protocols broadcast client mybroadcast)
+	target_link_libraries(${FILENAME} storage misc database json request response protocols broadcast client mybroadcast)
 endforeach()

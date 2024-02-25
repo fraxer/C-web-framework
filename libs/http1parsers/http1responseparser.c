@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 
+#include "http1request.h"
 #include "http1response.h"
 #include "cookieparser.h"
 #include "domain.h"
@@ -69,6 +70,7 @@ void __http1responseparser_flush(http1responseparser_t* parser) {
 
 int http1responseparser_run(http1responseparser_t* parser) {
     http1response_t* response = (http1response_t*)parser->connection->response;
+    http1request_t* request = (http1request_t*)parser->connection->request;
     parser->pos_start = 0;
     parser->pos = 0;
 
@@ -202,6 +204,8 @@ int http1responseparser_run(http1responseparser_t* parser) {
 
                 if (response->transfer_encoding == TE_NONE && parser->content_length == 0)
                     return HTTP1RESPONSEPARSER_COMPLETE;
+                if (request->method == ROUTE_HEAD)
+                    return HTTP1RESPONSEPARSER_COMPLETE;
 
                 break;
             }
@@ -307,10 +311,10 @@ void __http1responseparser_try_set_keepalive(http1responseparser_t* parser) {
     ssize_t connection_value_length = 10;
 
     if ((ssize_t)header->key_length != connection_key_length) return;
-    if (!cmpstr_lower(header->key, header->key_length, connection_key, connection_key_length)) return;
+    if (!cmpstrn_lower(header->key, header->key_length, connection_key, connection_key_length)) return;
 
     parser->connection->keepalive_enabled = 0;
-    if (cmpstr_lower(header->value, header->value_length, connection_value, connection_value_length)) {
+    if (cmpstrn_lower(header->value, header->value_length, connection_value, connection_value_length)) {
         parser->connection->keepalive_enabled = 1;
     }
 }
@@ -323,7 +327,7 @@ void __http1responseparser_try_set_content_length(http1responseparser_t* parser)
     const size_t key_length = 14;
 
     if (header->key_length != key_length) return;
-    if (!cmpstr_lower(header->key, header->key_length, key, key_length)) return;
+    if (!cmpstrn_lower(header->key, header->key_length, key, key_length)) return;
 
     parser->content_length = atoll(header->value);
     response->content_length = parser->content_length;
@@ -338,7 +342,7 @@ void __http1responseparser_try_set_transfer_encoding(http1responseparser_t* pars
     const size_t key_length = 17;
 
     if (header->key_length != key_length) return;
-    if (!cmpstr_lower(header->key, header->key_length, key, key_length)) return;
+    if (!cmpstrn_lower(header->key, header->key_length, key, key_length)) return;
 
     const char* value_chunked = "chunked";
     const size_t value_chunked_length = 7;
@@ -346,9 +350,9 @@ void __http1responseparser_try_set_transfer_encoding(http1responseparser_t* pars
     const char* value_gzip = "gzip";
     const size_t value_gzip_length = 4;
 
-    if (cmpstr_lower(header->value, header->value_length, value_chunked, value_chunked_length))
+    if (cmpstrn_lower(header->value, header->value_length, value_chunked, value_chunked_length))
         response->transfer_encoding = TE_CHUNKED;
-    else if (cmpstr_lower(header->value, header->value_length, value_gzip, value_gzip_length))
+    else if (cmpstrn_lower(header->value, header->value_length, value_gzip, value_gzip_length))
         response->transfer_encoding = TE_GZIP;
 }
 
@@ -360,11 +364,11 @@ void __http1responseparser_try_set_content_encoding(http1responseparser_t* parse
     const size_t key_length = 16;
 
     if (header->key_length != key_length) return;
-    if (!cmpstr_lower(header->key, header->key_length, key, key_length)) return;
+    if (!cmpstrn_lower(header->key, header->key_length, key, key_length)) return;
 
     const char* value_gzip = "gzip";
     const size_t value_gzip_length = 4;
-    if (cmpstr_lower(header->value, header->value_length, value_gzip, value_gzip_length))
+    if (cmpstrn_lower(header->value, header->value_length, value_gzip, value_gzip_length))
         response->content_encoding = CE_GZIP;
 }
 
