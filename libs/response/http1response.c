@@ -4,6 +4,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <ctype.h>
+#include <errno.h>
 #include <sys/stat.h>
 
 #include "log.h"
@@ -229,8 +230,10 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
         fullpath[fullpath_length] = 0;
 
         struct stat stat_obj;
-
-        stat(fullpath, &stat_obj);
+        if (stat(fullpath, &stat_obj) == -1 && errno == ENOENT) {
+            http1response_default(response, 404);
+            return -1;
+        }
 
         if (S_ISDIR(stat_obj.st_mode)) {
             if (index == NULL) {
@@ -250,8 +253,10 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
 
             indexpath[indexpath_length] = 0;
 
-            stat(indexpath, &stat_obj);
-
+            if (stat(indexpath, &stat_obj) == -1 && errno == ENOENT) {
+                http1response_default(response, 404);
+                return -1;
+            }
             if (!S_ISREG(stat_obj.st_mode)) {
                 http1response_default(response, 403);
                 return -1;
