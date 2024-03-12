@@ -23,29 +23,20 @@ void* thread_handler(void* arg) {
     if (thread_handler == NULL) pthread_exit(NULL);
 
     while (1) {
-        connection_queue_item_t* item = connection_queue_guard_pop();
+        // connection already locked
+        connection_t* connection = connection_queue_guard_pop();
+        if (connection == NULL) continue;
+
+        cqueue_lock(connection->queue);
+        connection_queue_item_t* item = cqueue_pop(connection->queue);
+        cqueue_unlock(connection->queue);
+
         if (item == NULL) {
+            connection_unlock(connection);
+
             if (thread_handler->is_deprecated)
                 break;
 
-            continue;
-        }
-
-        // connection already locked
-        connection_t* connection = item->connection;
-        if (!connection_alive(connection)) {
-            item->free(item);
-
-            cqueue_lock(connection->queue);
-            const int queue_empty = cqueue_empty(connection->queue);
-            cqueue_unlock(connection->queue);
-
-            if (queue_empty) {
-                connection_free(connection);
-                connection = NULL;
-            }
-
-            connection_unlock(connection);    
             continue;
         }
 

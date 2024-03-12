@@ -29,5 +29,7 @@ int bufferdata_move(bufferdata_t*);
 
 char* bufferdata_get(bufferdata_t*);
 char* bufferdata_copy(bufferdata_t*);
+char bufferdata_back(bufferdata_t*);
+char bufferdata_pop_back(bufferdata_t*);
 
 #endif

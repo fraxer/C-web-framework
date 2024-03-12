@@ -18,12 +18,19 @@ typedef struct config_main {
     const jsontok_t* gzip;
 } config_main_t;
 
+typedef struct config_mail {
+    char* dkim_private;
+    const char* dkim_selector;
+    const char* host;
+} config_mail_t;
+
 typedef struct config_migrations {
     const char* source_directory;
 } config_migrations_t;
 
 typedef struct config {
     config_main_t main;
+    config_mail_t mail;
     config_migrations_t migrations;
     const jsontok_t* servers;
     const jsontok_t* mimetypes;

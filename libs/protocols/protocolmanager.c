@@ -5,6 +5,7 @@
 #include "websocketsresponse.h"
 #include "websocketsprotocoldefault.h"
 #include "websocketsprotocolresource.h"
+#include "smtprequest.h"
 
 #include "protocolmanager.h"
 
@@ -76,4 +77,19 @@ void protmgr_set_websockets_resource(connection_t* connection) {
     }
 
     connection->response = (response_t*)websocketsresponse_create(connection);
+}
+
+void protmgr_set_smtp_client_command(connection_t* connection) {
+    connection->read = smtp_client_read;
+    connection->write = smtp_client_write_command;
+}
+
+void protmgr_set_smtp_client_content(connection_t* connection) {
+    connection->read = smtp_client_read;
+    connection->write = smtp_client_write_content;
+}
+
+void protmgr_set_smtp_client_tls(connection_t* connection) {
+    connection->read = tls_smtp_client_read;
+    connection->write = tls_smtp_client_write;
 }

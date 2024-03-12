@@ -16,4 +16,8 @@ void tls_client_write(connection_t*, char*, size_t);
 
 void tls_client_handshake(connection_t*);
 
+void tls_smtp_client_read(connection_t*, char*, size_t);
+void tls_smtp_client_write(connection_t*, char*, size_t);
+void tls_smtp_client_handshake(connection_t*);
+
 #endif

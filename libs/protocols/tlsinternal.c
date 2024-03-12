@@ -151,3 +151,36 @@ void tls_client_handshake(connection_t* connection) {
         return;
     }
 }
+
+void tls_smtp_client_read(connection_t* connection, char* buffer, size_t size) {
+    (void)connection;
+    (void)buffer;
+    (void)size;
+}
+
+void tls_smtp_client_write(connection_t* connection, char* buffer, size_t size) {
+    (void)buffer;
+    (void)size;
+    tls_smtp_client_handshake(connection);
+}
+
+void tls_smtp_client_handshake(connection_t* connection) {
+    int result = SSL_do_handshake(connection->ssl);
+    if (result == 1) {
+        protmgr_set_smtp_client_command(connection);
+        return;
+    }
+
+    switch (SSL_get_error(connection->ssl, result)) {
+    case SSL_ERROR_SYSCALL:
+    case SSL_ERROR_SSL:
+        connection->close(connection);
+        return;
+    case SSL_ERROR_WANT_READ:
+    case SSL_ERROR_WANT_WRITE:
+    case SSL_ERROR_WANT_ACCEPT:
+    case SSL_ERROR_WANT_CONNECT:
+    case SSL_ERROR_ZERO_RETURN:
+        return;
+    }
+}

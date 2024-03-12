@@ -88,3 +88,32 @@ char* bufferdata_copy(bufferdata_t* buffer) {
 
     return data;
 }
+
+char bufferdata_back(bufferdata_t* buffer) {
+    const ssize_t position = bufferdata_writed(buffer) - 1;
+    if (position == -1) return 0;
+
+    if (buffer->offset_sbuffer > 0)
+        return buffer->static_buffer[position];
+
+    return buffer->dynamic_buffer[position];
+}
+
+char bufferdata_pop_back(bufferdata_t* buffer) {
+    const ssize_t position = bufferdata_writed(buffer) - 1;
+    if (position == -1) return 0;
+
+    char c = 0;
+    if (buffer->offset_sbuffer > 0) {
+        c = buffer->static_buffer[position];
+        buffer->static_buffer[position] = 0;
+        buffer->offset_sbuffer--;
+    }
+    else {
+        c = buffer->dynamic_buffer[position];
+        buffer->dynamic_buffer[position] = 0;
+        buffer->offset_dbuffer--;
+    }
+
+    return c;
+}

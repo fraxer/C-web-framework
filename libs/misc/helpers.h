@@ -12,5 +12,6 @@ int append_to_filefd(int, const char*, size_t);
 char* create_tmppath(const char*);
 const char* file_extention(const char* path);
 int cmpsubstr_lower(const char* a, const char* b);
+int timezone_offset();
 
 #endif

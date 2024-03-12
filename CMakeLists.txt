@@ -5,7 +5,13 @@ project(cpdy LANGUAGES C)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/exec")
 
-add_compile_options(-Wall -Wextra -Wpedantic -fPIC)
+add_compile_options(-fPIC)
+if(CMAKE_BUILD_TYPE STREQUAL Debug OR CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fanalyzer")
+
+	add_compile_options(-Wall -Wextra -Wpedantic -fsanitize=address -fsanitize=leak -g)
+endif()
+
 add_compile_definitions(CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
 
 find_package(Threads REQUIRED)

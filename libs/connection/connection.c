@@ -7,6 +7,7 @@
 #include "multiplexing.h"
 
 void broadcast_clear(connection_t*);
+void __connection_free_queue_item(void* arg);
 
 connection_t* connection_server_create(connection_t* socket_connection) {
     connection_t* result = NULL;
@@ -52,6 +53,7 @@ connection_t* connection_alloc(int fd, mpxapi_t* api, in_addr_t ip, unsigned sho
     connection->fd = fd;
     connection->api = api;
     connection->keepalive_enabled = 0;
+    connection->cqueue = 0;
     connection->ip = ip;
     connection->port = port;
     atomic_store(&connection->locked, 0);
@@ -67,8 +69,8 @@ connection_t* connection_alloc(int fd, mpxapi_t* api, in_addr_t ip, unsigned sho
     connection->write = NULL;
     connection->after_read_request = NULL;
     connection->after_write_request = NULL;
-    connection->queue_prepend = NULL;
     connection->queue_append = NULL;
+    connection->queue_append_broadcast = NULL;
     connection->queue_pop = NULL;
     connection->switch_to_protocol = NULL;
     connection->queue = cqueue_create();
@@ -79,6 +81,11 @@ connection_t* connection_alloc(int fd, mpxapi_t* api, in_addr_t ip, unsigned sho
     }
 
     return connection;
+}
+
+void __connection_free_queue_item(void* arg) {
+    connection_queue_item_t* item = arg;
+    item->free(item);
 }
 
 void connection_free(connection_t* connection) {
@@ -102,7 +109,8 @@ void connection_free(connection_t* connection) {
         connection->response = NULL;
     }
 
-    cqueue_free(connection->queue);
+    cqueue_freecb(connection->queue, __connection_free_queue_item);
+    connection->queue = NULL;
 
     free(connection);
 }
@@ -150,15 +158,11 @@ int connection_unlock(connection_t* connection) {
     return 0;
 }
 
-int connection_alive(connection_t* connection) {
-    return connection->fd > 0;
-}
-
 int connection_trylockwrite(connection_t* connection) {
     if (connection == NULL) return 0;
 
-    _Bool expected = 1;
-    _Bool desired = 0;
+    _Bool expected = 0;
+    _Bool desired = 1;
 
     if (atomic_compare_exchange_strong(&connection->onwrite, &expected, desired)) return 1;
 
