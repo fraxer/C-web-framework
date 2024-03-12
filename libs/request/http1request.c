@@ -7,7 +7,6 @@
 #include <linux/limits.h>
 #include <sys/stat.h>
 #include <sys/sendfile.h>
-#include <unistd.h>
 #include <errno.h>
 
 #include "file.h"

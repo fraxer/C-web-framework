@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -150,17 +151,17 @@ int __file_close(file_t* file) {
 
     char path[PATH_MAX];
     snprintf(path, sizeof(path), "/proc/self/fd/%d", file->fd);
-    char filePath[PATH_MAX];
-    const int tmp = file->tmp;
-    const int status = close(file->fd);
 
-    if (tmp) {
+    if (file->tmp) {
+        char filePath[PATH_MAX];
         const int rlresult = readlink(path, filePath, PATH_MAX);
         if (rlresult == -1)
             log_error("File: readlink error");
         if (rlresult >= 0)
             unlink(filePath);
     }
+
+    const int status = close(file->fd);
 
     __file_reset(file);
 

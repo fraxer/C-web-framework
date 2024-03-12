@@ -5,6 +5,7 @@
 #include <linux/limits.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "helpers.h"
 
@@ -161,4 +162,12 @@ int cmpsubstr_lower(const char* a, const char* b) {
     }
 
     return cmpsize == b_length;
+}
+
+int timezone_offset() {
+    const time_t epoch_plus_11h = 60 * 60 * 11;
+    const int local_time = localtime(&epoch_plus_11h)->tm_hour;
+    const int gm_time = gmtime(&epoch_plus_11h)->tm_hour;
+
+    return local_time - gm_time;
 }

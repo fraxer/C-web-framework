@@ -20,9 +20,8 @@ void switch_to_websockets(http1request_t* request, http1response_t* response) {
     unsigned char result[40];
     sha1((const unsigned char*)key, strlen(key), result);
 
-    char base64_string[base64_encode_inline_len(20)];
-    int retlen = base64_encode_inline(base64_string, (const char*)result, 20);
-    retlen--; // without \0
+    char base64_string[base64_encode_len(20)];
+    int retlen = base64_encode(base64_string, (const char*)result, 20);
 
     response->headern_add(response, "Upgrade", 7, "websocket", 9);
     response->headern_add(response, "Connection", 10, "Upgrade", 7);

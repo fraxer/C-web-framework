@@ -2,6 +2,7 @@
  #include <openssl/hmac.h>
  
  #include "base64.h"
+ #include "helpers.h"
  #include "mimetype.h"
  #include "storages3.h"
  #include "httpclient.h"
@@ -13,7 +14,6 @@ int __storages3_file_content_put(void* storage, const file_content_t* file_conte
 int __storages3_file_remove(void* storage, const char* path);
 int __storages3_file_exist(void* storage, const char* path);
 int __storages3_create_signature(storages3_t* storage, const char* data, char* result);
-int __storages3_timezone_offset();
 char* __storages3_create_uri(storages3_t* storage, const char* path);
 char* __storages3_create_url(storages3_t* storage, const char* uri);
 char* __storages3_create_date();
@@ -26,6 +26,7 @@ storages3_t* storage_create_s3(const char* storage_name, const char* access_id, 
         return NULL;
 
     storage->base.type = STORAGE_TYPE_S3;
+    storage->base.next = NULL;
     strcpy(storage->base.name, storage_name);
     strcpy(storage->access_id, access_id);
     strcpy(storage->access_secret, access_secret);
@@ -279,15 +280,7 @@ int __storages3_create_signature(storages3_t* storage, const char* data, char* r
     if (!out_len)
         return 0;
 
-    return base64_encode_inline(result, (const char*)out, out_len);
-}
-
-int __storages3_timezone_offset() {
-    const time_t epoch_plus_11h = 60 * 60 * 11;
-    const int local_time = localtime(&epoch_plus_11h)->tm_hour;
-    const int gm_time = gmtime(&epoch_plus_11h)->tm_hour;
-
-    return local_time - gm_time;
+    return base64_encode(result, (const char*)out, out_len);
 }
 
 char* __storages3_create_uri(storages3_t* storage, const char* path) {
@@ -323,11 +316,11 @@ char* __storages3_create_date() {
     time_t rawtime = time(0);
     strftime(date, 32, "%a, %d %b %Y %H:%M:%S ", localtime(&rawtime));
 
-    const int timezone_offset = __storages3_timezone_offset();
-    const char* sign = timezone_offset >= 0 ? "+" : "-";
-    const char* zero = timezone_offset < 10 ? "0" : "";
+    const int tz = timezone_offset();
+    const char* sign = tz >= 0 ? "+" : "-";
+    const char* zero = tz < 10 ? "0" : "";
     char timezone[7];
-    snprintf(timezone, sizeof(timezone), "%s%s%d00", sign, zero, timezone_offset);
+    snprintf(timezone, sizeof(timezone), "%s%s%d00", sign, zero, tz);
     strcat(date, timezone);
 
     return date;

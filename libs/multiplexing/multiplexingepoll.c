@@ -118,6 +118,7 @@ int __mpx_epoll_convert_events(int events) {
     if (events & MPXIN) epoll_events |= EPOLLIN;
     if (events & MPXOUT) epoll_events |= EPOLLOUT;
     if (events & MPXERR) epoll_events |= EPOLLERR;
+    if (events & MPXHUP) epoll_events |= EPOLLHUP;
     if (events & MPXRDHUP) epoll_events |= EPOLLRDHUP;
     if (events & MPXONESHOT) epoll_events |= EPOLLONESHOT;
 

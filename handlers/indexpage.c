@@ -130,16 +130,12 @@ void mysql(http1request_t* request, http1response_t* response) {
     // dbresult_row_first(&result);
     // dbresult_col_first(&result);
 
-
     db_table_cell_t* field = dbresult_field(&result, "domain");
 
-
-    char* str = (char*)malloc(1024);
-    // strcpy(str, "test");
+    char str[1024];
     
-    if (field && field->value) {
+    if (field && field->value)
         strcpy(str, field->value);
-    }
 
     dbresult_query_next(&result);
     dbresult_row_first(&result);
@@ -155,8 +151,6 @@ void mysql(http1request_t* request, http1response_t* response) {
     response->data(response, str);
 
     dbresult_free(&result);
-
-    free(str);
 }
 
 void payload(http1request_t* request, http1response_t* response) {

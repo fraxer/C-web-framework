@@ -67,10 +67,6 @@ int openssl_context_init(openssl_t* openssl) {
 
     failed:
 
-    if (result == -1) {
-        openssl_free(openssl);
-    }
-
     return result;
 }
 

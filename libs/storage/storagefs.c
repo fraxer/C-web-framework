@@ -23,6 +23,7 @@ storagefs_t* storage_create_fs(const char* storage_name, const char* root) {
         return NULL;
 
     storage->base.type = STORAGE_TYPE_FS;
+    storage->base.next = NULL;
     strcpy(storage->base.name, storage_name);
     strcpy(storage->root, root);
 

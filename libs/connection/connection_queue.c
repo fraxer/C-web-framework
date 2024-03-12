@@ -12,57 +12,35 @@ static pthread_cond_t connection_queue_cond = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t connection_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void __connection_queue_append(connection_queue_item_t*);
-void __connection_queue_prepend(connection_queue_item_t*);
 int __connection_queue_empty(cqueue_t*);
-connection_queue_item_t* __connection_queue_pop();
+connection_t* __connection_queue_pop();
 void __connection_queue_item_free(connection_queue_item_t*);
+int __connection_queue_append_item(cqueue_t* queue, void* data);
 
 
 void __connection_queue_append(connection_queue_item_t* qitem) {
-    cqueue_item_t* item = cqueue_item_create(qitem);
+    __connection_queue_append_item(qitem->connection->queue, qitem);
+
+    __connection_queue_append_item(queue, qitem->connection);
+
+    atomic_fetch_add_explicit(&qitem->connection->cqueue, 1, memory_order_seq_cst);
+}
+
+int __connection_queue_append_item(cqueue_t* queue, void* data) {
+    cqueue_item_t* item = cqueue_item_create(data);
     if (item == NULL) {
         log_error("Connection queue error: Can't queue item create\n");
-        return;
-    }
-
-    cqueue_lock(qitem->connection->queue);
-    cqueue_append(qitem->connection->queue, item);
-    cqueue_unlock(qitem->connection->queue);
-
-    cqueue_item_t* titem = cqueue_item_create(qitem->connection);
-    if (titem == NULL) {
-        log_error("Connection queue error: Can't queue item create\n");
-        return;
+        return 0;
     }
 
     cqueue_lock(queue);
-    cqueue_append(queue, titem);
+    cqueue_append(queue, item);
     cqueue_unlock(queue);
+
+    return 1;
 }
 
-void __connection_queue_prepend(connection_queue_item_t* qitem) {
-    cqueue_item_t* item = cqueue_item_create(qitem);
-    if (item == NULL) {
-        log_error("Connection queue error: Can't queue item create\n");
-        return;
-    }
-
-    cqueue_lock(qitem->connection->queue);
-    cqueue_prepend(qitem->connection->queue, item);
-    cqueue_unlock(qitem->connection->queue);
-
-    cqueue_item_t* titem = cqueue_item_create(qitem->connection);
-    if (titem == NULL) {
-        log_error("Connection queue error: Can't queue item create\n");
-        return;
-    }
-
-    cqueue_lock(queue);
-    cqueue_append(queue, titem);
-    cqueue_unlock(queue);
-}
-
-connection_queue_item_t* __connection_queue_pop() {
+connection_t* __connection_queue_pop() {
     cqueue_lock(queue);
     connection_t* connection = cqueue_pop(queue);
     cqueue_unlock(queue);
@@ -74,22 +52,20 @@ connection_queue_item_t* __connection_queue_pop() {
         if (!connection_lock(connection))
             continue;
 
-        if (connection_alive(connection) && !connection_trylockwrite(connection)) {
+        if (!connection_trylockwrite(connection)) {
             connection->queue_pop(connection);
+            __connection_queue_append_item(queue, connection);
             connection_unlock(connection);
-            continue;
+
+            return NULL;
         }
 
-        cqueue_lock(connection->queue);
+        atomic_fetch_add_explicit(&connection->cqueue, -1, memory_order_seq_cst);
 
-        connection_queue_item_t* qitem = cqueue_pop(connection->queue);
-
-        cqueue_unlock(connection->queue);
-
-        return qitem;
+        break;
     }
 
-    return NULL;
+    return connection;
 }
 
 int __connection_queue_empty(cqueue_t* queue) {
@@ -105,8 +81,10 @@ int __connection_queue_empty(cqueue_t* queue) {
 void __connection_queue_item_free(connection_queue_item_t* item) {
     if (item == NULL) return;
 
-    if (item->data)
+    if (item->data != NULL) {
         item->data->free(item->data);
+        item->data = NULL;
+    }
 
     free(item);
 }
@@ -120,6 +98,14 @@ int connection_queue_init() {
     return 1;
 }
 
+int connection_queue_lock() {
+    return cqueue_lock(queue);
+}
+
+int connection_queue_unlock() {
+    return cqueue_unlock(queue);
+}
+
 void connection_queue_guard_append(connection_queue_item_t* item) {
     pthread_mutex_lock(&connection_queue_mutex);
     __connection_queue_append(item);
@@ -127,14 +113,7 @@ void connection_queue_guard_append(connection_queue_item_t* item) {
     pthread_mutex_unlock(&connection_queue_mutex);
 }
 
-void connection_queue_guard_prepend(connection_queue_item_t* item) {
-    pthread_mutex_lock(&connection_queue_mutex);
-    __connection_queue_prepend(item);
-    pthread_cond_signal(&connection_queue_cond);
-    pthread_mutex_unlock(&connection_queue_mutex);
-}
-
-connection_queue_item_t* connection_queue_guard_pop() {
+connection_t* connection_queue_guard_pop() {
     if (__connection_queue_empty(queue)) {
         pthread_mutex_lock(&connection_queue_mutex);
         pthread_cond_wait(&connection_queue_cond, &connection_queue_mutex);
@@ -160,4 +139,12 @@ connection_queue_item_t* connection_queue_item_create() {
     item->data = NULL;
 
     return item;
+}
+
+int connection_queue_clear(connection_t* connection) {
+    connection_queue_lock();
+    const int r = cqueue_data_remove(queue, connection);
+    connection_queue_unlock();
+
+    return r;
 }

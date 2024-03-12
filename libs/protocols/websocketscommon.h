@@ -53,6 +53,7 @@ typedef struct websockets_payload {
 
 typedef struct connection_queue_websockets_data {
     connection_queue_item_data_t base;
+    request_t* request;
     void(*handler)(void*, void*);
 } connection_queue_websockets_data_t;
 
@@ -63,6 +64,6 @@ void websockets_frame_init(websockets_frame_t*);
 
 int websockets_queue_handler_add(connection_t*, void(*)(void *, void *));
 void websockets_queue_handler(void*);
-connection_queue_websockets_data_t* websockets_queue_data_create(void(*)(void *, void *));
+connection_queue_websockets_data_t* websockets_queue_data_create(request_t*, void(*)(void *, void *));
 
 #endif

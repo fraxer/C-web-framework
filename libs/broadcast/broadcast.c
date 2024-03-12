@@ -14,7 +14,7 @@ typedef struct connection_queue_broadcast_data {
 
 void __broadcast_queue_handler(void*);
 connection_queue_broadcast_data_t* __broadcast_queue_data_create(const char*, size_t, void(*)(response_t*, const char*, size_t));
-void __broadcast_queue_data_free(connection_queue_broadcast_data_t*);
+void __broadcast_queue_data_free(void*);
 
 broadcast_list_t* __broadcast_create_list(const char* broadcast_name) {
     broadcast_list_t* list = malloc(sizeof * list);
@@ -216,7 +216,7 @@ void __broadcast_queue_add(connection_t* connection, const char* payload, size_t
         return;
     }
 
-    connection->queue_append(item);
+    connection->queue_append_broadcast(item);
 }
 
 void __broadcast_queue_handler(void* arg) {
@@ -231,7 +231,7 @@ connection_queue_broadcast_data_t* __broadcast_queue_data_create(const char* pay
     connection_queue_broadcast_data_t* data = malloc(sizeof * data);
     if (data == NULL) return NULL;
 
-    data->base.free = free;
+    data->base.free = __broadcast_queue_data_free;
     data->payload = malloc(size);
     data->size = size;
     data->handler = handle;
@@ -246,12 +246,13 @@ connection_queue_broadcast_data_t* __broadcast_queue_data_create(const char* pay
     return data;
 }
 
-void __broadcast_queue_data_free(connection_queue_broadcast_data_t* data) {
-    if (data == NULL) return;
+void __broadcast_queue_data_free(void* data) {
+    connection_queue_broadcast_data_t* d = data;
+    if (d == NULL) return;
 
-    if (data->payload) free(data->payload);
+    if (d->payload) free(d->payload);
 
-    free(data);
+    free(d);
 }
 
 broadcast_t* broadcast_init() {
@@ -387,6 +388,7 @@ void broadcast_clear(connection_t* connection) {
                 if (next_item == list->item_last)
                     list->item_last = item;
                 __broadcast_free_item(next_item);
+                next_item = item->next;
             }
 
             __broadcast_unlock_item(item);

@@ -15,15 +15,22 @@ cqueue_t* cqueue_create() {
 }
 
 void cqueue_free(cqueue_t* queue) {
+    cqueue_freecb(queue, NULL);
+}
+
+void cqueue_freecb(cqueue_t* queue, void(*free_cb)(void*)) {
     if (queue == NULL) return;
 
     queue->locked = 0;
 
     cqueue_item_t* item = queue->item;
     while (item) {
-        cqueue_item_free(item);
+        cqueue_item_t* next_item = item->next;
+        if (free_cb != NULL)
+            free_cb(item->data);
 
-        item = item->next;
+        cqueue_item_free(item);
+        item = next_item;
     }
 
     queue->locked = 0;
@@ -35,7 +42,7 @@ int cqueue_append(cqueue_t* queue, cqueue_item_t* item) {
     if (queue == NULL) return 0;
     if (item == NULL) return 0;
 
-    if (queue->last_item)
+    if (queue->last_item != NULL)
         queue->last_item->next = item;
 
     queue->last_item = item;
@@ -84,6 +91,19 @@ int cqueue_empty(cqueue_t* queue) {
     return queue->item == NULL;
 }
 
+int cqueue_size(cqueue_t* queue) {
+    if (queue == NULL) return 0;
+
+    int count = 0;
+    cqueue_item_t* item = queue->item;
+    while (item) {
+        count++;
+        item = item->next;
+    }
+
+    return count;
+}
+
 cqueue_item_t* cqueue_first(cqueue_t* queue) {
     if (queue == NULL) return NULL;
 
@@ -125,6 +145,48 @@ int cqueue_unlock(cqueue_t* queue) {
     }
 
     return 0;
+}
+
+int cqueue_data_remove(cqueue_t* queue, void *addr) {
+    if (queue == NULL) return 0;
+
+    int count = 0;
+    while (1) {
+        cqueue_item_t* item = queue->item;
+        if (item && item->data == addr) {
+            queue->item = item->next;
+            if (queue->item == NULL)
+                queue->last_item = NULL;
+
+            cqueue_item_free(item);
+            count++;
+            continue;
+        }
+
+        break;
+    }
+
+    cqueue_item_t* item = queue->item;
+    while (item) {
+        cqueue_item_t* next_item = item->next;
+
+        if (next_item && next_item->data == addr) {
+            item->next = next_item->next;
+            cqueue_item_free(next_item);
+            count++;
+            continue;
+        }
+
+        item = next_item;
+    }
+
+    item = queue->item;
+    while (item) {
+        queue->last_item = item;
+        item = item->next;
+    }
+
+    return count;
 }
 
 cqueue_item_t* cqueue_item_create(void* data) {

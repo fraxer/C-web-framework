@@ -9,8 +9,9 @@ enum mpxevents {
     MPXIN = 0x001,
     MPXOUT = 0x002,
     MPXERR = 0x004,
-    MPXRDHUP = 0x008,
-    MPXONESHOT = 0x010
+    MPXHUP = 0x008,
+    MPXRDHUP = 0x010,
+    MPXONESHOT = 0x020
 };
 
 typedef enum mpxtype {

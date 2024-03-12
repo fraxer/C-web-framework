@@ -59,14 +59,16 @@ int websockets_queue_handler_add(connection_t* connection, void(*handle)(void *,
 
     item->handle = websockets_queue_handler;
     item->connection = connection;
-    item->data = (connection_queue_item_data_t*)websockets_queue_data_create(handle);
+    item->data = (connection_queue_item_data_t*)websockets_queue_data_create(connection->request, handle);
 
     if (item->data == NULL) {
         item->free(item);
         return 0;
     }
 
-    connection->queue_prepend(item);
+    item->connection->request = NULL;
+
+    connection->queue_append(item);
 
     return 1;
 }
@@ -75,15 +77,18 @@ void websockets_queue_handler(void* arg) {
     connection_queue_item_t* item = arg;
     connection_queue_websockets_data_t* data = (connection_queue_websockets_data_t*)item->data;
 
+    item->connection->request = data->request;
+
     data->handler(item->connection->request, item->connection->response);
     item->connection->queue_pop(item->connection);
 }
 
-connection_queue_websockets_data_t* websockets_queue_data_create(void(*handle)(void *, void *)) {
+connection_queue_websockets_data_t* websockets_queue_data_create(request_t* request, void(*handle)(void *, void *)) {
     connection_queue_websockets_data_t* data = malloc(sizeof * data);
     if (data == NULL) return NULL;
 
     data->base.free = free;
+    data->request = request;
     data->handler = handle;
 
     return data;

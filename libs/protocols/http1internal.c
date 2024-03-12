@@ -512,7 +512,7 @@ int http1_queue_handler_add(connection_t* connection, void(*handle)(void *, void
         return 0;
     }
 
-    connection->queue_prepend(item);
+    connection->queue_append(item);
 
     return 1;
 }
