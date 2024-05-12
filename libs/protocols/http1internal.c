@@ -239,7 +239,7 @@ void http1_client_write(connection_t* connection, char* buffer, size_t buffer_si
 
         ssize_t writed = http1_write_body(connection, buffer, payload_size, readed);
         if (writed < 0) goto write;
-       
+
         request->payload_.pos += writed;
     }
 

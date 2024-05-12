@@ -47,7 +47,6 @@ typedef struct websockets_frame {
 
 typedef struct websockets_payload {
     int fd;
-    size_t payload_offset;
     char* path;
 } websockets_payload_t;
 

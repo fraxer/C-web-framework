@@ -16,7 +16,6 @@ int websocketsrequest_get_resource(connection_t*);
 void websockets_protocol_init_payload(websockets_protocol_t* protocol) {
     protocol->payload.fd = 0;
     protocol->payload.path = NULL;
-    protocol->payload.payload_offset = 0;
 }
 
 int websocketsrequest_init_parser(websocketsrequest_t* request) {
@@ -124,6 +123,21 @@ char* websocketsrequest_payload(websockets_protocol_t* protocol) {
     }
 
     return buffer;
+}
+
+file_content_t websocketsrequest_payload_file(websockets_protocol_t* protocol) {
+    const char* filename = "tmpfile";
+    file_content_t file_content = file_content_create(0, filename, 0, 0);
+
+    off_t payload_size = lseek(protocol->payload.fd, 0, SEEK_END);
+    lseek(protocol->payload.fd, 0, SEEK_SET);
+
+    file_content.ok = payload_size > 0;
+    file_content.fd = protocol->payload.fd;
+    file_content.offset = 0;
+    file_content.size = payload_size;
+
+    return file_content;
 }
 
 jsondoc_t* websocketsrequest_payload_json(websockets_protocol_t* protocol) {
