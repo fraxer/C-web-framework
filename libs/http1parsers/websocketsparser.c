@@ -243,9 +243,10 @@ int websocketsparser_set_payload_length(websocketsparser_t* parser, int byte_cou
     int counter = byte_count;
     const int byte_left = 8;
     const unsigned char* value = (const unsigned char*)bufferdata_get(&parser->buf);
+    const size_t num = value[byte_count - counter];
 
     do {
-        parser->frame.payload_length |= value[byte_count - counter] << (byte_left * counter - byte_left);
+        parser->frame.payload_length |= num << (byte_left * counter - byte_left);
     } while (--counter > 0);
 
     return 1;

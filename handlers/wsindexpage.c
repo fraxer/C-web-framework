@@ -35,6 +35,22 @@ void echo(websocketsrequest_t* request, websocketsresponse_t* response) {
     response->text(response, "const echo");
 }
 
+void post(websocketsrequest_t* request, websocketsresponse_t* response) {
+    websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)request->protocol;
+
+    file_content_t payload_content = protocol->payload_file(protocol);
+    if (!payload_content.ok) {
+        response->data(response, "file not found");
+        return;
+    }
+
+    char* content = payload_content.content(&payload_content);
+
+    response->text(response, content);
+
+    free(content);
+}
+
 void default_(websocketsrequest_t* request, websocketsresponse_t* response) {
     (void)request;
     response->data(response, "default response");

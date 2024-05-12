@@ -18,6 +18,7 @@ websockets_protocol_t* websockets_protocol_default_create() {
     protocol->base.reset = websockets_protocol_default_reset;
     protocol->base.free = websockets_protocol_default_free;
     protocol->payload = (char*(*)(websockets_protocol_default_t*))websocketsrequest_payload;
+    protocol->payload_file = (file_content_t(*)(websockets_protocol_default_t*))websocketsrequest_payload_file;
     protocol->payload_json = (jsondoc_t*(*)(websockets_protocol_default_t*))websocketsrequest_payload_json;
 
     websockets_protocol_init_payload((websockets_protocol_t*)protocol);

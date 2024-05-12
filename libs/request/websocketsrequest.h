@@ -6,6 +6,7 @@
 #include "websocketscommon.h"
 #include "json.h"
 #include "request.h"
+#include "file.h"
 
 struct websocketsrequest;
 
@@ -36,7 +37,7 @@ void websocketsrequest_reset(websocketsrequest_t*);
 void websocketsrequest_reset_continue(websocketsrequest_t*);
 
 char* websocketsrequest_payload(websockets_protocol_t*);
-char* websocketsrequest_payloadf(websockets_protocol_t*, const char*);
+file_content_t websocketsrequest_payload_file(websockets_protocol_t*);
 jsondoc_t* websocketsrequest_payload_json(websockets_protocol_t*);
 
 void websockets_protocol_init_payload(websockets_protocol_t*);
