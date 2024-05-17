@@ -5,6 +5,7 @@
 #include "log.h"
 #include "json.h"
 #include "db.h"
+#include "view.h"
 
 void get(http1request_t* request, http1response_t* response) {
     (void)request;
@@ -259,5 +260,17 @@ void payload_jsonf(http1request_t* request, http1response_t* response) {
 
     response->data(response, json_stringify(document));
 
+    json_free(document);
+}
+
+void template_engine(http1request_t* request, http1response_t* response) {
+    jsondoc_t* document = NULL;
+
+    // response->view(response, document, "views", "/index.tpl");
+
+    char* content = render(document, "views", "/index.tpl");
+    response->data(response, content);
+
+    free(content);
     json_free(document);
 }
