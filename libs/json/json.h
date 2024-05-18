@@ -105,9 +105,9 @@ int json_parse(jsondoc_t*, const char*);
 void json_free(jsondoc_t*);
 void json_token_reset(jsontok_t*);
 
-jsontok_t* json_root(jsondoc_t*);
-int json_ok(jsondoc_t*);
-const char* json_error(jsondoc_t*);
+jsontok_t* json_root(const jsondoc_t*);
+int json_ok(const jsondoc_t*);
+const char* json_error(const jsondoc_t*);
 
 /**
  * Get values

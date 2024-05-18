@@ -264,13 +264,28 @@ void payload_jsonf(http1request_t* request, http1response_t* response) {
 }
 
 void template_engine(http1request_t* request, http1response_t* response) {
-    jsondoc_t* document = NULL;
+    jsondoc_t* doc = json_init();
+    jsontok_t* global_object = json_create_object(doc);
+
+    json_object_set(global_object, "name", json_create_string(doc, "Sasha"));
+    json_object_set(global_object, "first", json_create_string(doc, "First"));
+
+    jsontok_t* object = json_create_object(doc);
+    json_object_set(global_object, "object", object);
+    json_object_set(object, "name", json_create_string(doc, "Object string"));
+
+    log_error("%s\n", json_stringify(doc));
 
     // response->view(response, document, "views", "/index.tpl");
 
-    char* content = render(document, "views", "/index.tpl");
+    // for (int i = 0 ; i < 100; i++) {
+    //     char* content = render(doc, "views", "/index.tpl");
+    //     free(content);
+    // }
+
+    char* content = render(doc, "views", "/index.tpl");
     response->data(response, content);
 
     free(content);
-    json_free(document);
+    json_free(doc);
 }

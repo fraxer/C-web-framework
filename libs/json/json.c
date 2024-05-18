@@ -260,20 +260,20 @@ void json_token_reset(jsontok_t* token) {
     token->value._int = 0;
 }
 
-jsontok_t* json_root(jsondoc_t* document) {
+jsontok_t* json_root(const jsondoc_t* document) {
     if (document->tokens)
         return document->tokens[0];
 
     return NULL;
 }
 
-int json_ok(jsondoc_t* document) {
+int json_ok(const jsondoc_t* document) {
     if (document == NULL) return 0;
 
     return document->ok;
 }
 
-const char* json_error(jsondoc_t* document) {
+const char* json_error(const jsondoc_t* document) {
     if (document == NULL)
         return JSON_DOCUMENT_ERROR;
 
