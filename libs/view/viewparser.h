@@ -18,6 +18,7 @@ typedef struct viewparser_variable_item {
 } viewparser_variable_item_t;
 
 typedef struct viewparser_variable {
+    jsontok_t* json_token;
     viewparser_variable_item_t* item;
     viewparser_variable_item_t* last_item;
     struct viewparser_variable* next;
