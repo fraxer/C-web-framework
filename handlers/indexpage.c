@@ -274,7 +274,15 @@ void template_engine(http1request_t* request, http1response_t* response) {
     json_object_set(global_object, "object", object);
     jsontok_t* deep_object = json_create_object(doc);
     json_object_set(object, "deep_object", deep_object);
+
+    jsontok_t* array1 = json_create_array(doc);
+    json_object_set(object, "array1", array1);
+    json_array_append(array1, json_create_string(doc, "arr 1"));
+    json_array_append(array1, json_create_string(doc, "arr 2"));
+    json_array_append(array1, json_create_string(doc, "arr 3"));
+
     json_object_set(deep_object, "name", json_create_string(doc, "My object string"));
+    json_object_set(deep_object, "моя переменная", json_create_string(doc, "Моё значение"));
 
     log_error("%s\n", json_stringify(doc));
 
