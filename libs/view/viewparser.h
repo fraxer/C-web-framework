@@ -4,14 +4,16 @@
 #include "json.h"
 #include "bufferdata.h"
 
-// typedef struct viewparser_content {
-//     char* content;
-//     struct viewparser_content* next;
-// } viewparser_content_t;
 #define VIEWPARSER_VARIABLE_ITEM_NAME_SIZE 80
 
+typedef struct viewparser_variable_index {
+    int value;
+    struct viewparser_variable_index* next;
+} viewparser_variable_index_t;
+
 typedef struct viewparser_variable_item {
-    int index;
+    viewparser_variable_index_t* index;
+    viewparser_variable_index_t* last_index;
     char name[VIEWPARSER_VARIABLE_ITEM_NAME_SIZE];
     size_t name_length;
     struct viewparser_variable_item* next;

@@ -5,6 +5,7 @@
 #include "log.h"
 #include "json.h"
 #include "db.h"
+#include "storage.h"
 #include "view.h"
 
 void get(http1request_t* request, http1response_t* response) {
@@ -263,28 +264,34 @@ void payload_jsonf(http1request_t* request, http1response_t* response) {
     json_free(document);
 }
 
-void template_engine(http1request_t* request, http1response_t* response) {
-    jsondoc_t* doc = json_init();
-    jsontok_t* global_object = json_create_object(doc);
+void template_engine(__attribute__((unused))http1request_t* request, http1response_t* response) {
+    file_t file = storage_file_get("views", "/json.txt");
+    if (!file.ok) {
+        response->data(response, "error");
+        return;
+    }
 
-    json_object_set(global_object, "name", json_create_string(doc, "Sasha"));
-    json_object_set(global_object, "first", json_create_string(doc, "First"));
+    char* data = file.content(&file);
+    file.close(&file);
 
-    jsontok_t* object = json_create_object(doc);
-    json_object_set(global_object, "object", object);
-    jsontok_t* deep_object = json_create_object(doc);
-    json_object_set(object, "deep_object", deep_object);
+    jsondoc_t* document = json_init();
+    if (!document) {
+        response->data(response, "json init error");
+        return;
+    }
 
-    jsontok_t* array1 = json_create_array(doc);
-    json_object_set(object, "array1", array1);
-    json_array_append(array1, json_create_string(doc, "arr 1"));
-    json_array_append(array1, json_create_string(doc, "arr 2"));
-    json_array_append(array1, json_create_string(doc, "arr 3"));
+    if (json_parse(document, data) < 0) {
+        response->data(response, "json parse error");
+        return;
+    }
 
-    json_object_set(deep_object, "name", json_create_string(doc, "My object string"));
-    json_object_set(deep_object, "моя переменная", json_create_string(doc, "Моё значение"));
+    free(data);
 
-    log_error("%s\n", json_stringify(doc));
+    jsontok_t* object = json_root(document);
+    if (!json_is_object(object)) {
+        response->data(response, "is not object");
+        return;
+    }
 
     // response->view(response, document, "views", "/index.tpl");
 
@@ -293,9 +300,9 @@ void template_engine(http1request_t* request, http1response_t* response) {
     //     free(content);
     // }
 
-    char* content = render(doc, "views", "/index.tpl");
+    char* content = render(document, "views", "/index.tpl");
     response->data(response, content);
 
     free(content);
-    json_free(doc);
+    json_free(document);
 }
