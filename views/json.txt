@@ -1,0 +1,58 @@
+{
+    "name": "Sasha",
+    "first": "First",
+    "object": {
+        "deep_object": {
+            "name": "My object string",
+            "моя переменная": "Моё значение"
+        },
+        "array1": [
+            "String 1",
+            "String 2",
+            "String 3",
+            "String 4"
+        ],
+        "array2": [
+            {
+                "array": [
+                    [
+                        {
+                            "name": "array2 1"
+                        },
+                        {
+                            "name": "array2 2"
+                        },
+                        {
+                            "name": "array2 3"
+                        }
+                    ],
+                    [
+                        {
+                            "name": "array2 11"
+                        },
+                        {
+                            "name": "array2 22"
+                        },
+                        {
+                            "name": "array2 33"
+                        }
+                    ]
+                ]
+            }
+        ],
+        "array3": [
+            [
+                "String 1",
+                "String 2"
+            ],
+            [
+                "String 3",
+                "String 4"
+            ],
+            [
+                "String 5",
+                "String 6"
+            ]
+        ]
+    }
+}

@@ -12,6 +12,7 @@ static void __viewparser_variable_item_free(viewparser_variable_item_t* item);
 static int __viewparser_variable_item_complete_name(viewparser_t* parser);
 static int __viewparser_variable_item_complete_index(viewparser_t* parser);
 static int __viewparser_replace_tag_on_value(viewparser_t* parser);
+static int __viewparser_variable_item_index_create(viewparser_variable_item_t* item, int value);
 
 viewparser_t* viewparser_init(const jsondoc_t* document, const char* storage_name, const char* path) {
     viewparser_t* parser = malloc(sizeof * parser);
@@ -155,20 +156,30 @@ int __viewparser_parse_content(viewparser_t* parser) {
             }
             case '[':
             {
-                if (parser->symbol != VIEWPARSER_DEFAULT)
+                if (parser->symbol == VIEWPARSER_DEFAULT) {
+                    if (!__viewparser_variable_item_complete_name(parser))
+                        return 0;
+                }
+                else if (parser->symbol == VIEWPARSER_VARIABLE_BRACKETCLOSE) {
+                    if (!__viewparser_variable_item_complete_index(parser))
+                        return 0;
+                }
+                else
                     return 0;
 
                 parser->symbol = VIEWPARSER_VARIABLE_BRACKETOPEN;
-
-                if (!__viewparser_variable_item_complete_name(parser))
-                    return 0;
 
                 break;
             }
             case ']':
             {
+                if (parser->symbol == VIEWPARSER_VARIABLE_BRACKETOPEN)
+                    return 0;
+
                 if (!__viewparser_variable_item_complete_index(parser))
                     return 0;
+
+                parser->symbol = VIEWPARSER_VARIABLE_BRACKETCLOSE;
 
                 break;
             }
@@ -181,6 +192,8 @@ int __viewparser_parse_content(viewparser_t* parser) {
                 if (parser->symbol == VIEWPARSER_FIGASTOPEN)
                     return 0;
                 if (parser->symbol == VIEWPARSER_VARIABLE_DOT)
+                    return 0;
+                if (parser->symbol == VIEWPARSER_VARIABLE_BRACKETOPEN)
                     return 0;
 
                 parser->symbol = VIEWPARSER_VARIABLE_DOT;
@@ -236,7 +249,6 @@ void __viewparser_variable_free(viewparser_variable_t* variable) {
     while (item) {
         viewparser_variable_item_t* next = item->next;
         __viewparser_variable_item_free(item);
-
         item = next;
     }
 
@@ -275,7 +287,8 @@ int __viewparser_variable_item_create(viewparser_variable_t* variable) {
     viewparser_variable_item_t* item = malloc(sizeof * item);
     if (item == NULL) return 0;
 
-    item->index = -1;
+    item->index = NULL;
+    item->last_index = NULL;
     item->next = NULL;
     item->name[0] = 0;
     item->name_length = 0;
@@ -293,6 +306,13 @@ int __viewparser_variable_item_create(viewparser_variable_t* variable) {
 
 void __viewparser_variable_item_free(viewparser_variable_item_t* item) {
     if (item == NULL) return;
+
+    viewparser_variable_index_t* index = item->index;
+    while (index) {
+        viewparser_variable_index_t* next = index->next;
+        free(index);
+        index = next;
+    }
 
     free(item);
 }
@@ -339,7 +359,8 @@ int __viewparser_variable_item_complete_index(viewparser_t* parser) {
         if (strspn(value, "0123456789") != variable_item_size)
             return 0;
 
-        parser->last_variable->last_item->index = atoi(value);
+        if (!__viewparser_variable_item_index_create(parser->last_variable->last_item, atoi(value)))
+            return 0;
     }
 
     bufferdata_reset(&parser->variable_buffer);
@@ -358,12 +379,21 @@ int __viewparser_replace_tag_on_value(viewparser_t* parser) {
         const jsontok_t* token = json_object_get(json_token, item->name);
         if (token == NULL) break;
 
-        if (item->next == NULL) {
-            if (item->index > -1 && token->type == JSON_ARRAY) {
-                token = json_array_get(token, item->index);
-                if (token == NULL) break;
+        if (token->type == JSON_ARRAY) {
+            int stop = 0;
+            viewparser_variable_index_t* index = item->index;
+            while (index) {
+                token = json_array_get(token, index->value);
+                stop = token == NULL;
+                if (stop) break;
+
+                index = index->next;
             }
 
+            if (stop) break;
+        }
+
+        if (item->next == NULL) {
             // convert token value to string
             if (json_is_string(token)) {
                 const char* variable_value = json_string(token);
@@ -382,6 +412,26 @@ int __viewparser_replace_tag_on_value(viewparser_t* parser) {
     bufferdata_reset(&parser->variable_buffer);
 
     __viewparser_variable_last_remove(parser);
+
+    return 1;
+}
+
+int __viewparser_variable_item_index_create(viewparser_variable_item_t* item, int value) {
+    if (item == NULL) return 0;
+
+    viewparser_variable_index_t* index = malloc(sizeof * index);
+    if (index == NULL) return 0;
+
+    index->next = NULL;
+    index->value = value;
+
+    if (item->index == NULL)
+        item->index = index;
+
+    if (item->last_index != NULL)
+        item->last_index->next = index;
+
+    item->last_index = index;
 
     return 1;
 }
