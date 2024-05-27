@@ -53,6 +53,10 @@
                 "String 5",
                 "String 6"
             ]
-        ]
-    }
+        ],
+        "if_true": true,
+        "if_false": false
+    },
+    "if_true": true,
+    "if_false": false
 }
