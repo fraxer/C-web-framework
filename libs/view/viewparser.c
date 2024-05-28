@@ -18,6 +18,9 @@ static int __viewparser_variable_write_body(viewparser_t* parser, char ch);
 static viewparser_tag_t* __viewparser_root_tag_create(const jsondoc_t* document);
 static int __viewparser_include_create(viewparser_t* parser);
 static int __viewparser_include_write_body(viewparser_t* parser, char ch);
+static int __viewparser_include_load_content(viewparser_t* parser);
+
+static char __word_include[8] = {'i', 'n', 'c', 'l', 'u', 'd', 'e', 0};
 
 viewparser_t* viewparser_init(const jsondoc_t* document, const char* storage_name, const char* path) {
     viewparser_t* parser = malloc(sizeof * parser);
@@ -48,7 +51,7 @@ int viewparser_run(viewparser_t* parser) {
     parser->current_context = parser->context;
 
     if (!__viewparser_readfile(parser->current_context, parser->storage_name, parser->path)) {
-        log_error("root file not found %s", parser->path);
+        log_error("View file not found %s", parser->path);
         return 0;
     }
 
@@ -84,11 +87,13 @@ viewparser_context_t* __viewparser_context_create() {
     context->stage = VIEWPARSER_TEXT;
     context->symbol = VIEWPARSER_DEFAULT;
     context->bytes_readed = 0;
-    context->pos_start = 0;
+    // context->pos_start = 0;
     context->pos = 0;
     context->buffer = NULL;
     context->parent = NULL;
-    context->childs = NULL;
+    context->child = NULL;
+    context->last_child = NULL;
+    context->next = NULL;
 
     return context;
 }
@@ -110,8 +115,10 @@ int __viewparser_readfile(viewparser_context_t* context, const char* storage_nam
 }
 
 int __viewparser_parse_content(viewparser_t* parser) {
-    viewparser_context_t* context = parser->context;
-    for (context->pos = context->pos_start; context->pos < context->bytes_readed; context->pos++) {
+    start:
+
+    for (; parser->current_context->pos < parser->current_context->bytes_readed; parser->current_context->pos++) {
+        viewparser_context_t* context = parser->current_context;
         const char ch = context->buffer[context->pos];
 
         switch (context->stage)
@@ -141,7 +148,7 @@ int __viewparser_parse_content(viewparser_t* parser) {
             }
             case '*':
             {
-                if (context->symbol != VIEWPARSER_FIGASTOPEN) {
+                if (context->symbol != VIEWPARSER_FIGFIGOPEN) {
                     bufferdata_push(&parser->buf, ch);
                     break;
                 }
@@ -232,22 +239,17 @@ int __viewparser_parse_content(viewparser_t* parser) {
             }
             case '}':
             {
-                if (context->symbol == VIEWPARSER_FIGASTCLOSE) {
-                    context->stage = VIEWPARSER_TEXT;
+                if (context->symbol != VIEWPARSER_FIGASTCLOSE)
+                    return 0;
 
-                    // if (!__viewparser_variable_item_complete_name(parser))
-                    //     return 0;
-
-                    // if (!__viewparser_replace_tag_on_value(parser))
-                    //     return 0;
-
-                    break;
-                }
-
-                bufferdata_push(&parser->buf, ch);
-
+                context->stage = VIEWPARSER_TEXT;
                 context->symbol = VIEWPARSER_FIGFIGCLOSE;
+                context->pos++;
 
+                if (!__viewparser_include_load_content(parser))
+                    return 0;
+
+                goto start;
                 break;
             }
             default: __viewparser_include_write_body(parser, ch);
@@ -258,6 +260,11 @@ int __viewparser_parse_content(viewparser_t* parser) {
         default:
             break;
         }
+    }
+
+    if (parser->current_context->parent != NULL) {
+        parser->current_context = parser->current_context->parent;
+        goto start;
     }
 
     return 1;
@@ -557,19 +564,21 @@ viewparser_tag_t* __viewparser_root_tag_create(const jsondoc_t* document) {
 }
 
 int __viewparser_include_create(viewparser_t* parser) {
-    viewparser_tag_t* tag = malloc(sizeof * tag);
+    viewparser_include_t* tag = malloc(sizeof * tag);
     if (tag == NULL) return 0;
 
     viewparser_tag_t* current_tag = parser->current_tag;
 
-    tag->type = VIEWPARSER_TAGTYPE_INC;
-    tag->parent_position = 0;
-    bufferdata_init(&tag->result_content);
-    tag->json_token = parser->current_tag->json_token;
-    tag->parent = current_tag;
-    tag->child = NULL;
-    tag->last_child = NULL;
-    tag->next = NULL;
+    tag->base.type = VIEWPARSER_TAGTYPE_INC;
+    tag->base.parent_position = 0;
+    bufferdata_init(&tag->base.result_content);
+    tag->base.json_token = current_tag->json_token;
+    tag->base.parent = current_tag;
+    tag->base.child = NULL;
+    tag->base.last_child = NULL;
+    tag->base.next = NULL;
+    tag->is_control_key = 0;
+    tag->control_key_index = 0;
 
     if (current_tag->child == NULL)
         current_tag->child = (viewparser_tag_t*)tag;
@@ -587,11 +596,7 @@ int __viewparser_include_write_body(viewparser_t* parser, char ch) {
     {
     case ' ':
     {
-        if (parser->current_context->symbol == VIEWPARSER_FIGFIGOPEN)
-            break;
-        if (parser->current_context->symbol == VIEWPARSER_VARIABLE_DOT)
-            break;
-        if (parser->current_context->symbol == VIEWPARSER_VARIABLE_BRACKETOPEN)
+        if (parser->current_context->symbol == VIEWPARSER_FIGASTOPEN)
             break;
 
         bufferdata_push(&parser->variable_buffer, ch);
@@ -600,63 +605,73 @@ int __viewparser_include_write_body(viewparser_t* parser, char ch) {
 
         break;
     }
-    case '[':
-    {
-        if (parser->current_context->symbol == VIEWPARSER_DEFAULT) {
-            if (!__viewparser_variable_item_complete_name(parser))
-                return 0;
-        }
-        else if (parser->current_context->symbol == VIEWPARSER_VARIABLE_BRACKETCLOSE) {
-            if (!__viewparser_variable_item_complete_index(parser))
-                return 0;
-        }
-        else
-            return 0;
-
-        parser->current_context->symbol = VIEWPARSER_VARIABLE_BRACKETOPEN;
-
-        break;
-    }
-    case ']':
-    {
-        if (parser->current_context->symbol == VIEWPARSER_VARIABLE_BRACKETOPEN)
-            return 0;
-
-        if (!__viewparser_variable_item_complete_index(parser))
-            return 0;
-
-        parser->current_context->symbol = VIEWPARSER_VARIABLE_BRACKETCLOSE;
-
-        break;
-    }
-    case '.':
-    {
-        if (parser->current_context->symbol == VIEWPARSER_FIGFIGOPEN)
-            return 0;
-        if (parser->current_context->symbol == VIEWPARSER_FIGPERCENTOPEN)
-            return 0;
-        if (parser->current_context->symbol == VIEWPARSER_FIGASTOPEN)
-            return 0;
-        if (parser->current_context->symbol == VIEWPARSER_VARIABLE_DOT)
-            return 0;
-        if (parser->current_context->symbol == VIEWPARSER_VARIABLE_BRACKETOPEN)
-            return 0;
-
-        parser->current_context->symbol = VIEWPARSER_VARIABLE_DOT;
-
-        if (!__viewparser_variable_item_complete_name(parser))
-            return 0;
-
-        if (!__viewparser_variable_item_create((viewparser_variable_t*)parser->current_tag->last_child))
-            return 0;
-
-        break;
-    }
     default:
+    {
+        viewparser_include_t* tag = (viewparser_include_t*)parser->current_tag->last_child;
+        if (tag->is_control_key == 0) {
+            if (__word_include[tag->control_key_index] != ch)
+                return 0;
+
+            if (tag->control_key_index >= 6) {
+                tag->is_control_key = 1;
+                parser->current_context->symbol = VIEWPARSER_FIGASTOPEN; // escape spaces after include word
+                break;
+            }
+            else
+                tag->control_key_index++;
+        }
+        else {
+            bufferdata_push(&parser->variable_buffer, ch);
+        }
+
         parser->current_context->symbol = VIEWPARSER_DEFAULT;
-        bufferdata_push(&parser->variable_buffer, ch);
+
         break;
     }
+    }
+
+    return 1;
+}
+
+int __viewparser_include_load_content(viewparser_t* parser) {
+    while (1) {
+        if (bufferdata_back(&parser->variable_buffer) != ' ')
+            break;
+
+        bufferdata_pop_back(&parser->variable_buffer);
+    }
+
+    bufferdata_complete(&parser->variable_buffer);
+    const size_t path_size = bufferdata_writed(&parser->variable_buffer);
+    if (path_size >= 4096)
+        return 0;
+
+    if (path_size > 0) {
+        viewparser_context_t* context = __viewparser_context_create();
+        if (context == NULL) return 0;
+
+        context->parent = parser->current_context;
+
+        if (parser->current_context->child == NULL)
+            parser->current_context->child = context;
+
+        if (parser->current_context->last_child != NULL)
+            parser->current_context->last_child->next = context;
+
+        parser->current_context->last_child = context;
+        parser->current_context = context;
+
+        parser->current_tag = parser->current_tag->last_child;
+
+        const char* path = bufferdata_get(&parser->variable_buffer);
+
+        if (!__viewparser_readfile(parser->current_context, parser->storage_name, path)) {
+            log_error("View file not found %s", path);
+            return 0;
+        }
+    }
+
+    bufferdata_reset(&parser->variable_buffer);
 
     return 1;
 }
