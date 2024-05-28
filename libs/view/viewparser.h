@@ -97,19 +97,22 @@ typedef struct viewparser_loop {
 typedef struct viewparser_include {
     viewparser_tag_t base;
 
-    // char* path; // variable_buffer use
+    int is_control_key;
+    int control_key_index;
 } viewparser_include_t;
 
 typedef struct viewparser_context {
     viewparser_stage_e stage;
     viewparser_symbol_e symbol;
     size_t bytes_readed;
-    size_t pos_start;
+    // size_t pos_start;
     size_t pos;
     char* buffer;
 
     struct viewparser_context* parent;
-    struct viewparser_context* childs;
+    struct viewparser_context* child;
+    struct viewparser_context* last_child;
+    struct viewparser_context* next;
 } viewparser_context_t;
 
 typedef struct {

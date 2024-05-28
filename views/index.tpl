@@ -1,4 +1,6 @@
-{* include /views/header *}
+{* include /header.tpl *}
+
+{* include /menu.tpl *}
 
 Hello {{name}}, {{first}} a!
 .{{ object . deep_object . name }}.
