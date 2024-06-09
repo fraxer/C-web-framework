@@ -1,1 +1,1 @@
-{{first}}!
+bb {{ object.array1[2] }} aa
