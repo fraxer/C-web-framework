@@ -10,6 +10,9 @@ typedef enum viewparser_stage {
     VIEWPARSER_TEXT = 0,
     VIEWPARSER_VARIABLE,
     VIEWPARSER_BRANCH,
+    VIEWPARSER_CONDITION,
+    VIEWPARSER_CONDITION_EXPR,
+    VIEWPARSER_LOOP,
     VIEWPARSER_INCLUDE,
 } viewparser_stage_e;
 
@@ -31,20 +34,12 @@ typedef enum viewparser_symbol {
 typedef enum {
     VIEWPARSER_TAGTYPE_VAR = 0,
     VIEWPARSER_TAGTYPE_COND,
+    VIEWPARSER_TAGTYPE_COND_IF,
+    VIEWPARSER_TAGTYPE_COND_ELSEIF,
+    VIEWPARSER_TAGTYPE_COND_ELSE,
     VIEWPARSER_TAGTYPE_LOOP,
     VIEWPARSER_TAGTYPE_INC
 } viewparser_tagtype_e;
-
-typedef struct viewparser_tag {
-    int type; // var, cond, loop, inc
-    size_t parent_position; // position in parent content tag
-    bufferdata_t result_content;
-    jsontok_t* json_token;
-    struct viewparser_tag* parent;
-    struct viewparser_tag* child;
-    struct viewparser_tag* last_child;
-    struct viewparser_tag* next;
-} viewparser_tag_t;
 
 typedef struct viewparser_variable_index {
     int value;
@@ -59,39 +54,38 @@ typedef struct viewparser_variable_item {
     struct viewparser_variable_item* next;
 } viewparser_variable_item_t;
 
-typedef struct viewparser_variable {
-    viewparser_tag_t base;
+typedef struct viewparser_tag {
+    int type; // var, cond, loop, inc
+    size_t parent_text_offset;
+    size_t parent_text_size;
+    bufferdata_t result_content;
+    struct viewparser_tag* data_parent;
+    struct viewparser_tag* parent;
+    struct viewparser_tag* child;
+    struct viewparser_tag* last_child;
+    struct viewparser_tag* next;
 
     viewparser_variable_item_t* item;
     viewparser_variable_item_t* last_item;
+} viewparser_tag_t;
+
+typedef struct viewparser_variable {
+    viewparser_tag_t base;
 } viewparser_variable_t;
 
 // конкретное условие в условном блоке
 typedef struct viewparser_condition_item {
     viewparser_tag_t base;
+    int result;
     int reverse;
     int always_true;
-
-    viewparser_variable_item_t* item;
-    viewparser_variable_item_t* last_item;
 } viewparser_condition_item_t;
-
-// обертка для условного блока
-typedef struct viewparser_condition {
-    viewparser_tag_t base;
-
-    viewparser_condition_item_t* item;
-    viewparser_condition_item_t* last_item;
-} viewparser_condition_t;
 
 typedef struct viewparser_loop {
     viewparser_tag_t base;
 
     char* element_name;
     char* key_name;
-
-    viewparser_variable_item_t* item;
-    viewparser_variable_item_t* last_item;
 } viewparser_loop_t;
 
 typedef struct viewparser_include {

@@ -295,7 +295,7 @@ void template_engine(__attribute__((unused))http1request_t* request, http1respon
 
     // response->view(response, document, "views", "/index.tpl");
 
-    // for (int i = 0 ; i < 100; i++) {
+    // for (int i = 0 ; i < 1000; i++) {
     //     char* content = render(document, "views", "/index.tpl");
     //     free(content);
     // }
