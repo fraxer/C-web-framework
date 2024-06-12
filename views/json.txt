@@ -1,6 +1,71 @@
 {
     "name": "Sasha",
     "first": "First",
+    "arr": [
+        {
+            "name": "n1",
+            "list": [
+                "l1",
+                "l2",
+                "l3"
+            ]
+        },
+        {
+            "name": "n2",
+            "list": [
+                "l4",
+                "l5",
+                "l6"
+            ]
+        },
+        {
+            "name": "n2",
+            "list": [
+                "l4",
+                "l5",
+                "l5",
+                "l5",
+                "l5",
+                "l6"
+            ]
+        },
+        {
+            "name": "n2",
+            "list": [
+                "l4",
+                "l5",
+                "l5",
+                "l5",
+                "l5",
+                "l5",
+                "l6"
+            ]
+        },
+        {
+            "name": "n2",
+            "list": [
+                "l4",
+                "l5",
+                "l6"
+            ]
+        },
+        {
+            "name": "n2",
+            "list": [
+                "l4",
+                "l5",
+                "l6"
+            ]
+        },
+        {
+            "name": "n2",
+            "list": [
+                "l4",
+                "l5",
+                "l6"
+            ]
+        }
+    ],
     "object": {
         "deep_object": {
             "name": "My object string",
@@ -17,13 +82,17 @@
                 "array": [
                     [
                         {
-                            "name": "array2 1"
+                            "name": "array2 1_",
+                            "sur": "asdas",
+                            "bool": true
                         },
                         {
-                            "name": "array2 2"
+                            "name": "array2 2",
+                            "bool": false
                         },
                         {
-                            "name": "array2 3"
+                            "name": "array2 3",
+                            "bool": true
                         }
                     ],
                     [
@@ -57,6 +126,6 @@
         "if_true": true,
         "if_false": false
     },
-    "if_true": true,
-    "if_false": false
+    "if_true": false,
+    "if_false": true
 }
