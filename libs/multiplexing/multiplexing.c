@@ -7,14 +7,15 @@
 
 mpxapi_t* mpx_create(mpxtype_e type) {
     mpxapi_t* result = NULL;
-    mpxapi_t* api = malloc(sizeof * api);
-    if (api == NULL) return NULL;
+    mpxapi_t* api = NULL;
 
     switch (type) {
     case MULTIPLEX_TYPE_EPOLL:
         api = (mpxapi_t*)mpx_epoll_init();
         if (api == NULL) goto failed;
         break;
+    default:
+        api = NULL;
     }
 
     result = api;

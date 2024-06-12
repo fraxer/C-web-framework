@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 #include "storage.h"
 #include "log.h"
 #include "viewparser.h"
@@ -6,15 +8,18 @@ static viewparser_context_t* __viewparser_context_create();
 static int __viewparser_readfile(viewparser_context_t* context, const char* storage_name,const char* path);
 static int __viewparser_parse_content(viewparser_t* parser);
 static int __viewparser_variable_create(viewparser_t* parser);
-static void __viewparser_variable_free(viewparser_variable_t* variable);
+static void __viewparser_variable_free(viewparser_tag_t* variable);
 static viewparser_variable_item_t* __viewparser_variable_item_create();
 static int __viewparser_variable_item_append(viewparser_variable_item_t* variable_item, viewparser_tag_t* variable);
 static void __viewparser_variable_item_free(viewparser_variable_item_t* item);
 static int __viewparser_variable_item_complete_name(viewparser_t* parser);
 static int __viewparser_variable_item_complete_index(viewparser_t* parser);
-static int __viewparser_replace_tag_on_value(viewparser_t* parser);
 static int __viewparser_variable_item_index_create(viewparser_variable_item_t* item, int value);
 static int __viewparser_variable_write_body(viewparser_t* parser, char ch);
+static void __viewparser_variable_rtrim(viewparser_t* parser);
+static void __viewparser_tag_append_child_or_sibling(viewparser_tag_t* parent, viewparser_tag_t* child);
+static void __viewparser_tag_set_parent_text_params(viewparser_tag_t* tag, viewparser_tag_t* parent);
+static viewparser_tag_t* __viewparser_get_dataparent(viewparser_tag_t* tag);
 
 static int __viewparser_tag_init(viewparser_tag_t* tag, int type, viewparser_tag_t* data_parent, viewparser_tag_t* parent);
 static viewparser_tag_t* __viewparser_root_tag_create();
@@ -22,17 +27,23 @@ static int __viewparser_include_create(viewparser_t* parser);
 static int __viewparser_include_write_body(viewparser_t* parser, char ch);
 static int __viewparser_include_load_content(viewparser_t* parser);
 
-static int __viewparser_branch_write_body(viewparser_t* parser, char ch);
+static int __viewparser_branch_write_body(viewparser_t* parser);
 static int __viewparser_condition_if_create(viewparser_t* parser);
 static int __viewparser_condition_elseif_create(viewparser_t* parser);
 static int __viewparser_condition_else_create(viewparser_t* parser);
 static int __viewparser_condition_item_append(viewparser_variable_item_t* variable_item, viewparser_condition_item_t* tag_if);
 static int __viewparser_condition_item_complete_name(viewparser_t* parser);
-static int __viewparser_replace_condition_on_value(viewparser_t* parser);
+static int __viewparser_replace_condition_on_value(viewparser_t* parser, viewparser_tag_t* tag);
 
 static void __viewparser_build_content(viewparser_t* parser);
 static void __viewparser_build_content_recursive(viewparser_t* parser, viewparser_tag_t* child);
 static const char* __viewparser_get_tag_value(viewparser_t* parser, viewparser_tag_t* tag);
+
+static int __viewparser_loop_create(viewparser_t* parser);
+static int __viewparser_loop_write_item(viewparser_t* parser, char ch);
+static int __viewparser_loop_write_index(viewparser_t* parser, char ch);
+static int __viewparser_loop_write_in(viewparser_t* parser, char ch);
+static const jsontok_t* __viewparser_get_loop_value(viewparser_t* parser, viewparser_tag_t* tag);
 
 static char __word_include[8] = {'i', 'n', 'c', 'l', 'u', 'd', 'e', 0};
 static char __word_if[3] = {'i', 'f', 0};
@@ -111,7 +122,6 @@ viewparser_context_t* __viewparser_context_create() {
     context->stage = VIEWPARSER_TEXT;
     context->symbol = VIEWPARSER_DEFAULT;
     context->bytes_readed = 0;
-    // context->pos_start = 0;
     context->pos = 0;
     context->buffer = NULL;
     context->parent = NULL;
@@ -240,9 +250,6 @@ int __viewparser_parse_content(viewparser_t* parser) {
                     if (!__viewparser_variable_item_complete_name(parser))
                         return 0;
 
-                    if (!__viewparser_replace_tag_on_value(parser))
-                        return 0;
-
                     parser->current_tag = parser->current_tag->parent;
 
                     break;
@@ -257,7 +264,7 @@ int __viewparser_parse_content(viewparser_t* parser) {
             }
             default: __viewparser_variable_write_body(parser, ch);
             }
-            
+
             break;
         }
         case VIEWPARSER_INCLUDE:
@@ -268,8 +275,6 @@ int __viewparser_parse_content(viewparser_t* parser) {
             case '%':
             {
                 return 0;
-
-                break;
             }
             case '*':
             {
@@ -306,28 +311,8 @@ int __viewparser_parse_content(viewparser_t* parser) {
             {
             case '{':
             case '*':
-            case '%':
-            case '}':
             {
                 return 0;
-
-                break;
-            }
-            default: __viewparser_branch_write_body(parser, ch);
-            }
-
-            break;
-        }
-        case VIEWPARSER_CONDITION:
-        {
-            switch (ch)
-            {
-            case '{':
-            case '*':
-            {
-                return 0;
-
-                break;
             }
             case '%':
             {
@@ -340,11 +325,27 @@ int __viewparser_parse_content(viewparser_t* parser) {
                 if (context->symbol != VIEWPARSER_FIGPERCENTCLOSE)
                     return 0;
 
+                if (!__viewparser_branch_write_body(parser))
+                    return 0;
+
                 context->stage = VIEWPARSER_TEXT;
 
                 break;
             }
-            default: __viewparser_branch_write_body(parser, ch);
+            case ' ':
+            {
+                if (!__viewparser_branch_write_body(parser))
+                    return 0;
+
+                break;
+            }
+            default:
+            {
+                bufferdata_push(&parser->variable_buffer, ch);
+                parser->current_context->symbol = VIEWPARSER_DEFAULT;
+
+                break;
+            }
             }
 
             break;
@@ -376,8 +377,95 @@ int __viewparser_parse_content(viewparser_t* parser) {
                 if (!__viewparser_condition_item_complete_name(parser))
                     return 0;
 
-                if (!__viewparser_replace_condition_on_value(parser))
+                context->symbol = VIEWPARSER_FIGFIGCLOSE;
+
+                break;
+            }
+            default: __viewparser_variable_write_body(parser, ch);
+            }
+            
+            break;
+        }
+        case VIEWPARSER_LOOP_ITEM:
+        {
+            switch (ch)
+            {
+            case '{':
+            case '*':
+            case '%':
+            case '}':
+            {
+                return 0;
+            }
+            default: __viewparser_loop_write_item(parser, ch);
+            }
+            
+            break;
+        }
+        case VIEWPARSER_LOOP_INDEX:
+        {
+            switch (ch)
+            {
+            case '{':
+            case '*':
+            case '%':
+            case '}':
+            {
+                return 0;
+            }
+            default: __viewparser_loop_write_index(parser, ch);
+            }
+            
+            break;
+        }
+        case VIEWPARSER_LOOP_IN:
+        {
+            switch (ch)
+            {
+            case '{':
+            case '*':
+            case '%':
+            case '}':
+            {
+                return 0;
+            }
+            default: __viewparser_loop_write_in(parser, ch);
+            }
+            
+            break;
+        }
+        case VIEWPARSER_LOOP_VAR:
+        {
+            switch (ch)
+            {
+            case '{':
+            case '*':
+            {
+                return 0;
+            }
+            case '%':
+            {
+                context->symbol = VIEWPARSER_FIGPERCENTCLOSE;
+
+                break;
+            }
+            case '}':
+            {
+                if (context->symbol != VIEWPARSER_FIGPERCENTCLOSE)
                     return 0;
+
+                context->stage = VIEWPARSER_TEXT;
+
+                if (!__viewparser_variable_item_complete_name(parser))
+                    return 0;
+
+                viewparser_loop_t* tag_for = (viewparser_loop_t*)parser->current_tag;
+                if (tag_for->key_name[0] == 0) {
+                    if (strcmp(tag_for->element_name, "index") == 0)
+                        return 0;
+
+                    strcpy(tag_for->key_name, "index");
+                }
 
                 context->symbol = VIEWPARSER_FIGFIGCLOSE;
 
@@ -403,56 +491,35 @@ int __viewparser_parse_content(viewparser_t* parser) {
 }
 
 int __viewparser_variable_create(viewparser_t* parser) {
-    viewparser_variable_t* variable = malloc(sizeof * variable);
+    viewparser_tag_t* variable = malloc(sizeof * variable);
     if (variable == NULL) return 0;
 
-    viewparser_tag_t* tag = parser->current_tag;
+    viewparser_tag_t* current_tag = parser->current_tag;
+    viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
 
-    variable->base.item = NULL;
-    variable->base.last_item = NULL;
-    variable->base.next = NULL;
-    variable->base.child = NULL;
-    variable->base.last_child = NULL;
-    variable->base.parent = tag;
-    bufferdata_init(&variable->base.result_content);
-    variable->base.type = VIEWPARSER_TAGTYPE_VAR;
+    __viewparser_tag_init(variable, VIEWPARSER_TAGTYPE_VAR, data_parent, current_tag);
+    __viewparser_tag_set_parent_text_params(variable, current_tag);
+    __viewparser_tag_append_child_or_sibling(current_tag, variable);
 
-    if (tag->last_child != NULL) {
-        variable->base.parent_text_offset = tag->last_child->parent_text_offset + tag->last_child->parent_text_size;
-        variable->base.parent_text_size = bufferdata_writed(&tag->result_content) - variable->base.parent_text_offset;
-    }
-    else {
-        variable->base.parent_text_offset = 0;
-        variable->base.parent_text_size = bufferdata_writed(&tag->result_content);
-    }
-
-    if (tag->child == NULL)
-        tag->child = (viewparser_tag_t*)variable;
-
-    if (tag->last_child != NULL)
-        tag->last_child->next = (viewparser_tag_t*)variable;
-
-    tag->last_child = (viewparser_tag_t*)variable;
-
-    parser->current_tag = (viewparser_tag_t*)variable;
+    parser->current_tag = variable;
 
     return 1;
 }
 
-void __viewparser_variable_free(viewparser_variable_t* variable) {
+void __viewparser_variable_free(viewparser_tag_t* variable) {
     if (variable == NULL) return;
 
-    viewparser_variable_item_t* item = variable->base.item;
+    viewparser_variable_item_t* item = variable->item;
     while (item) {
         viewparser_variable_item_t* next = item->next;
         __viewparser_variable_item_free(item);
         item = next;
     }
 
-    variable->base.item = NULL;
-    variable->base.last_item = NULL;
-    // variable->base.childs
-    // variable->base.result_content
+    variable->item = NULL;
+    variable->last_item = NULL;
+    // variable->childs
+    // variable->result_content
 
     free(variable);
 }
@@ -498,12 +565,7 @@ void __viewparser_variable_item_free(viewparser_variable_item_t* item) {
 }
 
 int __viewparser_variable_item_complete_name(viewparser_t* parser) {
-    while (1) {
-        if (bufferdata_back(&parser->variable_buffer) != ' ')
-            break;
-
-        bufferdata_pop_back(&parser->variable_buffer);
-    }
+    __viewparser_variable_rtrim(parser);
 
     bufferdata_complete(&parser->variable_buffer);
     const size_t variable_item_size = bufferdata_writed(&parser->variable_buffer);
@@ -522,12 +584,7 @@ int __viewparser_variable_item_complete_name(viewparser_t* parser) {
 }
 
 int __viewparser_variable_item_complete_index(viewparser_t* parser) {
-    while (1) {
-        if (bufferdata_back(&parser->variable_buffer) != ' ')
-            break;
-
-        bufferdata_pop_back(&parser->variable_buffer);
-    }
+    __viewparser_variable_rtrim(parser);
 
     bufferdata_complete(&parser->variable_buffer);
     const size_t variable_item_size = bufferdata_writed(&parser->variable_buffer);
@@ -543,53 +600,6 @@ int __viewparser_variable_item_complete_index(viewparser_t* parser) {
         viewparser_tag_t* variable = parser->current_tag;
         if (!__viewparser_variable_item_index_create(variable->last_item, atoi(value)))
             return 0;
-    }
-
-    bufferdata_reset(&parser->variable_buffer);
-
-    return 1;
-}
-
-int __viewparser_replace_tag_on_value(viewparser_t* parser) {
-    viewparser_tag_t* variable = parser->current_tag;
-    viewparser_variable_item_t* item = variable->item;
-    viewparser_tag_t* data = variable->data_parent;
-    const jsontok_t* json_token = NULL;
-    if (data == NULL)
-        json_token = json_root(parser->document);
-
-    while (item) {
-        const jsontok_t* token = json_object_get(json_token, item->name);
-        if (token == NULL) break;
-
-        if (token->type == JSON_ARRAY) {
-            int stop = 0;
-            viewparser_variable_index_t* index = item->index;
-            while (index) {
-                token = json_array_get(token, index->value);
-                stop = token == NULL;
-                if (stop) break;
-
-                index = index->next;
-            }
-
-            if (stop) break;
-        }
-
-        if (item->next == NULL) {
-            // convert token value to string
-            if (json_is_string(token)) {
-                const char* variable_value = json_string(token);
-                for (size_t i = 0; i < strlen(variable_value); i++) {
-                    // bufferdata_push(&parser->buf, variable_value[i]);
-                }
-            }
-        }
-        else {
-            json_token = token;
-        }
-
-        item = item->next;
     }
 
     bufferdata_reset(&parser->variable_buffer);
@@ -618,7 +628,6 @@ int __viewparser_variable_item_index_create(viewparser_variable_item_t* item, in
 }
 
 int __viewparser_variable_write_body(viewparser_t* parser, char ch) {
-    
     viewparser_context_t* const context = parser->current_context;
 
     switch (ch)
@@ -704,6 +713,50 @@ int __viewparser_variable_write_body(viewparser_t* parser, char ch) {
     return 1;
 }
 
+void __viewparser_variable_rtrim(viewparser_t* parser) {
+    while (1) {
+        if (bufferdata_back(&parser->variable_buffer) != ' ')
+            break;
+
+        bufferdata_pop_back(&parser->variable_buffer);
+    }
+}
+
+void __viewparser_tag_append_child_or_sibling(viewparser_tag_t* parent, viewparser_tag_t* child) {
+    if (parent == NULL) return;
+
+    if (parent->child == NULL)
+        parent->child = child;
+
+    if (parent->last_child != NULL)
+        parent->last_child->next = child;
+
+    parent->last_child = child;
+}
+
+void __viewparser_tag_set_parent_text_params(viewparser_tag_t* tag, viewparser_tag_t* parent) {
+    if (parent == NULL) return;
+
+    if (parent->last_child != NULL) {
+        tag->parent_text_offset = parent->last_child->parent_text_offset + parent->last_child->parent_text_size;
+        tag->parent_text_size = bufferdata_writed(&parent->result_content) - tag->parent_text_offset;
+    }
+    else {
+        tag->parent_text_offset = 0;
+        tag->parent_text_size = bufferdata_writed(&parent->result_content);
+    }
+}
+
+viewparser_tag_t* __viewparser_get_dataparent(viewparser_tag_t* tag) {
+    if (tag == NULL)
+        return NULL;
+
+    if (tag->type == VIEWPARSER_TAGTYPE_LOOP)
+        return tag;
+    
+    return tag->data_parent;
+}
+
 int __viewparser_tag_init(viewparser_tag_t* tag, int type, viewparser_tag_t* data_parent, viewparser_tag_t* parent) {
     tag->type = type;
     tag->parent_text_offset = 0;
@@ -734,28 +787,14 @@ int __viewparser_include_create(viewparser_t* parser) {
     if (tag == NULL) return 0;
 
     viewparser_tag_t* current_tag = parser->current_tag;
+    viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
 
-    __viewparser_tag_init((viewparser_tag_t*)tag, VIEWPARSER_TAGTYPE_INC, current_tag->data_parent, current_tag);
-
+    __viewparser_tag_init((viewparser_tag_t*)tag, VIEWPARSER_TAGTYPE_INC, data_parent, current_tag);
     tag->is_control_key = 0;
     tag->control_key_index = 0;
 
-    if (current_tag->last_child != NULL) {
-        tag->base.parent_text_offset = current_tag->last_child->parent_text_offset + current_tag->last_child->parent_text_size;
-        tag->base.parent_text_size = bufferdata_writed(&current_tag->result_content) - tag->base.parent_text_offset;
-    }
-    else {
-        tag->base.parent_text_offset = 0;
-        tag->base.parent_text_size = bufferdata_writed(&current_tag->result_content);
-    }
-
-    if (current_tag->child == NULL)
-        current_tag->child = (viewparser_tag_t*)tag;
-
-    if (current_tag->last_child != NULL)
-        current_tag->last_child->next = (viewparser_tag_t*)tag;
-
-    current_tag->last_child = (viewparser_tag_t*)tag;
+    __viewparser_tag_set_parent_text_params((viewparser_tag_t*)tag, current_tag);
+    __viewparser_tag_append_child_or_sibling(current_tag, (viewparser_tag_t*)tag);
 
     parser->current_tag = (viewparser_tag_t*)tag;
 
@@ -805,12 +844,7 @@ int __viewparser_include_write_body(viewparser_t* parser, char ch) {
 }
 
 int __viewparser_include_load_content(viewparser_t* parser) {
-    while (1) {
-        if (bufferdata_back(&parser->variable_buffer) != ' ')
-            break;
-
-        bufferdata_pop_back(&parser->variable_buffer);
-    }
+    __viewparser_variable_rtrim(parser);
 
     bufferdata_complete(&parser->variable_buffer);
     const size_t path_size = bufferdata_writed(&parser->variable_buffer);
@@ -832,8 +866,6 @@ int __viewparser_include_load_content(viewparser_t* parser) {
         parser->current_context->last_child = context;
         parser->current_context = context;
 
-        // parser->current_tag = parser->current_tag->last_child;
-
         const char* path = bufferdata_get(&parser->variable_buffer);
 
         if (!__viewparser_readfile(parser->current_context, parser->storage_name, path)) {
@@ -847,76 +879,57 @@ int __viewparser_include_load_content(viewparser_t* parser) {
     return 1;
 }
 
-int __viewparser_branch_write_body(viewparser_t* parser, char ch) {
-    switch (ch)
-    {
-    case ' ':
-    {
-        if (parser->current_context->symbol == VIEWPARSER_FIGPERCENTOPEN)
-            break;
+int __viewparser_branch_write_body(viewparser_t* parser) {
+    __viewparser_variable_rtrim(parser);
 
-        if (parser->current_context->symbol == VIEWPARSER_DEFAULT) {
-            bufferdata_complete(&parser->variable_buffer);
-            const size_t tag_name_size = bufferdata_writed(&parser->variable_buffer);
-            const char* tag_name = bufferdata_get(&parser->variable_buffer);
+    bufferdata_complete(&parser->variable_buffer);
+    const size_t tag_name_size = bufferdata_writed(&parser->variable_buffer);
+    const char* tag_name = bufferdata_get(&parser->variable_buffer);
 
-            for (size_t i = 0; i < tag_name_size; i++) {
-                const int complete = i + 1 == tag_name_size;
+    for (size_t i = 0; i < tag_name_size; i++) {
+        const int complete = i + 1 == tag_name_size;
 
-                if (tag_name_size == 2 && __word_if[i] == tag_name[i]) {
-                    if (complete && !__viewparser_condition_if_create(parser))
-                        return 0;
+        if (tag_name_size == 2 && __word_if[i] == tag_name[i]) {
+            if (complete && !__viewparser_condition_if_create(parser))
+                return 0;
 
-                    parser->current_context->stage = VIEWPARSER_CONDITION_EXPR;
-                }
-                else if (tag_name_size == 6 && __word_elseif[i] == tag_name[i]) {
-                    if (complete && !__viewparser_condition_elseif_create(parser))
-                        return 0;
+            parser->current_context->stage = VIEWPARSER_CONDITION_EXPR;
+        }
+        else if (tag_name_size == 6 && __word_elseif[i] == tag_name[i]) {
+            if (complete && !__viewparser_condition_elseif_create(parser))
+                return 0;
 
-                    parser->current_context->stage = VIEWPARSER_CONDITION_EXPR;
-                }
-                else if (tag_name_size == 4 && __word_else[i] == tag_name[i]) {
-                    if (complete && !__viewparser_condition_else_create(parser))
-                        return 0;
+            parser->current_context->stage = VIEWPARSER_CONDITION_EXPR;
+        }
+        else if (tag_name_size == 4 && __word_else[i] == tag_name[i]) {
+            if (complete && !__viewparser_condition_else_create(parser))
+                return 0;
 
-                    parser->current_context->stage = VIEWPARSER_CONDITION_EXPR;
-                }
-                else if (tag_name_size == 5 && __word_endif[i] == tag_name[i]) {
-                    parser->current_tag = parser->current_tag->parent->parent;
-                    parser->current_context->stage = VIEWPARSER_CONDITION;
-                    break;
-                }
-                else if (tag_name_size == 3 && __word_for[i] == tag_name[i]) {
-                    // if (complete && !__viewparser_loop_create(parser))
-                    //     return 0;
-                }
-                else if (tag_name_size == 6 && __word_endfor[i] == tag_name[i]) {
-                    // if (complete && !__viewparser_loop_create(parser))
-                    //     return 0;
-                }
-                else if (complete)
-                    return 0;
-            }
-
-            bufferdata_reset(&parser->variable_buffer);
+            parser->current_context->stage = VIEWPARSER_CONDITION_EXPR;
+        }
+        else if (tag_name_size == 5 && __word_endif[i] == tag_name[i]) {
+            parser->current_tag = parser->current_tag->parent->parent;
+            parser->current_context->stage = VIEWPARSER_BRANCH;
             break;
         }
+        else if (tag_name_size == 3 && __word_for[i] == tag_name[i]) {
+            if (complete && !__viewparser_loop_create(parser))
+                return 0;
 
-        bufferdata_push(&parser->variable_buffer, ch);
-
-        parser->current_context->symbol = VIEWPARSER_VARIABLE_SPACE;
-
-        break;
+            parser->current_context->stage = VIEWPARSER_LOOP_ITEM;
+        }
+        else if (tag_name_size == 6 && __word_endfor[i] == tag_name[i]) {
+            parser->current_tag = parser->current_tag->parent;
+            parser->current_context->stage = VIEWPARSER_BRANCH;
+            break;
+        }
+        else if (complete) {
+            log_error("View syntax error: branch tag not found\n");
+            return 0;
+        }
     }
-    default:
-    {
-        bufferdata_push(&parser->variable_buffer, ch);
 
-        parser->current_context->symbol = VIEWPARSER_DEFAULT;
-
-        break;
-    }
-    }
+    bufferdata_reset(&parser->variable_buffer);
 
     return 1;
 }
@@ -926,17 +939,10 @@ int __viewparser_condition_if_create(viewparser_t* parser) {
     if (tag_cond == NULL) return 0;
 
     viewparser_tag_t* current_tag = parser->current_tag;
+    viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
 
-    __viewparser_tag_init(tag_cond, VIEWPARSER_TAGTYPE_COND, current_tag->data_parent, current_tag);
-
-    if (current_tag->last_child != NULL) {
-        tag_cond->parent_text_offset = current_tag->last_child->parent_text_offset + current_tag->last_child->parent_text_size;
-        tag_cond->parent_text_size = bufferdata_writed(&current_tag->result_content) - tag_cond->parent_text_offset;
-    }
-    else {
-        tag_cond->parent_text_offset = 0;
-        tag_cond->parent_text_size = bufferdata_writed(&current_tag->result_content);
-    }
+    __viewparser_tag_init(tag_cond, VIEWPARSER_TAGTYPE_COND, data_parent, current_tag);
+    __viewparser_tag_set_parent_text_params(tag_cond, current_tag);
 
     viewparser_condition_item_t* tag_if = malloc(sizeof * tag_if);
     if (tag_if == NULL) {
@@ -944,7 +950,7 @@ int __viewparser_condition_if_create(viewparser_t* parser) {
         return 0;
     }
 
-    __viewparser_tag_init((viewparser_tag_t*)tag_if, VIEWPARSER_TAGTYPE_COND_IF, current_tag->data_parent, tag_cond);
+    __viewparser_tag_init((viewparser_tag_t*)tag_if, VIEWPARSER_TAGTYPE_COND_IF, data_parent, tag_cond);
     tag_if->result = 0;
     tag_if->reverse = 0;
     tag_if->always_true = 0;
@@ -956,26 +962,14 @@ int __viewparser_condition_if_create(viewparser_t* parser) {
         return 0;
     }
 
-    if (!__viewparser_condition_item_append(variable_item, tag_if))
+    if (!__viewparser_condition_item_append(variable_item, tag_if)) {
+        free(tag_cond);
+        free(tag_if);
         return 0;
+    }
 
-    if (tag_cond->child == NULL)
-        tag_cond->child = (viewparser_tag_t*)tag_if;
-
-    if (tag_cond->last_child != NULL)
-        tag_cond->last_child->next = (viewparser_tag_t*)tag_if;
-
-    tag_cond->last_child = (viewparser_tag_t*)tag_if;
-
-
-
-    if (current_tag->child == NULL)
-        current_tag->child = tag_cond;
-
-    if (current_tag->last_child != NULL)
-        current_tag->last_child->next = tag_cond;
-
-    current_tag->last_child = tag_cond;
+    __viewparser_tag_append_child_or_sibling(tag_cond, (viewparser_tag_t*)tag_if);
+    __viewparser_tag_append_child_or_sibling(current_tag, tag_cond);
 
     parser->current_tag = (viewparser_tag_t*)tag_if;
 
@@ -997,12 +991,7 @@ int __viewparser_condition_item_append(viewparser_variable_item_t* variable_item
 }
 
 int __viewparser_condition_item_complete_name(viewparser_t* parser) {
-    while (1) {
-        if (bufferdata_back(&parser->variable_buffer) != ' ')
-            break;
-
-        bufferdata_pop_back(&parser->variable_buffer);
-    }
+    __viewparser_variable_rtrim(parser);
 
     bufferdata_complete(&parser->variable_buffer);
     const size_t variable_item_size = bufferdata_writed(&parser->variable_buffer);
@@ -1020,18 +1009,36 @@ int __viewparser_condition_item_complete_name(viewparser_t* parser) {
     return 1;
 }
 
-int __viewparser_replace_condition_on_value(viewparser_t* parser) {
-    viewparser_tag_t* variable = parser->current_tag;
-    viewparser_variable_item_t* item = variable->item;
-    viewparser_tag_t* data = variable->data_parent;
-    const jsontok_t* json_token = NULL;
-    if (data == NULL)
-        json_token = json_root(parser->document);
+int __viewparser_replace_condition_on_value(viewparser_t* parser, viewparser_tag_t* tag) {
+    viewparser_variable_item_t* item = tag->item;
+    viewparser_loop_t* tag_for = (viewparser_loop_t*)tag->data_parent;
+    const jsontok_t* json_token = json_root(parser->document);
+    if (tag_for != NULL) {
+        viewparser_loop_t* tag_parent = tag_for;
+
+        while (tag_parent != NULL) {
+            if (strcmp(item->name, tag_parent->element_name) == 0) {
+                json_token = tag_parent->token;
+
+                if (item->next != NULL)
+                    item = item->next;
+
+                break;
+            }
+
+            tag_parent = (viewparser_loop_t*)tag_parent->base.data_parent;
+        }
+    }
 
     while (item) {
-        const jsontok_t* token = json_object_get(json_token, item->name);
-        if (token == NULL) break;
+        const jsontok_t* token = NULL;
+        if (json_token->type == JSON_STRING)
+            token = json_token;
+        else if (json_token->type == JSON_OBJECT)
+            token = json_object_get(json_token, item->name);
 
+        if (token == NULL) break;
+        
         if (token->type == JSON_ARRAY) {
             int stop = 0;
             viewparser_variable_index_t* index = item->index;
@@ -1047,9 +1054,8 @@ int __viewparser_replace_condition_on_value(viewparser_t* parser) {
         }
 
         if (item->next == NULL) {
-            // convert token value to string
             if (json_is_bool(token))
-                ((viewparser_condition_item_t*)variable)->result = json_bool(token);
+                return json_bool(token);
         }
         else {
             json_token = token;
@@ -1058,9 +1064,7 @@ int __viewparser_replace_condition_on_value(viewparser_t* parser) {
         item = item->next;
     }
 
-    bufferdata_reset(&parser->variable_buffer);
-
-    return 1;
+    return 0;
 }
 
 int __viewparser_condition_elseif_create(viewparser_t* parser) {
@@ -1074,29 +1078,25 @@ int __viewparser_condition_elseif_create(viewparser_t* parser) {
     if (tag_elseif == NULL)
         return 0;
 
-    __viewparser_tag_init((viewparser_tag_t*)tag_elseif, VIEWPARSER_TAGTYPE_COND_ELSEIF, current_tag->data_parent, tag_cond);
+    viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
+
+    __viewparser_tag_init((viewparser_tag_t*)tag_elseif, VIEWPARSER_TAGTYPE_COND_ELSEIF, data_parent, tag_cond);
     tag_elseif->result = 0;
     tag_elseif->reverse = 0;
     tag_elseif->always_true = 0;
 
     viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
     if (variable_item == NULL) {
-        free(tag_cond);
         free(tag_elseif);
         return 0;
     }
 
-    if (!__viewparser_condition_item_append(variable_item, tag_elseif))
+    if (!__viewparser_condition_item_append(variable_item, tag_elseif)) {
+        free(tag_elseif);
         return 0;
+    }
 
-    if (tag_cond->child == NULL)
-        tag_cond->child = (viewparser_tag_t*)tag_elseif;
-
-    if (tag_cond->last_child != NULL)
-        tag_cond->last_child->next = (viewparser_tag_t*)tag_elseif;
-
-    tag_cond->last_child = (viewparser_tag_t*)tag_elseif;
-
+    __viewparser_tag_append_child_or_sibling(tag_cond, (viewparser_tag_t*)tag_elseif);
 
     parser->current_tag = (viewparser_tag_t*)tag_elseif;
 
@@ -1114,29 +1114,25 @@ int __viewparser_condition_else_create(viewparser_t* parser) {
     if (tag_else == NULL)
         return 0;
 
-    __viewparser_tag_init((viewparser_tag_t*)tag_else, VIEWPARSER_TAGTYPE_COND_ELSE, current_tag->data_parent, tag_cond);
+    viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
+
+    __viewparser_tag_init((viewparser_tag_t*)tag_else, VIEWPARSER_TAGTYPE_COND_ELSE, data_parent, tag_cond);
     tag_else->result = 0;
     tag_else->reverse = 0;
     tag_else->always_true = 1;
 
     viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
     if (variable_item == NULL) {
-        free(tag_cond);
         free(tag_else);
         return 0;
     }
 
-    if (!__viewparser_condition_item_append(variable_item, tag_else))
+    if (!__viewparser_condition_item_append(variable_item, tag_else)) {
+        free(tag_else);
         return 0;
+    }
 
-    if (tag_cond->child == NULL)
-        tag_cond->child = (viewparser_tag_t*)tag_else;
-
-    if (tag_cond->last_child != NULL)
-        tag_cond->last_child->next = (viewparser_tag_t*)tag_else;
-
-    tag_cond->last_child = (viewparser_tag_t*)tag_else;
-
+    __viewparser_tag_append_child_or_sibling(tag_cond, (viewparser_tag_t*)tag_else);
 
     parser->current_tag = (viewparser_tag_t*)tag_else;
 
@@ -1146,7 +1142,7 @@ int __viewparser_condition_else_create(viewparser_t* parser) {
 void __viewparser_build_content(viewparser_t* parser) {
     viewparser_tag_t* child = parser->root_tag->child;
     if (child == NULL) {
-        size_t size = bufferdata_writed(&parser->root_tag->result_content);
+        const size_t size = bufferdata_writed(&parser->root_tag->result_content);
         const char* content = bufferdata_get(&parser->root_tag->result_content);
 
         for (size_t i = 0; i < size; i++)
@@ -1182,8 +1178,6 @@ void __viewparser_build_content_recursive(viewparser_t* parser, viewparser_tag_t
                 for (size_t i = child->parent_text_offset + child->parent_text_size; i < size; i++)
                     bufferdata_push(&parser->buf, content[i]);
 
-                // child = child->parent;
-
                 if (child == tag) return;
             }
 
@@ -1193,25 +1187,7 @@ void __viewparser_build_content_recursive(viewparser_t* parser, viewparser_tag_t
         }
         case VIEWPARSER_TAGTYPE_COND:
         {
-            // viewparser_tag_t* parent = child->parent;
-
-            // const size_t size = bufferdata_writed(&parent->result_content);
-            // const char* content = bufferdata_get(&parent->result_content);
-            // for (size_t i = child->parent_text_offset; i < child->parent_text_offset + child->parent_text_size && i < size; i++)
-            //     bufferdata_push(&parser->buf, content[i]);
-
             __viewparser_build_content_recursive(parser, child->child);
-
-            // if (child->next == NULL) {
-            //     // const size_t size = bufferdata_writed(&parent->result_content);
-            //     // const char* content = bufferdata_get(&parent->result_content);
-            //     // for (size_t i = child->parent_text_offset + child->parent_text_size; i < size; i++)
-            //     //     bufferdata_push(&parser->buf, content[i]);
-
-            //     // child = child->parent;
-
-            //     if (child == tag) return;
-            // }
 
             child = child->next;
 
@@ -1224,7 +1200,8 @@ void __viewparser_build_content_recursive(viewparser_t* parser, viewparser_tag_t
             viewparser_tag_t* parent = child->parent;
             viewparser_condition_item_t* tag = (viewparser_condition_item_t*)child;
 
-            const int istrue = tag->always_true || (tag->result && !tag->reverse) || (!tag->result && tag->reverse);
+            const int result = __viewparser_replace_condition_on_value(parser, child);
+            const int istrue = tag->always_true || (result && !tag->reverse) || (!result && tag->reverse);
 
             if (!istrue) {
                 if (child->next != NULL) {
@@ -1265,6 +1242,47 @@ void __viewparser_build_content_recursive(viewparser_t* parser, viewparser_tag_t
         }
         case VIEWPARSER_TAGTYPE_LOOP:
         {
+            viewparser_tag_t* parent = child->parent;
+            viewparser_loop_t* tag_for = (viewparser_loop_t*)child;
+
+            size_t size = bufferdata_writed(&parent->result_content);
+            const char* content = bufferdata_get(&parent->result_content);
+            for (size_t i = child->parent_text_offset; i < child->parent_text_offset + child->parent_text_size && i < size; i++)
+                bufferdata_push(&parser->buf, content[i]);
+
+            const jsontok_t* token = __viewparser_get_loop_value(parser, child);
+            if (token != NULL) {
+                if (token->type == JSON_OBJECT || token->type == JSON_ARRAY) {
+                    for (jsonit_t it = json_init_it(token); !json_end_it(&it); it = json_next_it(&it)) {
+                        if (token->type == JSON_OBJECT)
+                            sprintf(tag_for->key_value, "%s", (char*)json_it_key(&it));
+                        else
+                            sprintf(tag_for->key_value, "%d", (*(int*)json_it_key(&it)));
+
+                        tag_for->token = json_it_value(&it);
+
+                        if (child->child != NULL) {
+                            __viewparser_build_content_recursive(parser, child->child);
+                        }
+                        else {
+                            const size_t size = bufferdata_writed(&child->result_content);
+                            const char* content = bufferdata_get(&child->result_content);
+                            for (size_t i = 0; i < size; i++)
+                                bufferdata_push(&parser->buf, content[i]);
+                        }
+                    }
+                }
+            }
+
+            if (child->next == NULL) {
+                size = bufferdata_writed(&parent->result_content);
+                content = bufferdata_get(&parent->result_content);
+                for (size_t i = child->parent_text_offset + child->parent_text_size; i < size; i++)
+                    bufferdata_push(&parser->buf, content[i]);
+            }
+
+            child = child->next;
+
             break;
         }
         case VIEWPARSER_TAGTYPE_INC:
@@ -1304,13 +1322,251 @@ void __viewparser_build_content_recursive(viewparser_t* parser, viewparser_tag_t
 
 const char* __viewparser_get_tag_value(viewparser_t* parser, viewparser_tag_t* tag) {
     viewparser_variable_item_t* item = tag->item;
-    viewparser_tag_t* data = tag->data_parent;
-    const jsontok_t* json_token = NULL;
-    if (data == NULL)
-        json_token = json_root(parser->document);
+    viewparser_loop_t* tag_for = (viewparser_loop_t*)tag->data_parent;
+    const jsontok_t* json_token = json_root(parser->document);
+    if (tag_for != NULL) {
+        viewparser_loop_t* tag_parent = tag_for;
+
+        while (tag_parent != NULL) {
+            if (item->next == NULL && strcmp(item->name, tag_parent->key_name) == 0)
+                return tag_parent->key_value;
+
+            if (strcmp(item->name, tag_parent->element_name) == 0) {
+                json_token = tag_parent->token;
+
+                if (item->next != NULL)
+                    item = item->next;
+
+                break;
+            }
+
+            tag_parent = (viewparser_loop_t*)tag_parent->base.data_parent;
+        }
+    }
 
     while (item) {
-        const jsontok_t* token = json_object_get(json_token, item->name);
+        const jsontok_t* token = NULL;
+        if (json_token->type == JSON_STRING)
+            token = json_token;
+        else if (json_token->type == JSON_OBJECT)
+            token = json_object_get(json_token, item->name);
+
+        if (token == NULL) break;
+        
+        if (token->type == JSON_ARRAY) {
+            int stop = 0;
+            viewparser_variable_index_t* index = item->index;
+            while (index) {
+                token = json_array_get(token, index->value);
+                stop = token == NULL;
+                if (stop) break;
+
+                index = index->next;
+            }
+
+            if (stop) break;
+        }
+
+        if (item->next == NULL) {
+            if (json_is_string(token))
+                return json_string(token);
+        }
+        else {
+            json_token = token;
+        }
+
+        item = item->next;
+    }
+
+    return NULL;
+}
+
+int __viewparser_loop_create(viewparser_t* parser) {
+    viewparser_loop_t* tag_for = malloc(sizeof * tag_for);
+    if (tag_for == NULL) return 0;
+
+    viewparser_tag_t* current_tag = parser->current_tag;
+    viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
+
+    __viewparser_tag_init((viewparser_tag_t*)tag_for, VIEWPARSER_TAGTYPE_LOOP, data_parent, current_tag);
+    __viewparser_tag_set_parent_text_params((viewparser_tag_t*)tag_for, current_tag);
+    tag_for->element_name[0] = 0;
+    tag_for->key_name[0] = 0;
+    tag_for->token = NULL;
+
+    viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
+    if (variable_item == NULL) {
+        free(tag_for);
+        return 0;
+    }
+
+    if (!__viewparser_variable_item_append(variable_item, (viewparser_tag_t*)tag_for)) {
+        free(tag_for);
+        return 0;
+    }
+
+    __viewparser_tag_append_child_or_sibling(current_tag, (viewparser_tag_t*)tag_for);
+
+    parser->current_tag = (viewparser_tag_t*)tag_for;
+
+    return 1;
+}
+
+int __viewparser_loop_write_item(viewparser_t* parser, char ch) {
+    viewparser_context_t* const context = parser->current_context;
+    viewparser_loop_t* tag_for = (viewparser_loop_t*)parser->current_tag;
+
+    switch (ch)
+    {
+    case ',':
+    case ' ':
+    {
+
+        bufferdata_complete(&parser->variable_buffer);
+        const size_t tag_name_size = bufferdata_writed(&parser->variable_buffer);
+        const char* tag_name = bufferdata_get(&parser->variable_buffer);
+
+        if (tag_name_size > VIEWPARSER_VARIABLE_ITEM_NAME_SIZE - 1)
+            return 0;
+
+        if (strcmp(tag_name, "in") == 0) {
+            log_error("View syntax error: item not must be named <in> in for\n");
+            return 0;
+        }
+
+        strcpy(tag_for->element_name, tag_name);
+
+        bufferdata_reset(&parser->variable_buffer);
+
+        if (ch == ',') {
+            context->symbol = VIEWPARSER_VARIABLE_SPACE;
+            context->stage = VIEWPARSER_LOOP_INDEX;
+        }
+        else {
+            context->symbol = VIEWPARSER_VARIABLE_SPACE;
+            context->stage = VIEWPARSER_LOOP_IN;
+        }
+
+        break;
+    }
+    default:
+        context->symbol = VIEWPARSER_DEFAULT;
+        bufferdata_push(&parser->variable_buffer, ch);
+        break;
+    }
+
+    return 1;
+}
+
+int __viewparser_loop_write_index(viewparser_t* parser, char ch) {
+    viewparser_context_t* const context = parser->current_context;
+    viewparser_loop_t* tag_for = (viewparser_loop_t*)parser->current_tag;
+
+    switch (ch)
+    {
+    case ' ':
+    {
+        if (context->symbol == VIEWPARSER_VARIABLE_SPACE)
+            break;
+
+        bufferdata_complete(&parser->variable_buffer);
+        const size_t tag_name_size = bufferdata_writed(&parser->variable_buffer);
+        const char* tag_name = bufferdata_get(&parser->variable_buffer);
+
+        if (tag_name_size > VIEWPARSER_VARIABLE_ITEM_NAME_SIZE - 1)
+            return 0;
+
+        if (strcmp(tag_name, "in") == 0) {
+            log_error("View syntax error: index not must be named <in> in for\n");
+            return 0;
+        }
+
+        if (strcmp(tag_name, tag_for->element_name) == 0)
+            return 0;
+
+        strcpy(tag_for->key_name, tag_name);
+
+        bufferdata_reset(&parser->variable_buffer);
+
+        context->symbol = VIEWPARSER_DEFAULT;
+        context->stage = VIEWPARSER_LOOP_IN;
+
+        break;
+    }
+    default:
+        context->symbol = VIEWPARSER_DEFAULT;
+        bufferdata_push(&parser->variable_buffer, ch);
+        break;
+    }
+
+    return 1;
+}
+
+int __viewparser_loop_write_in(viewparser_t* parser, char ch) {
+    viewparser_context_t* const context = parser->current_context;
+
+    switch (ch)
+    {
+    case ' ':
+    {
+        bufferdata_complete(&parser->variable_buffer);
+        const size_t tag_name_size = bufferdata_writed(&parser->variable_buffer);
+        const char* tag_name = bufferdata_get(&parser->variable_buffer);
+
+        if (tag_name_size > 2) {
+            log_error("View syntax error: not found <in> in for\n");
+            return 0;
+        }
+
+        if (strcmp(tag_name, "in") != 0) {
+            log_error("View syntax error: not found <in> in for\n");
+            return 0;
+        }
+
+        bufferdata_reset(&parser->variable_buffer);
+
+        context->symbol = VIEWPARSER_DEFAULT;
+        context->stage = VIEWPARSER_LOOP_VAR;
+
+        break;
+    }
+    default:
+        context->symbol = VIEWPARSER_DEFAULT;
+        bufferdata_push(&parser->variable_buffer, ch);
+        break;
+    }
+
+    return 1;
+}
+
+const jsontok_t* __viewparser_get_loop_value(viewparser_t* parser, viewparser_tag_t* tag) {
+    viewparser_variable_item_t* item = tag->item;
+    viewparser_loop_t* tag_for = (viewparser_loop_t*)tag->data_parent;
+    const jsontok_t* json_token = json_root(parser->document);
+    if (tag_for != NULL) {
+        viewparser_loop_t* tag_parent = tag_for;
+
+        while (tag_parent != NULL) {
+            if (strcmp(item->name, tag_parent->element_name) == 0) {
+                json_token = tag_parent->token;
+
+                if (item->next != NULL)
+                    item = item->next;
+
+                break;
+            }
+
+            tag_parent = (viewparser_loop_t*)tag_parent->base.data_parent;
+        }
+    }
+
+    while (item) {
+        const jsontok_t* token = NULL;
+        if (json_token->type == JSON_ARRAY)
+            token = json_token;
+        else
+            token = json_object_get(json_token, item->name);
+
         if (token == NULL) break;
 
         if (token->type == JSON_ARRAY) {
@@ -1329,9 +1585,10 @@ const char* __viewparser_get_tag_value(viewparser_t* parser, viewparser_tag_t* t
 
         if (item->next == NULL) {
             // convert token value to string
-            if (json_is_string(token)) {
-                return json_string(token);
-            }
+            if (json_is_array(token) || json_is_object(token))
+                return token;
+
+            return NULL;
         }
         else {
             json_token = token;

@@ -10,9 +10,11 @@ typedef enum viewparser_stage {
     VIEWPARSER_TEXT = 0,
     VIEWPARSER_VARIABLE,
     VIEWPARSER_BRANCH,
-    VIEWPARSER_CONDITION,
     VIEWPARSER_CONDITION_EXPR,
-    VIEWPARSER_LOOP,
+    VIEWPARSER_LOOP_ITEM,
+    VIEWPARSER_LOOP_INDEX,
+    VIEWPARSER_LOOP_IN,
+    VIEWPARSER_LOOP_VAR,
     VIEWPARSER_INCLUDE,
 } viewparser_stage_e;
 
@@ -69,10 +71,6 @@ typedef struct viewparser_tag {
     viewparser_variable_item_t* last_item;
 } viewparser_tag_t;
 
-typedef struct viewparser_variable {
-    viewparser_tag_t base;
-} viewparser_variable_t;
-
 // конкретное условие в условном блоке
 typedef struct viewparser_condition_item {
     viewparser_tag_t base;
@@ -84,8 +82,11 @@ typedef struct viewparser_condition_item {
 typedef struct viewparser_loop {
     viewparser_tag_t base;
 
-    char* element_name;
-    char* key_name;
+    char element_name[VIEWPARSER_VARIABLE_ITEM_NAME_SIZE];
+    char key_name[VIEWPARSER_VARIABLE_ITEM_NAME_SIZE];
+    char key_value[VIEWPARSER_VARIABLE_ITEM_NAME_SIZE];
+
+    jsontok_t* token;
 } viewparser_loop_t;
 
 typedef struct viewparser_include {
@@ -99,7 +100,6 @@ typedef struct viewparser_context {
     viewparser_stage_e stage;
     viewparser_symbol_e symbol;
     size_t bytes_readed;
-    // size_t pos_start;
     size_t pos;
     char* buffer;
 
