@@ -295,12 +295,12 @@ void template_engine(__attribute__((unused))http1request_t* request, http1respon
 
     // response->view(response, document, "views", "/index.tpl");
 
-    // for (int i = 0 ; i < 1000; i++) {
-    //     char* content = render(document, "views", "/index.tpl");
-    //     free(content);
-    // }
+    for (int i = 0 ; i < 12000; i++) {
+        char* content = view_render(document, "views", "/index.tpl");
+        free(content);
+    }
 
-    char* content = render(document, "views", "/index.tpl");
+    char* content = view_render(document, "views", "/index.tpl");
     response->data(response, content);
 
     free(content);

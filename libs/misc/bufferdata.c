@@ -31,6 +31,16 @@ void bufferdata_reset(bufferdata_t* buffer) {
     buffer->type = BUFFERDATA_STATIC;
 }
 
+void bufferdata_clear(bufferdata_t* buffer) {
+    bufferdata_reset(buffer);
+
+    if (buffer->dynamic_buffer != NULL)
+        free(buffer->dynamic_buffer);
+
+    buffer->dynamic_buffer = NULL;
+    buffer->dbuffer_size = 0;
+}
+
 size_t bufferdata_writed(bufferdata_t* buffer) {
     if (buffer->type == BUFFERDATA_DYNAMIC)
         return buffer->offset_dbuffer + buffer->offset_sbuffer;

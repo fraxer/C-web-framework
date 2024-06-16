@@ -90,6 +90,16 @@ int helpers_base_mkdir(const char* base_path, const char* path) {
     return 1;
 }
 
+int cmpstr(const char* a, const char* b) {
+    size_t a_length = strlen(a);
+    size_t b_length = strlen(b);
+
+    for (size_t i = 0, j = 0; i < a_length && j < b_length; i++, j++)
+        if (a[i] != b[j]) return 0;
+
+    return 1;
+}
+
 int cmpstr_lower(const char* a, const char* b) {
     size_t a_length = strlen(a);
     size_t b_length = strlen(b);

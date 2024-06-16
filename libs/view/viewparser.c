@@ -8,7 +8,8 @@ static viewparser_context_t* __viewparser_context_create();
 static int __viewparser_readfile(viewparser_context_t* context, const char* storage_name,const char* path);
 static int __viewparser_parse_content(viewparser_t* parser);
 static int __viewparser_variable_create(viewparser_t* parser);
-static void __viewparser_variable_free(viewparser_tag_t* variable);
+static void __viewparser_contexts_free(viewparser_context_t* context);
+static void __viewparser_tags_free(viewparser_tag_t* tag);
 static viewparser_variable_item_t* __viewparser_variable_item_create();
 static int __viewparser_variable_item_append(viewparser_variable_item_t* variable_item, viewparser_tag_t* variable);
 static void __viewparser_variable_item_free(viewparser_variable_item_t* item);
@@ -33,17 +34,11 @@ static int __viewparser_condition_elseif_create(viewparser_t* parser);
 static int __viewparser_condition_else_create(viewparser_t* parser);
 static int __viewparser_condition_item_append(viewparser_variable_item_t* variable_item, viewparser_condition_item_t* tag_if);
 static int __viewparser_condition_item_complete_name(viewparser_t* parser);
-static int __viewparser_replace_condition_on_value(viewparser_t* parser, viewparser_tag_t* tag);
-
-static void __viewparser_build_content(viewparser_t* parser);
-static void __viewparser_build_content_recursive(viewparser_t* parser, viewparser_tag_t* child);
-static const char* __viewparser_get_tag_value(viewparser_t* parser, viewparser_tag_t* tag);
 
 static int __viewparser_loop_create(viewparser_t* parser);
 static int __viewparser_loop_write_item(viewparser_t* parser, char ch);
 static int __viewparser_loop_write_index(viewparser_t* parser, char ch);
 static int __viewparser_loop_write_in(viewparser_t* parser, char ch);
-static const jsontok_t* __viewparser_get_loop_value(viewparser_t* parser, viewparser_tag_t* tag);
 
 static char __word_include[8] = {'i', 'n', 'c', 'l', 'u', 'd', 'e', 0};
 static char __word_if[3] = {'i', 'f', 0};
@@ -53,11 +48,10 @@ static char __word_endif[6] = {'e', 'n', 'd', 'i', 'f', 0};
 static char __word_for[4] = {'f', 'o', 'r', 0};
 static char __word_endfor[7] = {'e', 'n', 'd', 'f', 'o', 'r', 0};
 
-viewparser_t* viewparser_init(const jsondoc_t* document, const char* storage_name, const char* path) {
+viewparser_t* viewparser_init(const char* storage_name, const char* path) {
     viewparser_t* parser = malloc(sizeof * parser);
     if (parser == NULL) return NULL;
 
-    parser->document = document;
     parser->storage_name = storage_name;
     parser->path = path;
     parser->context = NULL;
@@ -66,7 +60,6 @@ viewparser_t* viewparser_init(const jsondoc_t* document, const char* storage_nam
     parser->current_tag = NULL;
 
     bufferdata_init(&parser->variable_buffer);
-    bufferdata_init(&parser->buf);
 
     return parser;
 }
@@ -91,26 +84,23 @@ int viewparser_run(viewparser_t* parser) {
     return 1;
 }
 
-char* viewparser_get_content(viewparser_t* parser) {
-    bufferdata_reset(&parser->buf);
+viewparser_tag_t* viewparser_move_root_tag(viewparser_t* parser) {
+    viewparser_tag_t* root_tag = parser->root_tag;
 
-    __viewparser_build_content(parser);
+    parser->root_tag = NULL;
+    parser->current_tag = NULL;
 
-    bufferdata_complete(&parser->buf);
-
-    return bufferdata_copy(&parser->buf);
+    return root_tag;
 }
 
 void viewparser_free(viewparser_t* parser) {
     if (parser == NULL)
         return;
 
-    if (parser->buf.dynamic_buffer) free(parser->buf.dynamic_buffer);
-    parser->buf.dynamic_buffer = NULL;
+    bufferdata_clear(&parser->variable_buffer);
 
-    bufferdata_reset(&parser->buf);
-
-    __viewparser_variable_free(NULL);
+    __viewparser_contexts_free(parser->context);
+    __viewparser_tags_free(parser->root_tag);
 
     free(parser);
 }
@@ -506,22 +496,28 @@ int __viewparser_variable_create(viewparser_t* parser) {
     return 1;
 }
 
-void __viewparser_variable_free(viewparser_tag_t* variable) {
-    if (variable == NULL) return;
+void __viewparser_contexts_free(viewparser_context_t* context) {
+    // while (context != NULL) {
 
-    viewparser_variable_item_t* item = variable->item;
-    while (item) {
-        viewparser_variable_item_t* next = item->next;
-        __viewparser_variable_item_free(item);
-        item = next;
-    }
+    // }
+}
 
-    variable->item = NULL;
-    variable->last_item = NULL;
-    // variable->childs
-    // variable->result_content
+void __viewparser_tags_free(viewparser_tag_t* tag) {
+    // if (variable == NULL) return;
 
-    free(variable);
+    // viewparser_variable_item_t* item = variable->item;
+    // while (item) {
+    //     viewparser_variable_item_t* next = item->next;
+    //     __viewparser_variable_item_free(item);
+    //     item = next;
+    // }
+
+    // variable->item = NULL;
+    // variable->last_item = NULL;
+    // // variable->childs
+    // // variable->result_content
+
+    // free(variable);
 }
 
 viewparser_variable_item_t* __viewparser_variable_item_create() {
@@ -1009,64 +1005,6 @@ int __viewparser_condition_item_complete_name(viewparser_t* parser) {
     return 1;
 }
 
-int __viewparser_replace_condition_on_value(viewparser_t* parser, viewparser_tag_t* tag) {
-    viewparser_variable_item_t* item = tag->item;
-    viewparser_loop_t* tag_for = (viewparser_loop_t*)tag->data_parent;
-    const jsontok_t* json_token = json_root(parser->document);
-    if (tag_for != NULL) {
-        viewparser_loop_t* tag_parent = tag_for;
-
-        while (tag_parent != NULL) {
-            if (strcmp(item->name, tag_parent->element_name) == 0) {
-                json_token = tag_parent->token;
-
-                if (item->next != NULL)
-                    item = item->next;
-
-                break;
-            }
-
-            tag_parent = (viewparser_loop_t*)tag_parent->base.data_parent;
-        }
-    }
-
-    while (item) {
-        const jsontok_t* token = NULL;
-        if (json_token->type == JSON_STRING)
-            token = json_token;
-        else if (json_token->type == JSON_OBJECT)
-            token = json_object_get(json_token, item->name);
-
-        if (token == NULL) break;
-        
-        if (token->type == JSON_ARRAY) {
-            int stop = 0;
-            viewparser_variable_index_t* index = item->index;
-            while (index) {
-                token = json_array_get(token, index->value);
-                stop = token == NULL;
-                if (stop) break;
-
-                index = index->next;
-            }
-
-            if (stop) break;
-        }
-
-        if (item->next == NULL) {
-            if (json_is_bool(token))
-                return json_bool(token);
-        }
-        else {
-            json_token = token;
-        }
-
-        item = item->next;
-    }
-
-    return 0;
-}
-
 int __viewparser_condition_elseif_create(viewparser_t* parser) {
     viewparser_tag_t* current_tag = parser->current_tag;
     if (current_tag->type != VIEWPARSER_TAGTYPE_COND_IF && current_tag->type != VIEWPARSER_TAGTYPE_COND_ELSEIF)
@@ -1137,248 +1075,6 @@ int __viewparser_condition_else_create(viewparser_t* parser) {
     parser->current_tag = (viewparser_tag_t*)tag_else;
 
     return 1;
-}
-
-void __viewparser_build_content(viewparser_t* parser) {
-    viewparser_tag_t* child = parser->root_tag->child;
-    if (child == NULL) {
-        const size_t size = bufferdata_writed(&parser->root_tag->result_content);
-        const char* content = bufferdata_get(&parser->root_tag->result_content);
-
-        for (size_t i = 0; i < size; i++)
-            bufferdata_push(&parser->buf, content[i]);
-    }
-
-    __viewparser_build_content_recursive(parser, child);
-}
-
-void __viewparser_build_content_recursive(viewparser_t* parser, viewparser_tag_t* tag) {
-    viewparser_tag_t* child = tag;
-    while (child) {
-        switch (child->type) {
-        case VIEWPARSER_TAGTYPE_VAR:
-        {
-            viewparser_tag_t* parent = child->parent;
-
-            size_t size = bufferdata_writed(&parent->result_content);
-            const char* content = bufferdata_get(&parent->result_content);
-            for (size_t i = child->parent_text_offset; i < child->parent_text_offset + child->parent_text_size && i < size; i++)
-                bufferdata_push(&parser->buf, content[i]);
-
-            content = __viewparser_get_tag_value(parser, child);
-            if (content != NULL) {
-                size = strlen(content);
-                for (size_t i = 0; i < size; i++)
-                    bufferdata_push(&parser->buf, content[i]);
-            }
-
-            if (child->next == NULL) {
-                size = bufferdata_writed(&parent->result_content);
-                content = bufferdata_get(&parent->result_content);
-                for (size_t i = child->parent_text_offset + child->parent_text_size; i < size; i++)
-                    bufferdata_push(&parser->buf, content[i]);
-
-                if (child == tag) return;
-            }
-
-            child = child->next;
-
-            break;
-        }
-        case VIEWPARSER_TAGTYPE_COND:
-        {
-            __viewparser_build_content_recursive(parser, child->child);
-
-            child = child->next;
-
-            break;
-        }
-        case VIEWPARSER_TAGTYPE_COND_IF:
-        case VIEWPARSER_TAGTYPE_COND_ELSEIF:
-        case VIEWPARSER_TAGTYPE_COND_ELSE:
-        {
-            viewparser_tag_t* parent = child->parent;
-            viewparser_condition_item_t* tag = (viewparser_condition_item_t*)child;
-
-            const int result = __viewparser_replace_condition_on_value(parser, child);
-            const int istrue = tag->always_true || (result && !tag->reverse) || (!result && tag->reverse);
-
-            if (!istrue) {
-                if (child->next != NULL) {
-                    child = child->next;
-                    break;
-                }
-            }
-
-            size_t size = bufferdata_writed(&parent->parent->result_content);
-            const char* content = bufferdata_get(&parent->parent->result_content);
-            for (size_t i = parent->parent_text_offset; i < parent->parent_text_offset + parent->parent_text_size; i++)
-                bufferdata_push(&parser->buf, content[i]);
-
-            if (istrue) {
-                if (child->child != NULL) {
-                    __viewparser_build_content_recursive(parser, child->child);
-                }
-                else {
-                    const size_t size = bufferdata_writed(&child->result_content);
-                    const char* content = bufferdata_get(&child->result_content);
-                    for (size_t i = 0; i < size; i++)
-                        bufferdata_push(&parser->buf, content[i]);
-                }
-            }
-
-            if (parent->next == NULL) {
-                size = bufferdata_writed(&parent->parent->result_content);
-                content = bufferdata_get(&parent->parent->result_content);
-                for (size_t i = parent->parent_text_offset + parent->parent_text_size; i < size; i++)
-                    bufferdata_push(&parser->buf, content[i]);
-            }
-
-            if (istrue) return;
-
-            child = child->next;
-
-            break;
-        }
-        case VIEWPARSER_TAGTYPE_LOOP:
-        {
-            viewparser_tag_t* parent = child->parent;
-            viewparser_loop_t* tag_for = (viewparser_loop_t*)child;
-
-            size_t size = bufferdata_writed(&parent->result_content);
-            const char* content = bufferdata_get(&parent->result_content);
-            for (size_t i = child->parent_text_offset; i < child->parent_text_offset + child->parent_text_size && i < size; i++)
-                bufferdata_push(&parser->buf, content[i]);
-
-            const jsontok_t* token = __viewparser_get_loop_value(parser, child);
-            if (token != NULL) {
-                if (token->type == JSON_OBJECT || token->type == JSON_ARRAY) {
-                    for (jsonit_t it = json_init_it(token); !json_end_it(&it); it = json_next_it(&it)) {
-                        if (token->type == JSON_OBJECT)
-                            sprintf(tag_for->key_value, "%s", (char*)json_it_key(&it));
-                        else
-                            sprintf(tag_for->key_value, "%d", (*(int*)json_it_key(&it)));
-
-                        tag_for->token = json_it_value(&it);
-
-                        if (child->child != NULL) {
-                            __viewparser_build_content_recursive(parser, child->child);
-                        }
-                        else {
-                            const size_t size = bufferdata_writed(&child->result_content);
-                            const char* content = bufferdata_get(&child->result_content);
-                            for (size_t i = 0; i < size; i++)
-                                bufferdata_push(&parser->buf, content[i]);
-                        }
-                    }
-                }
-            }
-
-            if (child->next == NULL) {
-                size = bufferdata_writed(&parent->result_content);
-                content = bufferdata_get(&parent->result_content);
-                for (size_t i = child->parent_text_offset + child->parent_text_size; i < size; i++)
-                    bufferdata_push(&parser->buf, content[i]);
-            }
-
-            child = child->next;
-
-            break;
-        }
-        case VIEWPARSER_TAGTYPE_INC:
-        {
-            viewparser_tag_t* parent = child->parent;
-
-            if (parent != NULL) {
-                const char* content = bufferdata_get(&parent->result_content);
-                for (size_t i = child->parent_text_offset; i < child->parent_text_offset + child->parent_text_size; i++)
-                    bufferdata_push(&parser->buf, content[i]);
-            }
-
-            if (child->child != NULL) {
-                __viewparser_build_content_recursive(parser, child->child);
-            }
-            else {
-                const size_t size = bufferdata_writed(&child->result_content);
-                const char* content = bufferdata_get(&child->result_content);
-                for (size_t i = 0; i < size; i++)
-                    bufferdata_push(&parser->buf, content[i]);
-            }
-
-            if (child->next == NULL && parent != NULL) {
-                const size_t size = bufferdata_writed(&parent->result_content);
-                const char* content = bufferdata_get(&parent->result_content);
-                for (size_t i = child->parent_text_offset + child->parent_text_size; i < size; i++)
-                    bufferdata_push(&parser->buf, content[i]);
-            }
-
-            child = child->next;
-
-            break;
-        }
-        }
-    }
-}
-
-const char* __viewparser_get_tag_value(viewparser_t* parser, viewparser_tag_t* tag) {
-    viewparser_variable_item_t* item = tag->item;
-    viewparser_loop_t* tag_for = (viewparser_loop_t*)tag->data_parent;
-    const jsontok_t* json_token = json_root(parser->document);
-    if (tag_for != NULL) {
-        viewparser_loop_t* tag_parent = tag_for;
-
-        while (tag_parent != NULL) {
-            if (item->next == NULL && strcmp(item->name, tag_parent->key_name) == 0)
-                return tag_parent->key_value;
-
-            if (strcmp(item->name, tag_parent->element_name) == 0) {
-                json_token = tag_parent->token;
-
-                if (item->next != NULL)
-                    item = item->next;
-
-                break;
-            }
-
-            tag_parent = (viewparser_loop_t*)tag_parent->base.data_parent;
-        }
-    }
-
-    while (item) {
-        const jsontok_t* token = NULL;
-        if (json_token->type == JSON_STRING)
-            token = json_token;
-        else if (json_token->type == JSON_OBJECT)
-            token = json_object_get(json_token, item->name);
-
-        if (token == NULL) break;
-        
-        if (token->type == JSON_ARRAY) {
-            int stop = 0;
-            viewparser_variable_index_t* index = item->index;
-            while (index) {
-                token = json_array_get(token, index->value);
-                stop = token == NULL;
-                if (stop) break;
-
-                index = index->next;
-            }
-
-            if (stop) break;
-        }
-
-        if (item->next == NULL) {
-            if (json_is_string(token))
-                return json_string(token);
-        }
-        else {
-            json_token = token;
-        }
-
-        item = item->next;
-    }
-
-    return NULL;
 }
 
 int __viewparser_loop_create(viewparser_t* parser) {
@@ -1537,65 +1233,4 @@ int __viewparser_loop_write_in(viewparser_t* parser, char ch) {
     }
 
     return 1;
-}
-
-const jsontok_t* __viewparser_get_loop_value(viewparser_t* parser, viewparser_tag_t* tag) {
-    viewparser_variable_item_t* item = tag->item;
-    viewparser_loop_t* tag_for = (viewparser_loop_t*)tag->data_parent;
-    const jsontok_t* json_token = json_root(parser->document);
-    if (tag_for != NULL) {
-        viewparser_loop_t* tag_parent = tag_for;
-
-        while (tag_parent != NULL) {
-            if (strcmp(item->name, tag_parent->element_name) == 0) {
-                json_token = tag_parent->token;
-
-                if (item->next != NULL)
-                    item = item->next;
-
-                break;
-            }
-
-            tag_parent = (viewparser_loop_t*)tag_parent->base.data_parent;
-        }
-    }
-
-    while (item) {
-        const jsontok_t* token = NULL;
-        if (json_token->type == JSON_ARRAY)
-            token = json_token;
-        else
-            token = json_object_get(json_token, item->name);
-
-        if (token == NULL) break;
-
-        if (token->type == JSON_ARRAY) {
-            int stop = 0;
-            viewparser_variable_index_t* index = item->index;
-            while (index) {
-                token = json_array_get(token, index->value);
-                stop = token == NULL;
-                if (stop) break;
-
-                index = index->next;
-            }
-
-            if (stop) break;
-        }
-
-        if (item->next == NULL) {
-            // convert token value to string
-            if (json_is_array(token) || json_is_object(token))
-                return token;
-
-            return NULL;
-        }
-        else {
-            json_token = token;
-        }
-
-        item = item->next;
-    }
-
-    return NULL;
 }

@@ -18,6 +18,7 @@
 #include "mimetype.h"
 #include "storagefs.h"
 #include "storages3.h"
+#include "viewstore.h"
 #include "threadhandler.h"
 #include "threadworker.h"
 #include "broadcast.h"
@@ -38,6 +39,7 @@ void module_loader_pass_memory_sharedlib(routeloader_lib_t*, const char*);
 int module_loader_init_modules();
 int module_loader_databases_load();
 int module_loader_storages_load();
+int module_loader_viewstore_load();
 int module_loader_storage_fs_load(const jsontok_t*, const char*);
 int module_loader_storage_s3_load(const jsontok_t*, const char*);
 void module_loader_remove_slashes_end(char*);
@@ -91,13 +93,14 @@ void module_loader_pass_memory_sharedlib(routeloader_lib_t* first_lib, const cha
         void*(*function)();
     } fn;
 
-    const int size = 4;
+    const int size = 5;
     fn functions[size];
 
     functions[0] = (fn){ "config_set", (void*(*)())config };
     functions[1] = (fn){ "mimetype_set", (void*(*)())mimetype_config };
     functions[2] = (fn){ "db_set", (void*(*)())database };
     functions[3] = (fn){ "storage_set", (void*(*)())storages };
+    functions[4] = (fn){ "viewstore_set", (void*(*)())viewstore };
 
     for (int i = 0; i < size; i++) {
         void(*function)(void*);
@@ -121,6 +124,8 @@ int module_loader_init_modules() {
     if (module_loader_databases_load() == -1) return -1;
 
     if (module_loader_storages_load() == -1) return -1;
+
+    if (module_loader_viewstore_load() == -1) return -1;
 
     if (module_loader_servers_load(reload_is_hard)) return -1;
 
@@ -504,6 +509,13 @@ int module_loader_storages_load() {
         storage_clear_list();
 
     return result;
+}
+
+int module_loader_viewstore_load() {
+    if (!viewstore_init())
+        return -1;
+
+    return 0;
 }
 
 int module_loader_storage_fs_load(const jsontok_t* token_object, const char* storage_name) {

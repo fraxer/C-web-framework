@@ -21,6 +21,7 @@ typedef struct bufferdata {
 
 void bufferdata_init(bufferdata_t*);
 void bufferdata_reset(bufferdata_t*);
+void bufferdata_clear(bufferdata_t*);
 
 size_t bufferdata_writed(bufferdata_t*);
 int bufferdata_push(bufferdata_t*, char);
