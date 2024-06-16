@@ -1,10 +1,7 @@
 #ifndef __VIEWPARSER__
 #define __VIEWPARSER__
 
-#include "json.h"
-#include "bufferdata.h"
-
-#define VIEWPARSER_VARIABLE_ITEM_NAME_SIZE 80
+#include "viewcommon.h"
 
 typedef enum viewparser_stage {
     VIEWPARSER_TEXT = 0,
@@ -33,69 +30,6 @@ typedef enum viewparser_symbol {
     VIEWPARSER_PERCENT,
 } viewparser_symbol_e;
 
-typedef enum {
-    VIEWPARSER_TAGTYPE_VAR = 0,
-    VIEWPARSER_TAGTYPE_COND,
-    VIEWPARSER_TAGTYPE_COND_IF,
-    VIEWPARSER_TAGTYPE_COND_ELSEIF,
-    VIEWPARSER_TAGTYPE_COND_ELSE,
-    VIEWPARSER_TAGTYPE_LOOP,
-    VIEWPARSER_TAGTYPE_INC
-} viewparser_tagtype_e;
-
-typedef struct viewparser_variable_index {
-    int value;
-    struct viewparser_variable_index* next;
-} viewparser_variable_index_t;
-
-typedef struct viewparser_variable_item {
-    viewparser_variable_index_t* index;
-    viewparser_variable_index_t* last_index;
-    char name[VIEWPARSER_VARIABLE_ITEM_NAME_SIZE];
-    size_t name_length;
-    struct viewparser_variable_item* next;
-} viewparser_variable_item_t;
-
-typedef struct viewparser_tag {
-    int type; // var, cond, loop, inc
-    size_t parent_text_offset;
-    size_t parent_text_size;
-    bufferdata_t result_content;
-    struct viewparser_tag* data_parent;
-    struct viewparser_tag* parent;
-    struct viewparser_tag* child;
-    struct viewparser_tag* last_child;
-    struct viewparser_tag* next;
-
-    viewparser_variable_item_t* item;
-    viewparser_variable_item_t* last_item;
-} viewparser_tag_t;
-
-// конкретное условие в условном блоке
-typedef struct viewparser_condition_item {
-    viewparser_tag_t base;
-    int result;
-    int reverse;
-    int always_true;
-} viewparser_condition_item_t;
-
-typedef struct viewparser_loop {
-    viewparser_tag_t base;
-
-    char element_name[VIEWPARSER_VARIABLE_ITEM_NAME_SIZE];
-    char key_name[VIEWPARSER_VARIABLE_ITEM_NAME_SIZE];
-    char key_value[VIEWPARSER_VARIABLE_ITEM_NAME_SIZE];
-
-    jsontok_t* token;
-} viewparser_loop_t;
-
-typedef struct viewparser_include {
-    viewparser_tag_t base;
-
-    int is_control_key;
-    int control_key_index;
-} viewparser_include_t;
-
 typedef struct viewparser_context {
     viewparser_stage_e stage;
     viewparser_symbol_e symbol;
@@ -110,11 +44,9 @@ typedef struct viewparser_context {
 } viewparser_context_t;
 
 typedef struct {
-    const jsondoc_t* document;
     const char* storage_name;
     const char* path;
     bufferdata_t variable_buffer;
-    bufferdata_t buf;
 
     viewparser_context_t* context;
     viewparser_context_t* current_context;
@@ -123,10 +55,9 @@ typedef struct {
     viewparser_tag_t* current_tag;
 } viewparser_t;
 
-viewparser_t* viewparser_init(const jsondoc_t* document, const char* storage_name, const char* path);
+viewparser_t* viewparser_init(const char* storage_name, const char* path);
 int viewparser_run(viewparser_t* parser);
-char* viewparser_get_content(viewparser_t* parser);
+viewparser_tag_t* viewparser_move_root_tag(viewparser_t* parser);
 void viewparser_free(viewparser_t* parser);
-
 
 #endif
