@@ -42,6 +42,8 @@ typedef struct viewparser_tag {
 
     viewparser_variable_item_t* item;
     viewparser_variable_item_t* last_item;
+
+    void(*free)(struct viewparser_tag* tag);
 } viewparser_tag_t;
 
 // конкретное условие в условном блоке
@@ -86,5 +88,10 @@ typedef struct view {
     viewparser_tag_t* root_tag;
     struct view* next;
 } view_t;
+
+void view_tag_free(viewparser_tag_t* tag);
+void view_tag_condition_free(viewparser_tag_t* tag);
+void view_tag_loop_free(viewparser_tag_t* tag);
+void view_tag_include_free(viewparser_tag_t* tag);
 
 #endif

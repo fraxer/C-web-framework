@@ -6,7 +6,6 @@
 
 view_t* __viewstore_view_create(viewparser_tag_t* tag, const char* path);
 void __viewstore_view_free(view_t* view);
-void __viewstore_tag_free(viewparser_tag_t* tag);
 
 static viewstore_t* __store = NULL;
 
@@ -89,22 +88,7 @@ void __viewstore_view_free(view_t* view) {
     if (view->path != NULL)
         free(view->path);
 
-    __viewstore_tag_free(view->root_tag);
-    // __viewstore_tag_copy_free(view->root_tag);
+    view->root_tag->free(view->root_tag);
 
     free(view);
-}
-
-void __viewstore_tag_free(viewparser_tag_t* tag) {
-    if (tag == NULL) return;
-
-    bufferdata_clear(&tag->result_content);
-    tag->data_parent = NULL;
-
-    // struct viewparser_tag* child;
-    // struct viewparser_tag* last_child;
-    // struct viewparser_tag* next;
-
-    // viewparser_variable_item_t* item;
-    // viewparser_variable_item_t* last_item;
 }
