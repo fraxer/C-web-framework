@@ -1,6 +1,8 @@
 #ifndef __VIEWCOMMON__
 #define __VIEWCOMMON__
 
+#include <stdatomic.h>
+
 #include "json.h"
 #include "bufferdata.h"
 
@@ -80,10 +82,11 @@ typedef struct view_loop_copy {
 typedef struct view_copy_tags {
     view_loop_copy_t* copy;
     view_loop_copy_t* last_copy;
+    bufferdata_t buf;
 } view_copy_tags_t;
 
 typedef struct view {
-    bufferdata_t buf;
+    atomic_int counter;
     char* path;
     viewparser_tag_t* root_tag;
     struct view* next;

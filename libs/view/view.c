@@ -19,7 +19,7 @@ void __view_copy_loop_tags_free(view_copy_tags_t* copy_tags);
 viewparser_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, viewparser_tag_t* tag);
 viewparser_loop_t* __view_copy_loop_tag_get(view_copy_tags_t* copy_tags, viewparser_tag_t* tag);
 
-char* view_render(jsondoc_t* document, const char* storage_name, const char* path_format, ...) {
+char* render(jsondoc_t* document, const char* storage_name, const char* path_format, ...) {
     char path[PATH_MAX];
 
     va_list args;
@@ -30,32 +30,59 @@ char* view_render(jsondoc_t* document, const char* storage_name, const char* pat
     return __view_render(document, storage_name, path);
 }
 
+void view_increment(view_t* view) {
+    if (view == NULL) return;
+
+    atomic_fetch_add(&view->counter, 1);
+}
+
+void view_decrement(view_t* view) {
+    if (view == NULL) return;
+
+    atomic_fetch_sub(&view->counter, 1);
+}
+
 char* __view_render(jsondoc_t* document, const char* storage_name, const char* path) {
-    view_t* view = viewstore_get_view(path);
+    view_t* view = NULL;
+
+    viewstore_lock();
+    view = viewstore_get_view(path);
     if (view == NULL) {
+        viewstore_unlock();
+
         viewparser_t* parser = viewparser_init(storage_name, path);
-        if (parser == NULL)
-            return NULL;
+        if (parser == NULL) return NULL;
 
         if (!viewparser_run(parser)) {
             viewparser_free(parser);
             return NULL;
         }
 
+        viewstore_lock();
         view = viewstore_add_view(viewparser_move_root_tag(parser), path);
+        view_increment(view);
+        viewstore_unlock();
 
         viewparser_free(parser);
 
-        if (view == NULL)
-            return NULL;
+        if (view == NULL) return NULL;
+    } else {
+        view_increment(view);
+        viewstore_unlock();
     }
 
-    return __view_make_content(view, document);
+    char* data = __view_make_content(view, document);
+    view_decrement(view);
+
+    // remove unused views from viewstore
+    // viewstore_lock();
+    // viewstore_clear();
+    // viewstore_unlock();
+
+    return data;
 }
 
 char* __view_make_content(view_t* view, jsondoc_t* document) {
-    bufferdata_reset(&view->buf);
-
     view_copy_tags_t copy_tags;
     __view_copy_loop_tags_init(&copy_tags);
 
@@ -65,18 +92,16 @@ char* __view_make_content(view_t* view, jsondoc_t* document) {
         const char* content = bufferdata_get(&view->root_tag->result_content);
 
         for (size_t i = 0; i < size; i++)
-            bufferdata_push(&view->buf, content[i]);
+            bufferdata_push(&copy_tags.buf, content[i]);
     }
     else
         __view_build_content_recursive(view, document, &copy_tags, child);
 
+    bufferdata_complete(&copy_tags.buf);
+
+    char* data = bufferdata_copy(&copy_tags.buf);
+
     __view_copy_loop_tags_free(&copy_tags);
-
-    bufferdata_complete(&view->buf);
-
-    char* data = bufferdata_copy(&view->buf);
-
-    bufferdata_clear(&view->buf);
 
     return data;
 }
@@ -272,20 +297,20 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
             size_t size = bufferdata_writed(&parent->result_content);
             const char* content = bufferdata_get(&parent->result_content);
             for (size_t i = child->parent_text_offset; i < child->parent_text_offset + child->parent_text_size && i < size; i++)
-                bufferdata_push(&view->buf, content[i]);
+                bufferdata_push(&copy_tags->buf, content[i]);
 
             content = __view_get_tag_value(copy_tags, document, child);
             if (content != NULL) {
                 size = strlen(content);
                 for (size_t i = 0; i < size; i++)
-                    bufferdata_push(&view->buf, content[i]);
+                    bufferdata_push(&copy_tags->buf, content[i]);
             }
 
             if (child->next == NULL) {
                 size = bufferdata_writed(&parent->result_content);
                 content = bufferdata_get(&parent->result_content);
                 for (size_t i = child->parent_text_offset + child->parent_text_size; i < size; i++)
-                    bufferdata_push(&view->buf, content[i]);
+                    bufferdata_push(&copy_tags->buf, content[i]);
 
                 if (child == tag) return;
             }
@@ -322,7 +347,7 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
             size_t size = bufferdata_writed(&parent->parent->result_content);
             const char* content = bufferdata_get(&parent->parent->result_content);
             for (size_t i = parent->parent_text_offset; i < parent->parent_text_offset + parent->parent_text_size; i++)
-                bufferdata_push(&view->buf, content[i]);
+                bufferdata_push(&copy_tags->buf, content[i]);
 
             if (istrue) {
                 if (child->child != NULL) {
@@ -332,7 +357,7 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
                     const size_t size = bufferdata_writed(&child->result_content);
                     const char* content = bufferdata_get(&child->result_content);
                     for (size_t i = 0; i < size; i++)
-                        bufferdata_push(&view->buf, content[i]);
+                        bufferdata_push(&copy_tags->buf, content[i]);
                 }
             }
 
@@ -340,7 +365,7 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
                 size = bufferdata_writed(&parent->parent->result_content);
                 content = bufferdata_get(&parent->parent->result_content);
                 for (size_t i = parent->parent_text_offset + parent->parent_text_size; i < size; i++)
-                    bufferdata_push(&view->buf, content[i]);
+                    bufferdata_push(&copy_tags->buf, content[i]);
             }
 
             if (istrue) return;
@@ -362,7 +387,7 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
             size_t size = bufferdata_writed(&parent->result_content);
             const char* content = bufferdata_get(&parent->result_content);
             for (size_t i = child->parent_text_offset; i < child->parent_text_offset + child->parent_text_size && i < size; i++)
-                bufferdata_push(&view->buf, content[i]);
+                bufferdata_push(&copy_tags->buf, content[i]);
 
             const jsontok_t* token = __view_get_loop_value(copy_tags, document, child);
             if (token != NULL) {
@@ -382,7 +407,7 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
                             const size_t size = bufferdata_writed(&child->result_content);
                             const char* content = bufferdata_get(&child->result_content);
                             for (size_t i = 0; i < size; i++)
-                                bufferdata_push(&view->buf, content[i]);
+                                bufferdata_push(&copy_tags->buf, content[i]);
                         }
                     }
                 }
@@ -392,7 +417,7 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
                 size = bufferdata_writed(&parent->result_content);
                 content = bufferdata_get(&parent->result_content);
                 for (size_t i = child->parent_text_offset + child->parent_text_size; i < size; i++)
-                    bufferdata_push(&view->buf, content[i]);
+                    bufferdata_push(&copy_tags->buf, content[i]);
             }
 
             child = child->next;
@@ -406,7 +431,7 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
             if (parent != NULL) {
                 const char* content = bufferdata_get(&parent->result_content);
                 for (size_t i = child->parent_text_offset; i < child->parent_text_offset + child->parent_text_size; i++)
-                    bufferdata_push(&view->buf, content[i]);
+                    bufferdata_push(&copy_tags->buf, content[i]);
             }
 
             if (child->child != NULL) {
@@ -416,14 +441,14 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
                 const size_t size = bufferdata_writed(&child->result_content);
                 const char* content = bufferdata_get(&child->result_content);
                 for (size_t i = 0; i < size; i++)
-                    bufferdata_push(&view->buf, content[i]);
+                    bufferdata_push(&copy_tags->buf, content[i]);
             }
 
             if (child->next == NULL && parent != NULL) {
                 const size_t size = bufferdata_writed(&parent->result_content);
                 const char* content = bufferdata_get(&parent->result_content);
                 for (size_t i = child->parent_text_offset + child->parent_text_size; i < size; i++)
-                    bufferdata_push(&view->buf, content[i]);
+                    bufferdata_push(&copy_tags->buf, content[i]);
             }
 
             child = child->next;
@@ -437,6 +462,7 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
 void __view_copy_loop_tags_init(view_copy_tags_t* copy_tags) {
     if (copy_tags == NULL) return;
 
+    bufferdata_init(&copy_tags->buf);
     copy_tags->copy = NULL;
     copy_tags->last_copy = NULL;
 }
@@ -450,6 +476,8 @@ void __view_copy_loop_tags_free(view_copy_tags_t* copy_tags) {
         free(copy);
         copy = next;
     }
+
+    bufferdata_clear(&copy_tags->buf);
 }
 
 viewparser_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, viewparser_tag_t* tag) {
