@@ -13,8 +13,10 @@ int viewstore_init() {
     __store = malloc(sizeof * __store);
     if (__store == NULL) return 0;
 
+    atomic_init(&__store->locked, 0);
     __store->view = NULL;
     __store->last_view = NULL;
+    __store->disable_view = NULL;
 
     return 1;
 }
@@ -55,10 +57,34 @@ view_t* viewstore_get_view(const char* path) {
 }
 
 void viewstore_clear() {
-    view_t* view = __store->view;
+    if (__store == NULL) return;
+
+    if (__store->view != NULL) {
+        __store->last_view->next = __store->disable_view;
+        __store->disable_view = __store->view;
+    }
+
+    __store->view = NULL;
+    __store->last_view = NULL;
+
+    view_t* view = __store->disable_view;
+    view_t* prev = NULL;
     while (view != NULL) {
         view_t* next = view->next;
-        __viewstore_view_free(view);
+
+        if (atomic_load(&view->counter) == 0) {
+            if (view == __store->disable_view) {
+                __store->disable_view = next;
+            }
+
+            __viewstore_view_free(view);
+
+            if (prev != NULL)
+                prev->next = next;
+        }
+        else 
+            prev = view;
+
         view = next;
     }
 }
@@ -67,13 +93,13 @@ view_t* __viewstore_view_create(viewparser_tag_t* tag, const char* path) {
     view_t* view = malloc(sizeof * view);
     if (view == NULL) return NULL;
 
+    atomic_init(&view->counter, 0);
     view->path = malloc(sizeof(char) * (strlen(path) + 1));
     if (view->path == NULL) {
         free(view);
         return NULL;
     }
 
-    bufferdata_init(&view->buf);
     strcpy(view->path, path);
     view->root_tag = tag;
     view->next = NULL;
@@ -84,11 +110,27 @@ view_t* __viewstore_view_create(viewparser_tag_t* tag, const char* path) {
 void __viewstore_view_free(view_t* view) {
     if (view == NULL) return;
 
-    bufferdata_clear(&view->buf);
     if (view->path != NULL)
         free(view->path);
 
     view->root_tag->free(view->root_tag);
 
     free(view);
+}
+
+void viewstore_lock() {
+    if (__store == NULL) return;
+
+    _Bool expected = 0;
+    _Bool desired = 1;
+
+    do {
+        expected = 0;
+    } while (!atomic_compare_exchange_strong(&__store->locked, &expected, desired));
+}
+
+void viewstore_unlock() {
+    if (__store == NULL) return;
+
+    atomic_store(&__store->locked, 0);
 }

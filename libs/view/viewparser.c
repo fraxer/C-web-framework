@@ -5,14 +5,12 @@
 #include "viewparser.h"
 
 static viewparser_context_t* __viewparser_context_create();
+static void __viewparser_context_free(viewparser_context_t* context);
 static int __viewparser_readfile(viewparser_context_t* context, const char* storage_name,const char* path);
 static int __viewparser_parse_content(viewparser_t* parser);
 static int __viewparser_variable_create(viewparser_t* parser);
-static void __viewparser_contexts_free(viewparser_context_t* context);
-static void __viewparser_tags_free(viewparser_tag_t* tag);
 static viewparser_variable_item_t* __viewparser_variable_item_create();
 static int __viewparser_variable_item_append(viewparser_variable_item_t* variable_item, viewparser_tag_t* variable);
-static void __viewparser_variable_item_free(viewparser_variable_item_t* item);
 static int __viewparser_variable_item_complete_name(viewparser_t* parser);
 static int __viewparser_variable_item_complete_index(viewparser_t* parser);
 static int __viewparser_variable_item_index_create(viewparser_variable_item_t* item, int value);
@@ -94,13 +92,14 @@ viewparser_tag_t* viewparser_move_root_tag(viewparser_t* parser) {
 }
 
 void viewparser_free(viewparser_t* parser) {
-    if (parser == NULL)
-        return;
+    if (parser == NULL) return;
 
     bufferdata_clear(&parser->variable_buffer);
 
-    __viewparser_contexts_free(parser->context);
-    __viewparser_tags_free(parser->root_tag);
+    __viewparser_context_free(parser->context);
+
+    if (parser->root_tag != NULL)
+        parser->root_tag->free(parser->root_tag);
 
     free(parser);
 }
@@ -120,6 +119,18 @@ viewparser_context_t* __viewparser_context_create() {
     context->next = NULL;
 
     return context;
+}
+
+void __viewparser_context_free(viewparser_context_t* context) {
+    if (context == NULL) return;
+
+    if (context->buffer != NULL)
+        free(context->buffer);
+
+    __viewparser_context_free(context->child);
+    __viewparser_context_free(context->next);
+
+    free(context);
 }
 
 int __viewparser_readfile(viewparser_context_t* context, const char* storage_name,const char* path) {
@@ -496,30 +507,6 @@ int __viewparser_variable_create(viewparser_t* parser) {
     return 1;
 }
 
-void __viewparser_contexts_free(viewparser_context_t* context) {
-    // while (context != NULL) {
-
-    // }
-}
-
-void __viewparser_tags_free(viewparser_tag_t* tag) {
-    // if (variable == NULL) return;
-
-    // viewparser_variable_item_t* item = variable->item;
-    // while (item) {
-    //     viewparser_variable_item_t* next = item->next;
-    //     __viewparser_variable_item_free(item);
-    //     item = next;
-    // }
-
-    // variable->item = NULL;
-    // variable->last_item = NULL;
-    // // variable->childs
-    // // variable->result_content
-
-    // free(variable);
-}
-
 viewparser_variable_item_t* __viewparser_variable_item_create() {
     viewparser_variable_item_t* item = malloc(sizeof * item);
     if (item == NULL) return NULL;
@@ -545,19 +532,6 @@ int __viewparser_variable_item_append(viewparser_variable_item_t* variable_item,
     variable->last_item = variable_item;
 
     return 1;
-}
-
-void __viewparser_variable_item_free(viewparser_variable_item_t* item) {
-    if (item == NULL) return;
-
-    viewparser_variable_index_t* index = item->index;
-    while (index) {
-        viewparser_variable_index_t* next = index->next;
-        free(index);
-        index = next;
-    }
-
-    free(item);
 }
 
 int __viewparser_variable_item_complete_name(viewparser_t* parser) {
@@ -765,15 +739,17 @@ int __viewparser_tag_init(viewparser_tag_t* tag, int type, viewparser_tag_t* dat
     tag->next = NULL;
     tag->item = NULL;
     tag->last_item = NULL;
+    tag->free = view_tag_free;
 
     return 1;
 }
 
 viewparser_tag_t* __viewparser_root_tag_create() {
-    viewparser_tag_t* tag = malloc(sizeof * tag);
+    viewparser_tag_t* tag = malloc(sizeof(viewparser_include_t));
     if (tag == NULL) return NULL;
 
     __viewparser_tag_init(tag, VIEWPARSER_TAGTYPE_INC, NULL, NULL);
+    tag->free = view_tag_include_free;
 
     return tag;
 }
@@ -788,6 +764,7 @@ int __viewparser_include_create(viewparser_t* parser) {
     __viewparser_tag_init((viewparser_tag_t*)tag, VIEWPARSER_TAGTYPE_INC, data_parent, current_tag);
     tag->is_control_key = 0;
     tag->control_key_index = 0;
+    tag->base.free = view_tag_include_free;
 
     __viewparser_tag_set_parent_text_params((viewparser_tag_t*)tag, current_tag);
     __viewparser_tag_append_child_or_sibling(current_tag, (viewparser_tag_t*)tag);
@@ -938,6 +915,7 @@ int __viewparser_condition_if_create(viewparser_t* parser) {
     viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
 
     __viewparser_tag_init(tag_cond, VIEWPARSER_TAGTYPE_COND, data_parent, current_tag);
+    tag_cond->free = view_tag_free;
     __viewparser_tag_set_parent_text_params(tag_cond, current_tag);
 
     viewparser_condition_item_t* tag_if = malloc(sizeof * tag_if);
@@ -950,6 +928,7 @@ int __viewparser_condition_if_create(viewparser_t* parser) {
     tag_if->result = 0;
     tag_if->reverse = 0;
     tag_if->always_true = 0;
+    tag_if->base.free = view_tag_condition_free;
 
     viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
     if (variable_item == NULL) {
@@ -1022,6 +1001,7 @@ int __viewparser_condition_elseif_create(viewparser_t* parser) {
     tag_elseif->result = 0;
     tag_elseif->reverse = 0;
     tag_elseif->always_true = 0;
+    tag_elseif->base.free = view_tag_condition_free;
 
     viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
     if (variable_item == NULL) {
@@ -1058,6 +1038,7 @@ int __viewparser_condition_else_create(viewparser_t* parser) {
     tag_else->result = 0;
     tag_else->reverse = 0;
     tag_else->always_true = 1;
+    tag_else->base.free = view_tag_condition_free;
 
     viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
     if (variable_item == NULL) {
@@ -1089,6 +1070,7 @@ int __viewparser_loop_create(viewparser_t* parser) {
     tag_for->element_name[0] = 0;
     tag_for->key_name[0] = 0;
     tag_for->token = NULL;
+    tag_for->base.free = view_tag_loop_free;
 
     viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
     if (variable_item == NULL) {

@@ -277,11 +277,13 @@ void template_engine(__attribute__((unused))http1request_t* request, http1respon
     jsondoc_t* document = json_init();
     if (!document) {
         response->data(response, "json init error");
+        free(data);
         return;
     }
 
     if (json_parse(document, data) < 0) {
         response->data(response, "json parse error");
+        free(data);
         return;
     }
 
@@ -293,16 +295,20 @@ void template_engine(__attribute__((unused))http1request_t* request, http1respon
         return;
     }
 
-    // response->view(response, document, "views", "/index.tpl");
+    // // response->view(response, document, "views", "/index.tpl");
 
-    // for (int i = 0 ; i < 12000; i++) {
+    // for (int i = 0 ; i < 1000; i++) {
     //     char* content = view_render(document, "views", "/index.tpl");
     //     free(content);
     // }
 
-    char* content = view_render(document, "views", "/index.tpl");
-    response->data(response, content);
+    char* content = render(document, "views", "/index.tpl");
+    if (content != NULL) {
+        response->data(response, content);
+        free(content);
+    }
+    else
+        response->data(response, "empty");
 
-    free(content);
     json_free(document);
 }
