@@ -47,6 +47,7 @@ typedef struct {
     const char* storage_name;
     const char* path;
     bufferdata_t variable_buffer;
+    int level;
 
     viewparser_context_t* context;
     viewparser_context_t* current_context;
@@ -55,7 +56,7 @@ typedef struct {
     viewparser_tag_t* current_tag;
 } viewparser_t;
 
-viewparser_t* viewparser_init(const char* storage_name, const char* path);
+viewparser_t* viewparser_init(const char* restrict storage_name, const char* restrict path);
 int viewparser_run(viewparser_t* parser);
 viewparser_tag_t* viewparser_move_root_tag(viewparser_t* parser);
 void viewparser_free(viewparser_t* parser);
