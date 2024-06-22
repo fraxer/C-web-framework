@@ -436,8 +436,14 @@ int __viewparser_parse_content(viewparser_t* parser) {
                     return 0;
 
                 view_condition_item_t* tag = (view_condition_item_t*)parser->current_tag;
-                if (tag->base.type != VIEW_TAGTYPE_COND_IF && tag->base.type != VIEW_TAGTYPE_COND_ELSEIF)
+                if (tag->base.type != VIEW_TAGTYPE_COND_IF && tag->base.type != VIEW_TAGTYPE_COND_ELSEIF) {
+                    log_error("__viewparser_parse_content: inverse should be only in if or elseif tag\n");
                     return 0;
+                }
+                if (tag->reverse == 1) {
+                    log_error("__viewparser_parse_content: inverse should be appeared only once\n");
+                    return 0;
+                }
 
                 tag->reverse = 1;
                 context->symbol = VIEWPARSER_VARIABLE_INVERSE;
@@ -461,17 +467,6 @@ int __viewparser_parse_content(viewparser_t* parser) {
                     return 0;
 
                 context->symbol = VIEWPARSER_FIGFIGCLOSE;
-
-                break;
-            }
-            case ' ':
-            {
-                if (context->symbol == VIEWPARSER_VARIABLE_INVERSE)
-                    break;
-                if (context->symbol == VIEWPARSER_VARIABLE_SPACE)
-                    break;
-
-                context->symbol = VIEWPARSER_VARIABLE_SPACE;
 
                 break;
             }
@@ -535,6 +530,11 @@ int __viewparser_parse_content(viewparser_t* parser) {
             case '{':
             case '*':
             {
+                return 0;
+            }
+            case '!':
+            {
+                log_error("__viewparser_parse_content: inverse should not be in for\n");
                 return 0;
             }
             case '%':
@@ -764,6 +764,10 @@ int __viewparser_variable_write_body(viewparser_t* parser, const char ch) {
     {
     case ' ':
     {
+        if (context->symbol == VIEWPARSER_VARIABLE_INVERSE)
+            break;
+        if (context->symbol == VIEWPARSER_VARIABLE_SPACE)
+            break;
         if (context->symbol == VIEWPARSER_FIGFIGOPEN)
             break;
         if (context->symbol == VIEWPARSER_VARIABLE_DOT)
@@ -771,19 +775,17 @@ int __viewparser_variable_write_body(viewparser_t* parser, const char ch) {
         if (context->symbol == VIEWPARSER_VARIABLE_BRACKETOPEN)
             break;
 
-        bufferdata_push(&parser->variable_buffer, ch);
-
         context->symbol = VIEWPARSER_VARIABLE_SPACE;
 
         break;
     }
     case '[':
     {
-        if (context->symbol == VIEWPARSER_DEFAULT) {
+        if (context->symbol == VIEWPARSER_DEFAULT || context->symbol == VIEWPARSER_VARIABLE_SPACE) {
             if (!__viewparser_variable_item_complete_name(parser))
                 return 0;
         }
-        else if (context->symbol == VIEWPARSER_VARIABLE_BRACKETCLOSE) {
+        else if (context->symbol == VIEWPARSER_VARIABLE_BRACKETCLOSE || context->symbol == VIEWPARSER_VARIABLE_SPACE) {
             if (!__viewparser_variable_item_complete_index(parser))
                 return 0;
         }
