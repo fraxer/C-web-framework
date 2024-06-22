@@ -52,13 +52,13 @@ typedef struct {
     viewparser_context_t* context;
     viewparser_context_t* current_context;
 
-    viewparser_tag_t* root_tag;
-    viewparser_tag_t* current_tag;
+    view_tag_t* root_tag;
+    view_tag_t* current_tag;
 } viewparser_t;
 
 viewparser_t* viewparser_init(const char* restrict storage_name, const char* restrict path);
 int viewparser_run(viewparser_t* parser);
-viewparser_tag_t* viewparser_move_root_tag(viewparser_t* parser);
+view_tag_t* viewparser_move_root_tag(viewparser_t* parser);
 void viewparser_free(viewparser_t* parser);
 
 #endif

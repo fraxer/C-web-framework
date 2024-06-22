@@ -11,19 +11,19 @@ static void __viewparser_context_free(viewparser_context_t* context);
 static int __viewparser_readfile(viewparser_context_t* context, const char* storage_name,const char* path);
 static int __viewparser_parse_content(viewparser_t* parser);
 static int __viewparser_variable_create(viewparser_t* parser);
-static viewparser_variable_item_t* __viewparser_variable_item_create();
-static void __viewparser_variable_item_append(viewparser_variable_item_t* variable_item, viewparser_tag_t* variable);
+static view_variable_item_t* __viewparser_variable_item_create();
+static void __viewparser_variable_item_append(view_variable_item_t* variable_item, view_tag_t* variable);
 static int __viewparser_variable_item_complete_name(viewparser_t* parser);
 static int __viewparser_variable_item_complete_index(viewparser_t* parser);
-static int __viewparser_variable_item_index_create(viewparser_variable_item_t* item, int value);
+static int __viewparser_variable_item_index_create(view_variable_item_t* item, int value);
 static int __viewparser_variable_write_body(viewparser_t* parser, char ch);
 static void __viewparser_variable_rtrim(viewparser_t* parser);
-static void __viewparser_tag_append_child_or_sibling(viewparser_tag_t* parent, viewparser_tag_t* child);
-static void __viewparser_tag_set_parent_text_params(viewparser_tag_t* tag, viewparser_tag_t* parent);
-static viewparser_tag_t* __viewparser_get_dataparent(viewparser_tag_t* tag);
+static void __viewparser_tag_append_child_or_sibling(view_tag_t* parent, view_tag_t* child);
+static void __viewparser_tag_set_parent_text_params(view_tag_t* tag, view_tag_t* parent);
+static view_tag_t* __viewparser_get_dataparent(view_tag_t* tag);
 
-static void __viewparser_tag_init(viewparser_tag_t* tag, viewparser_tagtype_e type, viewparser_tag_t* data_parent, viewparser_tag_t* parent);
-static viewparser_tag_t* __viewparser_root_tag_create();
+static void __viewparser_tag_init(view_tag_t* tag, viewparser_tagtype_e type, view_tag_t* data_parent, view_tag_t* parent);
+static view_tag_t* __viewparser_root_tag_create();
 static int __viewparser_include_create(viewparser_t* parser);
 static int __viewparser_include_write_body(viewparser_t* parser, char ch);
 static int __viewparser_include_load_content(viewparser_t* parser);
@@ -32,7 +32,7 @@ static int __viewparser_branch_write_body(viewparser_t* parser);
 static int __viewparser_condition_if_create(viewparser_t* parser);
 static int __viewparser_condition_elseif_create(viewparser_t* parser);
 static int __viewparser_condition_else_create(viewparser_t* parser);
-static void __viewparser_condition_item_append(viewparser_variable_item_t* variable_item, viewparser_condition_item_t* tag);
+static void __viewparser_condition_item_append(view_variable_item_t* variable_item, view_condition_item_t* tag);
 static int __viewparser_condition_item_complete_name(viewparser_t* parser);
 
 static int __viewparser_loop_create(viewparser_t* parser);
@@ -116,8 +116,8 @@ int viewparser_run(viewparser_t* parser) {
  * @param parser Pointer to the view parser.
  * @return Pointer to the original root tag.
  */
-viewparser_tag_t* viewparser_move_root_tag(viewparser_t* parser) {
-    viewparser_tag_t* root_tag = parser->root_tag;
+view_tag_t* viewparser_move_root_tag(viewparser_t* parser) {
+    view_tag_t* root_tag = parser->root_tag;
 
     parser->root_tag = NULL;
     parser->current_tag = NULL;
@@ -234,7 +234,7 @@ int __viewparser_parse_content(viewparser_t* parser) {
                     if (!__viewparser_variable_create(parser))
                         return 0;
 
-                    viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
+                    view_variable_item_t* variable_item = __viewparser_variable_item_create();
                     if (variable_item == NULL)
                         return 0;
 
@@ -521,7 +521,7 @@ int __viewparser_parse_content(viewparser_t* parser) {
                 if (!__viewparser_variable_item_complete_name(parser))
                     return 0;
 
-                viewparser_loop_t* tag_for = (viewparser_loop_t*)parser->current_tag;
+                view_loop_t* tag_for = (view_loop_t*)parser->current_tag;
                 if (tag_for->key_name[0] == 0) {
                     if (strcmp(tag_for->element_name, "index") == 0)
                         return 0;
@@ -561,16 +561,16 @@ int __viewparser_parse_content(viewparser_t* parser) {
  * @return 1 if the variable tag was successfully created, 0 otherwise.
  */
 int __viewparser_variable_create(viewparser_t* parser) {
-    viewparser_tag_t* variable = malloc(sizeof * variable);
+    view_tag_t* variable = malloc(sizeof * variable);
     if (variable == NULL) {
         log_error("__viewparser_variable_create: malloc failed\n");
         return 0;
     }
 
-    viewparser_tag_t* current_tag = parser->current_tag;
-    viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
+    view_tag_t* current_tag = parser->current_tag;
+    view_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
 
-    __viewparser_tag_init(variable, VIEWPARSER_TAGTYPE_VAR, data_parent, current_tag);
+    __viewparser_tag_init(variable, VIEW_TAGTYPE_VAR, data_parent, current_tag);
     __viewparser_tag_set_parent_text_params(variable, current_tag);
     __viewparser_tag_append_child_or_sibling(current_tag, variable);
 
@@ -584,8 +584,8 @@ int __viewparser_variable_create(viewparser_t* parser) {
  *
  * @return A pointer to the created variable item, or NULL if it failed.
  */
-viewparser_variable_item_t* __viewparser_variable_item_create(void) {
-    viewparser_variable_item_t* item = malloc(sizeof * item);
+view_variable_item_t* __viewparser_variable_item_create(void) {
+    view_variable_item_t* item = malloc(sizeof * item);
     if (item == NULL) {
         log_error("__viewparser_variable_item_create: malloc failed\n");
         return NULL;
@@ -607,7 +607,7 @@ viewparser_variable_item_t* __viewparser_variable_item_create(void) {
  * @param variable The variable tag to append the variable item to.
  * @return void
  */
-void __viewparser_variable_item_append(viewparser_variable_item_t* variable_item, viewparser_tag_t* variable) {
+void __viewparser_variable_item_append(view_variable_item_t* variable_item, view_tag_t* variable) {
     if (variable->item == NULL)
         variable->item = variable_item;
 
@@ -634,7 +634,7 @@ int __viewparser_variable_item_complete_name(viewparser_t* parser) {
     }
 
     if (variable_item_size > 0) {
-        viewparser_tag_t* variable = parser->current_tag;
+        view_tag_t* variable = parser->current_tag;
         strcpy(variable->last_item->name, bufferdata_get(&parser->variable_buffer));
         variable->last_item->name_length = variable_item_size;
     }
@@ -673,7 +673,7 @@ int __viewparser_variable_item_complete_index(viewparser_t* parser) {
             index = index * 10 + (value[i] - '0');
         }
 
-        viewparser_tag_t* variable = parser->current_tag;
+        view_tag_t* variable = parser->current_tag;
         if (!__viewparser_variable_item_index_create(variable->last_item, index)) {
             log_error("__viewparser_variable_item_complete_index: __viewparser_variable_item_index_create failed");
             return 0;
@@ -692,13 +692,13 @@ int __viewparser_variable_item_complete_index(viewparser_t* parser) {
  * @param value The value of the new index.
  * @return 1 if the index was successfully created, 0 otherwise.
  */
-int __viewparser_variable_item_index_create(viewparser_variable_item_t* const item, const int value) {
+int __viewparser_variable_item_index_create(view_variable_item_t* const item, const int value) {
     if (item == NULL) {
         log_error("__viewparser_variable_item_index_create: item is NULL");
         return 0;
     }
 
-    viewparser_variable_index_t* index = malloc(sizeof * index);
+    view_variable_index_t* index = malloc(sizeof * index);
     if (index == NULL) {
         log_error("__viewparser_variable_item_index_create: malloc failed");
         return 0;
@@ -792,7 +792,7 @@ int __viewparser_variable_write_body(viewparser_t* parser, const char ch) {
         if (!__viewparser_variable_item_complete_name(parser))
             return 0;
 
-        viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
+        view_variable_item_t* variable_item = __viewparser_variable_item_create();
         if (variable_item == NULL)
             return 0;
 
@@ -828,7 +828,7 @@ void __viewparser_variable_rtrim(viewparser_t* parser) {
  * @param child The child tag to append or add as a sibling.
  * @return void
  */
-void __viewparser_tag_append_child_or_sibling(viewparser_tag_t* parent, viewparser_tag_t* child) {
+void __viewparser_tag_append_child_or_sibling(view_tag_t* parent, view_tag_t* child) {
     if (parent == NULL) return;
 
     if (parent->child == NULL)
@@ -847,7 +847,7 @@ void __viewparser_tag_append_child_or_sibling(viewparser_tag_t* parent, viewpars
  * @param parent The parent tag.
  * @return void
  */
-void __viewparser_tag_set_parent_text_params(viewparser_tag_t* tag, viewparser_tag_t* parent) {
+void __viewparser_tag_set_parent_text_params(view_tag_t* tag, view_tag_t* parent) {
     if (parent == NULL) return;
 
     if (parent->last_child != NULL) {
@@ -864,13 +864,13 @@ void __viewparser_tag_set_parent_text_params(viewparser_tag_t* tag, viewparser_t
  * Returns the data parent tag of a given tag.
  *
  * @param tag The tag to get the data parent of.
- * @return viewparser_tag_t* The data parent tag, or NULL if the tag is NULL.
+ * @return view_tag_t* The data parent tag, or NULL if the tag is NULL.
  */
-viewparser_tag_t* __viewparser_get_dataparent(viewparser_tag_t* tag) {
+view_tag_t* __viewparser_get_dataparent(view_tag_t* tag) {
     if (tag == NULL)
         return NULL;
 
-    if (tag->type == VIEWPARSER_TAGTYPE_LOOP)
+    if (tag->type == VIEW_TAGTYPE_LOOP)
         return tag;
     
     return tag->data_parent;
@@ -885,7 +885,7 @@ viewparser_tag_t* __viewparser_get_dataparent(viewparser_tag_t* tag) {
  * @param parent The parent of the tag.
  * @return int 1 if successful, 0 otherwise.
  */
-void __viewparser_tag_init(viewparser_tag_t* tag, viewparser_tagtype_e type, viewparser_tag_t* data_parent, viewparser_tag_t* parent) {
+void __viewparser_tag_init(view_tag_t* tag, viewparser_tagtype_e type, view_tag_t* data_parent, view_tag_t* parent) {
     tag->type = type;
     tag->parent_text_offset = 0;
     tag->parent_text_size = 0;
@@ -903,16 +903,16 @@ void __viewparser_tag_init(viewparser_tag_t* tag, viewparser_tagtype_e type, vie
 /**
  * Creates a new root viewparser tag.
  *
- * @return viewparser_tag_t* The newly created root tag, or NULL if memory allocation failed.
+ * @return view_tag_t* The newly created root tag, or NULL if memory allocation failed.
  */
-viewparser_tag_t* __viewparser_root_tag_create() {
-    viewparser_tag_t* tag = malloc(sizeof(viewparser_include_t));
+view_tag_t* __viewparser_root_tag_create() {
+    view_tag_t* tag = malloc(sizeof(view_include_t));
     if (tag == NULL) {
         log_error("__viewparser_root_tag_create: malloc failed\n");
         return NULL;
     }
 
-    __viewparser_tag_init(tag, VIEWPARSER_TAGTYPE_INC, NULL, NULL);
+    __viewparser_tag_init(tag, VIEW_TAGTYPE_INC, NULL, NULL);
     tag->free = view_tag_include_free;
 
     return tag;
@@ -930,24 +930,24 @@ int __viewparser_include_create(viewparser_t* parser) {
         return 0;
     }
 
-    viewparser_include_t* tag = malloc(sizeof * tag);
+    view_include_t* tag = malloc(sizeof * tag);
     if (tag == NULL) {
         log_error("__viewparser_include_create: malloc failed\n");
         return 0;
     }
 
-    viewparser_tag_t* current_tag = parser->current_tag;
-    viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
+    view_tag_t* current_tag = parser->current_tag;
+    view_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
 
-    __viewparser_tag_init((viewparser_tag_t*)tag, VIEWPARSER_TAGTYPE_INC, data_parent, current_tag);
+    __viewparser_tag_init((view_tag_t*)tag, VIEW_TAGTYPE_INC, data_parent, current_tag);
     tag->is_control_key = 0;
     tag->control_key_index = 0;
     tag->base.free = view_tag_include_free;
 
-    __viewparser_tag_set_parent_text_params((viewparser_tag_t*)tag, current_tag);
-    __viewparser_tag_append_child_or_sibling(current_tag, (viewparser_tag_t*)tag);
+    __viewparser_tag_set_parent_text_params((view_tag_t*)tag, current_tag);
+    __viewparser_tag_append_child_or_sibling(current_tag, (view_tag_t*)tag);
 
-    parser->current_tag = (viewparser_tag_t*)tag;
+    parser->current_tag = (view_tag_t*)tag;
     parser->level++;
 
     return 1;
@@ -976,7 +976,7 @@ int __viewparser_include_write_body(viewparser_t* parser, char ch) {
     }
     default:
     {
-        viewparser_include_t* tag = (viewparser_include_t*)parser->current_tag;
+        view_include_t* tag = (view_include_t*)parser->current_tag;
         if (tag->is_control_key == 0) {
             if (__word_include[tag->control_key_index] != ch) {
                 log_error("__viewparser_include_write_body: control key mismatch\n");
@@ -1126,33 +1126,33 @@ int __viewparser_branch_write_body(viewparser_t* parser) {
  * @return int 1 if the tag was successfully created, 0 otherwise.
  */
 int __viewparser_condition_if_create(viewparser_t* parser) {
-    viewparser_tag_t* tag_cond = malloc(sizeof * tag_cond);
+    view_tag_t* tag_cond = malloc(sizeof * tag_cond);
     if (tag_cond == NULL) {
         log_error("malloc failed in __viewparser_condition_if_create\n");
         return 0;
     }
 
-    viewparser_tag_t* current_tag = parser->current_tag;
-    viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
+    view_tag_t* current_tag = parser->current_tag;
+    view_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
 
-    __viewparser_tag_init(tag_cond, VIEWPARSER_TAGTYPE_COND, data_parent, current_tag);
+    __viewparser_tag_init(tag_cond, VIEW_TAGTYPE_COND, data_parent, current_tag);
     tag_cond->free = view_tag_free;
     __viewparser_tag_set_parent_text_params(tag_cond, current_tag);
 
-    viewparser_condition_item_t* tag_if = malloc(sizeof * tag_if);
+    view_condition_item_t* tag_if = malloc(sizeof * tag_if);
     if (tag_if == NULL) {
         log_error("malloc failed in __viewparser_condition_if_create\n");
         free(tag_cond);
         return 0;
     }
 
-    __viewparser_tag_init((viewparser_tag_t*)tag_if, VIEWPARSER_TAGTYPE_COND_IF, data_parent, tag_cond);
+    __viewparser_tag_init((view_tag_t*)tag_if, VIEW_TAGTYPE_COND_IF, data_parent, tag_cond);
     tag_if->result = 0;
     tag_if->reverse = 0;
     tag_if->always_true = 0;
     tag_if->base.free = view_tag_condition_free;
 
-    viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
+    view_variable_item_t* variable_item = __viewparser_variable_item_create();
     if (variable_item == NULL) {
         log_error("__viewparser_variable_item_create failed in __viewparser_condition_if_create\n");
         free(tag_cond);
@@ -1161,10 +1161,10 @@ int __viewparser_condition_if_create(viewparser_t* parser) {
     }
 
     __viewparser_condition_item_append(variable_item, tag_if);
-    __viewparser_tag_append_child_or_sibling(tag_cond, (viewparser_tag_t*)tag_if);
+    __viewparser_tag_append_child_or_sibling(tag_cond, (view_tag_t*)tag_if);
     __viewparser_tag_append_child_or_sibling(current_tag, tag_cond);
 
-    parser->current_tag = (viewparser_tag_t*)tag_if;
+    parser->current_tag = (view_tag_t*)tag_if;
 
     return 1;
 }
@@ -1176,7 +1176,7 @@ int __viewparser_condition_if_create(viewparser_t* parser) {
  * @param tag The condition item to append the variable item to.
  * @return void
  */
-void __viewparser_condition_item_append(viewparser_variable_item_t* variable_item, viewparser_condition_item_t* tag) {
+void __viewparser_condition_item_append(view_variable_item_t* variable_item, view_condition_item_t* tag) {
     if (tag->base.item == NULL)
         tag->base.item = variable_item;
 
@@ -1203,7 +1203,7 @@ int __viewparser_condition_item_complete_name(viewparser_t* parser) {
     }
 
     if (variable_item_size > 0) {
-        viewparser_tag_t* condition_item = parser->current_tag;
+        view_tag_t* condition_item = parser->current_tag;
         strcpy(condition_item->last_item->name, bufferdata_get(&parser->variable_buffer));
         condition_item->last_item->name_length = variable_item_size;
     }
@@ -1220,28 +1220,28 @@ int __viewparser_condition_item_complete_name(viewparser_t* parser) {
  * @return int 1 if the tag was successfully created, 0 otherwise.
  */
 int __viewparser_condition_elseif_create(viewparser_t* parser) {
-    viewparser_tag_t* current_tag = parser->current_tag;
-    if (current_tag->type != VIEWPARSER_TAGTYPE_COND_IF && current_tag->type != VIEWPARSER_TAGTYPE_COND_ELSEIF) {
+    view_tag_t* current_tag = parser->current_tag;
+    if (current_tag->type != VIEW_TAGTYPE_COND_IF && current_tag->type != VIEW_TAGTYPE_COND_ELSEIF) {
         log_error("__viewparser_condition_elseif_create: current tag is not of type COND_IF or COND_ELSEIF");
         return 0;
     }
 
-    viewparser_condition_item_t* tag_elseif = malloc(sizeof * tag_elseif);
+    view_condition_item_t* tag_elseif = malloc(sizeof * tag_elseif);
     if (tag_elseif == NULL) {
         log_error("__viewparser_condition_elseif_create: malloc failed");
         return 0;
     }
 
-    viewparser_tag_t* tag_cond = parser->current_tag->parent;
-    viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
+    view_tag_t* tag_cond = parser->current_tag->parent;
+    view_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
 
-    __viewparser_tag_init((viewparser_tag_t*)tag_elseif, VIEWPARSER_TAGTYPE_COND_ELSEIF, data_parent, tag_cond);
+    __viewparser_tag_init((view_tag_t*)tag_elseif, VIEW_TAGTYPE_COND_ELSEIF, data_parent, tag_cond);
     tag_elseif->result = 0;
     tag_elseif->reverse = 0;
     tag_elseif->always_true = 0;
     tag_elseif->base.free = view_tag_condition_free;
 
-    viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
+    view_variable_item_t* variable_item = __viewparser_variable_item_create();
     if (variable_item == NULL) {
         log_error("__viewparser_condition_elseif_create: __viewparser_variable_item_create failed");
         free(tag_elseif);
@@ -1249,9 +1249,9 @@ int __viewparser_condition_elseif_create(viewparser_t* parser) {
     }
 
     __viewparser_condition_item_append(variable_item, tag_elseif);
-    __viewparser_tag_append_child_or_sibling(tag_cond, (viewparser_tag_t*)tag_elseif);
+    __viewparser_tag_append_child_or_sibling(tag_cond, (view_tag_t*)tag_elseif);
 
-    parser->current_tag = (viewparser_tag_t*)tag_elseif;
+    parser->current_tag = (view_tag_t*)tag_elseif;
 
     return 1;
 }
@@ -1263,28 +1263,28 @@ int __viewparser_condition_elseif_create(viewparser_t* parser) {
  * @return int 1 if the tag was successfully created, 0 otherwise.
  */
 int __viewparser_condition_else_create(viewparser_t* parser) {
-    viewparser_tag_t* current_tag = parser->current_tag;
-    if (current_tag->type != VIEWPARSER_TAGTYPE_COND_IF && current_tag->type != VIEWPARSER_TAGTYPE_COND_ELSEIF) {
+    view_tag_t* current_tag = parser->current_tag;
+    if (current_tag->type != VIEW_TAGTYPE_COND_IF && current_tag->type != VIEW_TAGTYPE_COND_ELSEIF) {
         log_error("__viewparser_condition_else_create: current tag is not of type COND_IF or COND_ELSEIF");
         return 0;
     }
 
-    viewparser_condition_item_t* tag_else = malloc(sizeof * tag_else);
+    view_condition_item_t* tag_else = malloc(sizeof * tag_else);
     if (tag_else == NULL) {
         log_error("__viewparser_condition_else_create: malloc failed");
         return 0;
     }
 
-    viewparser_tag_t* tag_cond = parser->current_tag->parent;
-    viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
+    view_tag_t* tag_cond = parser->current_tag->parent;
+    view_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
 
-    __viewparser_tag_init((viewparser_tag_t*)tag_else, VIEWPARSER_TAGTYPE_COND_ELSE, data_parent, tag_cond);
+    __viewparser_tag_init((view_tag_t*)tag_else, VIEW_TAGTYPE_COND_ELSE, data_parent, tag_cond);
     tag_else->result = 0;
     tag_else->reverse = 0;
     tag_else->always_true = 1;
     tag_else->base.free = view_tag_condition_free;
 
-    viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
+    view_variable_item_t* variable_item = __viewparser_variable_item_create();
     if (variable_item == NULL) {
         log_error("__viewparser_condition_else_create: __viewparser_variable_item_create failed");
         free(tag_else);
@@ -1292,9 +1292,9 @@ int __viewparser_condition_else_create(viewparser_t* parser) {
     }
 
     __viewparser_condition_item_append(variable_item, tag_else);
-    __viewparser_tag_append_child_or_sibling(tag_cond, (viewparser_tag_t*)tag_else);
+    __viewparser_tag_append_child_or_sibling(tag_cond, (view_tag_t*)tag_else);
 
-    parser->current_tag = (viewparser_tag_t*)tag_else;
+    parser->current_tag = (view_tag_t*)tag_else;
 
     return 1;
 }
@@ -1306,33 +1306,33 @@ int __viewparser_condition_else_create(viewparser_t* parser) {
  * @return 1 on success, 0 on failure.
  */
 int __viewparser_loop_create(viewparser_t* parser) {
-    viewparser_loop_t* tag_for = malloc(sizeof * tag_for);
+    view_loop_t* tag_for = malloc(sizeof * tag_for);
     if (tag_for == NULL) {
         log_error("__viewparser_loop_create: failed to allocate memory for loop tag");
         return 0;
     }
 
-    viewparser_tag_t* current_tag = parser->current_tag;
-    viewparser_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
+    view_tag_t* current_tag = parser->current_tag;
+    view_tag_t* data_parent = __viewparser_get_dataparent(current_tag);
 
-    __viewparser_tag_init((viewparser_tag_t*)tag_for, VIEWPARSER_TAGTYPE_LOOP, data_parent, current_tag);
-    __viewparser_tag_set_parent_text_params((viewparser_tag_t*)tag_for, current_tag);
+    __viewparser_tag_init((view_tag_t*)tag_for, VIEW_TAGTYPE_LOOP, data_parent, current_tag);
+    __viewparser_tag_set_parent_text_params((view_tag_t*)tag_for, current_tag);
     tag_for->element_name[0] = 0;
     tag_for->key_name[0] = 0;
     tag_for->token = NULL;
     tag_for->base.free = view_tag_loop_free;
 
-    viewparser_variable_item_t* variable_item = __viewparser_variable_item_create();
+    view_variable_item_t* variable_item = __viewparser_variable_item_create();
     if (variable_item == NULL) {
         log_error("__viewparser_loop_create: failed to create variable item");
         free(tag_for);
         return 0;
     }
 
-    __viewparser_variable_item_append(variable_item, (viewparser_tag_t*)tag_for);
-    __viewparser_tag_append_child_or_sibling(current_tag, (viewparser_tag_t*)tag_for);
+    __viewparser_variable_item_append(variable_item, (view_tag_t*)tag_for);
+    __viewparser_tag_append_child_or_sibling(current_tag, (view_tag_t*)tag_for);
 
-    parser->current_tag = (viewparser_tag_t*)tag_for;
+    parser->current_tag = (view_tag_t*)tag_for;
 
     return 1;
 }
@@ -1346,7 +1346,7 @@ int __viewparser_loop_create(viewparser_t* parser) {
  */
 int __viewparser_loop_write_item(viewparser_t* parser, char ch) {
     viewparser_context_t* const context = parser->current_context;
-    viewparser_loop_t* tag_for = (viewparser_loop_t*)parser->current_tag;
+    view_loop_t* tag_for = (view_loop_t*)parser->current_tag;
 
     switch (ch)
     {
@@ -1401,7 +1401,7 @@ int __viewparser_loop_write_item(viewparser_t* parser, char ch) {
  */
 int __viewparser_loop_write_index(viewparser_t* parser, char ch) {
     viewparser_context_t* const context = parser->current_context;
-    viewparser_loop_t* tag_for = (viewparser_loop_t*)parser->current_tag;
+    view_loop_t* tag_for = (view_loop_t*)parser->current_tag;
 
     switch (ch)
     {
