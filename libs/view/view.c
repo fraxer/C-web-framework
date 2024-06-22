@@ -19,6 +19,15 @@ void __view_copy_loop_tags_free(view_copy_tags_t* copy_tags);
 view_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, view_tag_t* tag);
 view_loop_t* __view_copy_loop_tag_get(view_copy_tags_t* copy_tags, view_tag_t* tag);
 
+/**
+ * Render a view using a JSON document and a storage.
+ *
+ * @param document The JSON document to use.
+ * @param storage_name The name of the storage to use.
+ * @param path_format The format of the path.
+ * @param ... The arguments to format the path.
+ * @return The rendered content of the view.
+ */
 char* render(jsondoc_t* document, const char* storage_name, const char* path_format, ...) {
     char path[PATH_MAX];
 
@@ -30,23 +39,41 @@ char* render(jsondoc_t* document, const char* storage_name, const char* path_for
     return __view_render(document, storage_name, path);
 }
 
+/**
+ * Increment the reference counter of a view.
+ *
+ * @param view The view to increment the reference counter of.
+ * @return void
+ */
 void view_increment(view_t* view) {
     if (view == NULL) return;
 
     atomic_fetch_add(&view->counter, 1);
 }
 
+/**
+ * Decrement the reference counter of a view.
+ *
+ * @param view The view to decrement the reference counter of.
+ * @return void
+ */
 void view_decrement(view_t* view) {
     if (view == NULL) return;
 
     atomic_fetch_sub(&view->counter, 1);
 }
 
+/**
+ * Render a view.
+ *
+ * @param document The JSON document to render.
+ * @param storage_name The name of the storage to use.
+ * @param path The path of the view.
+ * @return The rendered content of the view, or NULL if an error occurred.
+ */
 char* __view_render(jsondoc_t* document, const char* storage_name, const char* path) {
-    view_t* view = NULL;
-
     viewstore_lock();
-    view = viewstore_get_view(path);
+    view_t* view = viewstore_get_view(path);
     if (view == NULL) {
         viewstore_unlock();
 
@@ -77,6 +104,13 @@ char* __view_render(jsondoc_t* document, const char* storage_name, const char* p
     return data;
 }
 
+/**
+ * Render a view.
+ *
+ * @param view The view to render.
+ * @param document The JSON document to render.
+ * @return The rendered content of the view, or NULL if an error occurred.
+ */
 char* __view_make_content(view_t* view, jsondoc_t* document) {
     view_copy_tags_t copy_tags;
     __view_copy_loop_tags_init(&copy_tags);
@@ -101,6 +135,14 @@ char* __view_make_content(view_t* view, jsondoc_t* document) {
     return data;
 }
 
+/**
+ * Get the value of a condition tag.
+ *
+ * @param copy_tags The copy tags structure.
+ * @param document The JSON document.
+ * @param tag The condition tag.
+ * @return The value of the condition tag, or 0 if an error occurred.
+ */
 int __view_get_condition_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag) {
     view_variable_item_t* item = tag->item;
     view_loop_t* tag_for = __view_copy_loop_tag_get(copy_tags, tag->data_parent);
@@ -159,6 +201,14 @@ int __view_get_condition_value(view_copy_tags_t* copy_tags, jsondoc_t* document,
     return 0;
 }
 
+/**
+ * Get the value of a tag.
+ *
+ * @param copy_tags The copy tags structure.
+ * @param document The JSON document.
+ * @param tag The tag.
+ * @return The value of the tag as a string, or NULL if an error occurred.
+ */
 const char* __view_get_tag_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag) {
     view_variable_item_t* item = tag->item;
     view_loop_t* tag_for = __view_copy_loop_tag_get(copy_tags, tag->data_parent);
@@ -220,6 +270,14 @@ const char* __view_get_tag_value(view_copy_tags_t* copy_tags, jsondoc_t* documen
     return NULL;
 }
 
+/**
+ * Get the value of a loop tag.
+ *
+ * @param copy_tags The copy tags structure.
+ * @param document The JSON document.
+ * @param tag The loop tag.
+ * @return The value of the loop tag as a json token, or NULL if an error occurred.
+ */
 const jsontok_t* __view_get_loop_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag) {
     view_variable_item_t* item = tag->item;
     view_loop_t* tag_for = __view_copy_loop_tag_get(copy_tags, tag->data_parent);
@@ -281,6 +339,15 @@ const jsontok_t* __view_get_loop_value(view_copy_tags_t* copy_tags, jsondoc_t* d
     return NULL;
 }
 
+/**
+ * Builds the content recursively for a view.
+ *
+ * @param view The view to build content for.
+ * @param document The JSON document to build content with.
+ * @param copy_tags The copy tags to use.
+ * @param tag The tag to start building content from.
+ * @return None.
+ */
 void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy_tags_t* copy_tags, view_tag_t* tag) {
     view_tag_t* child = tag;
     while (child) {
@@ -454,6 +521,12 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
     }
 }
 
+/**
+ * Initializes a view_copy_tags_t struct.
+ *
+ * @param copy_tags The view_copy_tags_t struct to initialize.
+ * @return void
+ */
 void __view_copy_loop_tags_init(view_copy_tags_t* copy_tags) {
     if (copy_tags == NULL) return;
 
@@ -462,11 +535,17 @@ void __view_copy_loop_tags_init(view_copy_tags_t* copy_tags) {
     copy_tags->last_copy = NULL;
 }
 
+/**
+ * Free the resources allocated by a view_copy_tags_t struct.
+ *
+ * @param copy_tags The view_copy_tags_t struct to free.
+ * @return void
+ */
 void __view_copy_loop_tags_free(view_copy_tags_t* copy_tags) {
     if (copy_tags == NULL) return;
 
     view_loop_copy_t* copy = copy_tags->copy;
-    while (copy) {
+    while (copy != NULL) {
         view_loop_copy_t* next = copy->next;
         free(copy);
         copy = next;
@@ -475,6 +554,13 @@ void __view_copy_loop_tags_free(view_copy_tags_t* copy_tags) {
     bufferdata_clear(&copy_tags->buf);
 }
 
+/**
+ * Add a loop tag to the copy tags.
+ *
+ * @param copy_tags The copy tags to add the loop tag to.
+ * @param tag The loop tag to add.
+ * @return The added loop tag.
+ */
 view_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, view_tag_t* tag) {
     view_loop_copy_t* copy = malloc(sizeof * copy);
     if (copy == NULL) return NULL;
@@ -494,6 +580,13 @@ view_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, view_tag_t* t
     return &copy->tag;
 }
 
+/**
+ * Get the loop tag from the copy tags.
+ *
+ * @param copy_tags The copy tags to get the loop tag from.
+ * @param tag The loop tag to get.
+ * @return The loop tag, or NULL if not found.
+ */
 view_loop_t* __view_copy_loop_tag_get(view_copy_tags_t* copy_tags, view_tag_t* tag) {
     if (tag == NULL) return NULL;
 
