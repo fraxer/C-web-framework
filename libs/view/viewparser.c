@@ -396,6 +396,13 @@ int __viewparser_parse_content(viewparser_t* parser) {
             }
             case ' ':
             {
+                if (context->symbol == VIEWPARSER_FIGPERCENTOPEN)
+                    break;
+                if (context->symbol == VIEWPARSER_VARIABLE_SPACE)
+                    break;
+
+                context->symbol = VIEWPARSER_VARIABLE_SPACE;
+
                 if (!__viewparser_branch_write_body(parser))
                     return 0;
 
@@ -423,6 +430,20 @@ int __viewparser_parse_content(viewparser_t* parser) {
 
                 break;
             }
+            case '!':
+            {
+                if (context->symbol != VIEWPARSER_VARIABLE_SPACE)
+                    return 0;
+
+                view_condition_item_t* tag = (view_condition_item_t*)parser->current_tag;
+                if (tag->base.type != VIEW_TAGTYPE_COND_IF && tag->base.type != VIEW_TAGTYPE_COND_ELSEIF)
+                    return 0;
+
+                tag->reverse = 1;
+                context->symbol = VIEWPARSER_VARIABLE_INVERSE;
+
+                break;
+            }
             case '%':
             {
                 context->symbol = VIEWPARSER_FIGPERCENTCLOSE;
@@ -440,6 +461,17 @@ int __viewparser_parse_content(viewparser_t* parser) {
                     return 0;
 
                 context->symbol = VIEWPARSER_FIGFIGCLOSE;
+
+                break;
+            }
+            case ' ':
+            {
+                if (context->symbol == VIEWPARSER_VARIABLE_INVERSE)
+                    break;
+                if (context->symbol == VIEWPARSER_VARIABLE_SPACE)
+                    break;
+
+                context->symbol = VIEWPARSER_VARIABLE_SPACE;
 
                 break;
             }

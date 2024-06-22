@@ -263,7 +263,7 @@ connection_t* __httpclient_resolve(const char* host, const short port) {
     addr.ai_protocol = IPPROTO_TCP;
 
     struct addrinfo* result;
-    char port_string[6] = {0};
+    char port_string[7] = {0};
     sprintf(port_string, "%d", port);
 
     const int r = getaddrinfo(host, port_string, &addr, &result);
