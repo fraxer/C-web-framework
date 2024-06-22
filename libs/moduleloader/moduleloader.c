@@ -512,8 +512,14 @@ int module_loader_storages_load() {
 }
 
 int module_loader_viewstore_load() {
-    if (!viewstore_init())
-        return -1;
+    if (viewstore_inited()) {
+        viewstore_lock();
+        viewstore_clear();
+        viewstore_unlock();
+    }
+    else
+        if (!viewstore_init())
+            return -1;
 
     return 0;
 }

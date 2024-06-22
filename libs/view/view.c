@@ -10,14 +10,14 @@
 
 char* __view_render(jsondoc_t* document, const char* storage_name, const char* path);
 char* __view_make_content(view_t* view, jsondoc_t* document);
-int __view_get_condition_value(view_copy_tags_t* copy_tags, jsondoc_t* document, viewparser_tag_t* tag);
-const char* __view_get_tag_value(view_copy_tags_t* copy_tags, jsondoc_t* document, viewparser_tag_t* tag);
-const jsontok_t* __view_get_loop_value(view_copy_tags_t* copy_tags, jsondoc_t* document, viewparser_tag_t* tag);
-void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy_tags_t* copy_tags, viewparser_tag_t* tag);
+int __view_get_condition_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag);
+const char* __view_get_tag_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag);
+const jsontok_t* __view_get_loop_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag);
+void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy_tags_t* copy_tags, view_tag_t* tag);
 void __view_copy_loop_tags_init(view_copy_tags_t* copy_tags);
 void __view_copy_loop_tags_free(view_copy_tags_t* copy_tags);
-viewparser_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, viewparser_tag_t* tag);
-viewparser_loop_t* __view_copy_loop_tag_get(view_copy_tags_t* copy_tags, viewparser_tag_t* tag);
+view_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, view_tag_t* tag);
+view_loop_t* __view_copy_loop_tag_get(view_copy_tags_t* copy_tags, view_tag_t* tag);
 
 char* render(jsondoc_t* document, const char* storage_name, const char* path_format, ...) {
     char path[PATH_MAX];
@@ -74,11 +74,6 @@ char* __view_render(jsondoc_t* document, const char* storage_name, const char* p
     char* data = __view_make_content(view, document);
     view_decrement(view);
 
-    // remove unused views from viewstore
-    // viewstore_lock();
-    // viewstore_clear();
-    // viewstore_unlock();
-
     return data;
 }
 
@@ -86,7 +81,7 @@ char* __view_make_content(view_t* view, jsondoc_t* document) {
     view_copy_tags_t copy_tags;
     __view_copy_loop_tags_init(&copy_tags);
 
-    viewparser_tag_t* child = view->root_tag->child;
+    view_tag_t* child = view->root_tag->child;
     if (child == NULL) {
         const size_t size = bufferdata_writed(&view->root_tag->result_content);
         const char* content = bufferdata_get(&view->root_tag->result_content);
@@ -106,12 +101,12 @@ char* __view_make_content(view_t* view, jsondoc_t* document) {
     return data;
 }
 
-int __view_get_condition_value(view_copy_tags_t* copy_tags, jsondoc_t* document, viewparser_tag_t* tag) {
-    viewparser_variable_item_t* item = tag->item;
-    viewparser_loop_t* tag_for = __view_copy_loop_tag_get(copy_tags, tag->data_parent);
+int __view_get_condition_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag) {
+    view_variable_item_t* item = tag->item;
+    view_loop_t* tag_for = __view_copy_loop_tag_get(copy_tags, tag->data_parent);
     const jsontok_t* json_token = json_root(document);
     if (tag_for != NULL) {
-        viewparser_loop_t* tag_parent = tag_for;
+        view_loop_t* tag_parent = tag_for;
 
         while (tag_parent != NULL) {
             if (strcmp(item->name, tag_parent->element_name) == 0) {
@@ -138,7 +133,7 @@ int __view_get_condition_value(view_copy_tags_t* copy_tags, jsondoc_t* document,
         
         if (token->type == JSON_ARRAY) {
             int stop = 0;
-            viewparser_variable_index_t* index = item->index;
+            view_variable_index_t* index = item->index;
             while (index) {
                 token = json_array_get(token, index->value);
                 stop = token == NULL;
@@ -164,12 +159,12 @@ int __view_get_condition_value(view_copy_tags_t* copy_tags, jsondoc_t* document,
     return 0;
 }
 
-const char* __view_get_tag_value(view_copy_tags_t* copy_tags, jsondoc_t* document, viewparser_tag_t* tag) {
-    viewparser_variable_item_t* item = tag->item;
-    viewparser_loop_t* tag_for = __view_copy_loop_tag_get(copy_tags, tag->data_parent);
+const char* __view_get_tag_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag) {
+    view_variable_item_t* item = tag->item;
+    view_loop_t* tag_for = __view_copy_loop_tag_get(copy_tags, tag->data_parent);
     const jsontok_t* json_token = json_root(document);
     if (tag_for != NULL) {
-        viewparser_loop_t* tag_parent = tag_for;
+        view_loop_t* tag_parent = tag_for;
 
         while (tag_parent != NULL) {
             if (item->next == NULL && strcmp(item->name, tag_parent->key_name) == 0)
@@ -199,7 +194,7 @@ const char* __view_get_tag_value(view_copy_tags_t* copy_tags, jsondoc_t* documen
         
         if (token->type == JSON_ARRAY) {
             int stop = 0;
-            viewparser_variable_index_t* index = item->index;
+            view_variable_index_t* index = item->index;
             while (index) {
                 token = json_array_get(token, index->value);
                 stop = token == NULL;
@@ -225,12 +220,12 @@ const char* __view_get_tag_value(view_copy_tags_t* copy_tags, jsondoc_t* documen
     return NULL;
 }
 
-const jsontok_t* __view_get_loop_value(view_copy_tags_t* copy_tags, jsondoc_t* document, viewparser_tag_t* tag) {
-    viewparser_variable_item_t* item = tag->item;
-    viewparser_loop_t* tag_for = __view_copy_loop_tag_get(copy_tags, tag->data_parent);
+const jsontok_t* __view_get_loop_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag) {
+    view_variable_item_t* item = tag->item;
+    view_loop_t* tag_for = __view_copy_loop_tag_get(copy_tags, tag->data_parent);
     const jsontok_t* json_token = json_root(document);
     if (tag_for != NULL) {
-        viewparser_loop_t* tag_parent = tag_for;
+        view_loop_t* tag_parent = tag_for;
 
         while (tag_parent != NULL) {
             if (strcmp(item->name, tag_parent->element_name) == 0) {
@@ -257,7 +252,7 @@ const jsontok_t* __view_get_loop_value(view_copy_tags_t* copy_tags, jsondoc_t* d
 
         if (token->type == JSON_ARRAY) {
             int stop = 0;
-            viewparser_variable_index_t* index = item->index;
+            view_variable_index_t* index = item->index;
             while (index) {
                 token = json_array_get(token, index->value);
                 stop = token == NULL;
@@ -286,13 +281,13 @@ const jsontok_t* __view_get_loop_value(view_copy_tags_t* copy_tags, jsondoc_t* d
     return NULL;
 }
 
-void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy_tags_t* copy_tags, viewparser_tag_t* tag) {
-    viewparser_tag_t* child = tag;
+void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy_tags_t* copy_tags, view_tag_t* tag) {
+    view_tag_t* child = tag;
     while (child) {
         switch (child->type) {
-        case VIEWPARSER_TAGTYPE_VAR:
+        case VIEW_TAGTYPE_VAR:
         {
-            viewparser_tag_t* parent = child->parent;
+            view_tag_t* parent = child->parent;
 
             size_t size = bufferdata_writed(&parent->result_content);
             const char* content = bufferdata_get(&parent->result_content);
@@ -319,7 +314,7 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
 
             break;
         }
-        case VIEWPARSER_TAGTYPE_COND:
+        case VIEW_TAGTYPE_COND:
         {
             __view_build_content_recursive(view, document, copy_tags, child->child);
 
@@ -327,12 +322,12 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
 
             break;
         }
-        case VIEWPARSER_TAGTYPE_COND_IF:
-        case VIEWPARSER_TAGTYPE_COND_ELSEIF:
-        case VIEWPARSER_TAGTYPE_COND_ELSE:
+        case VIEW_TAGTYPE_COND_IF:
+        case VIEW_TAGTYPE_COND_ELSEIF:
+        case VIEW_TAGTYPE_COND_ELSE:
         {
-            viewparser_tag_t* parent = child->parent;
-            viewparser_condition_item_t* tag = (viewparser_condition_item_t*)child;
+            view_tag_t* parent = child->parent;
+            view_condition_item_t* tag = (view_condition_item_t*)child;
 
             const int result = __view_get_condition_value(copy_tags, document, child);
             const int istrue = tag->always_true || (result && !tag->reverse) || (!result && tag->reverse);
@@ -374,16 +369,16 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
 
             break;
         }
-        case VIEWPARSER_TAGTYPE_LOOP:
+        case VIEW_TAGTYPE_LOOP:
         {
-            viewparser_loop_t* tag_for = __view_copy_loop_tag_get(copy_tags, child);
+            view_loop_t* tag_for = __view_copy_loop_tag_get(copy_tags, child);
             if (tag_for == NULL)
                 tag_for = __view_copy_loop_tag_add(copy_tags, child);
 
             if (tag_for == NULL)
                 return;
 
-            viewparser_tag_t* parent = child->parent;
+            view_tag_t* parent = child->parent;
             size_t size = bufferdata_writed(&parent->result_content);
             const char* content = bufferdata_get(&parent->result_content);
             for (size_t i = child->parent_text_offset; i < child->parent_text_offset + child->parent_text_size && i < size; i++)
@@ -424,9 +419,9 @@ void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy
 
             break;
         }
-        case VIEWPARSER_TAGTYPE_INC:
+        case VIEW_TAGTYPE_INC:
         {
-            viewparser_tag_t* parent = child->parent;
+            view_tag_t* parent = child->parent;
 
             if (parent != NULL) {
                 const char* content = bufferdata_get(&parent->result_content);
@@ -480,12 +475,12 @@ void __view_copy_loop_tags_free(view_copy_tags_t* copy_tags) {
     bufferdata_clear(&copy_tags->buf);
 }
 
-viewparser_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, viewparser_tag_t* tag) {
+view_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, view_tag_t* tag) {
     view_loop_copy_t* copy = malloc(sizeof * copy);
     if (copy == NULL) return NULL;
 
-    copy->source_address = (viewparser_tag_t*)tag;
-    memcpy(&copy->tag, tag, sizeof(viewparser_loop_t));
+    copy->source_address = (view_tag_t*)tag;
+    memcpy(&copy->tag, tag, sizeof(view_loop_t));
     copy->next = NULL;
 
     if (copy_tags->copy == NULL)
@@ -499,7 +494,7 @@ viewparser_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, viewpar
     return &copy->tag;
 }
 
-viewparser_loop_t* __view_copy_loop_tag_get(view_copy_tags_t* copy_tags, viewparser_tag_t* tag) {
+view_loop_t* __view_copy_loop_tag_get(view_copy_tags_t* copy_tags, view_tag_t* tag) {
     if (tag == NULL) return NULL;
 
     view_loop_copy_t* copy = copy_tags->copy;
