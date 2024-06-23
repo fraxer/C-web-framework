@@ -46,6 +46,7 @@ typedef struct http1response {
 
     void(*data)(struct http1response*, const char*);
     void(*datan)(struct http1response*, const char*, size_t);
+    void(*view)(struct http1response*, jsondoc_t* document, const char* storage_name, const char* path_format, ...);
     void(*def)(struct http1response*, int);
     void(*redirect)(struct http1response*, const char*, int);
     http1_header_t*(*header)(struct http1response*, const char*);
@@ -55,9 +56,9 @@ typedef struct http1response {
     int(*header_add_content_length)(struct http1response*, size_t);
     int(*header_remove)(struct http1response*, const char*);
     int(*headern_remove)(struct http1response*, const char*, size_t);
-    int(*file)(struct http1response*, const char*);
-    int(*filen)(struct http1response*, const char*, size_t);
-    int(*filef)(struct http1response*, const char*, const char*, ...);
+    void(*file)(struct http1response*, const char*);
+    void(*filen)(struct http1response*, const char*, size_t);
+    void(*filef)(struct http1response*, const char*, const char*, ...);
     int(*deflate)(struct http1response*, const char*, size_t, int, ssize_t(*)(connection_t*, const char*, size_t, int));
     int(*inflate)(struct http1response*, const char*, size_t);
     void(*cookie_add)(struct http1response*, cookie_t);
@@ -67,27 +68,13 @@ typedef struct http1response {
     jsondoc_t*(*payload_json)(struct http1response*);
 } http1response_t;
 
-http1response_t* http1response_create(connection_t*);
-
-void http1response_default(http1response_t*, int);
-
-http1response_head_t http1response_create_head(http1response_t*);
-
-void http1response_redirect(http1response_t*, const char*, int);
-
-int http1response_data_append(char*, size_t*, const char*, size_t);
-
-http1_ranges_t* http1response_init_ranges();
-
-void http1response_free_ranges(http1_ranges_t*);
-
+http1response_t* http1response_create(connection_t* connection);
+http1response_head_t http1response_create_head(http1response_t* response);
+void http1response_redirect(http1response_t* response, const char* path, int status_code);
+http1_ranges_t* http1response_init_ranges(void);
+void http1response_free_ranges(http1_ranges_t* ranges);
 int http1response_redirect_is_external(const char* url);
-
-const char* http1response_status_string(int);
-
-char* http1response_payload(http1response_t*);
-file_content_t http1response_payload_file(http1response_t*);
-jsondoc_t* http1response_payload_json(http1response_t*);
-int http1response_has_payload(http1response_t*);
+const char* http1response_status_string(int status_code);
+int http1response_has_payload(http1response_t* response);
 
 #endif

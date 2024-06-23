@@ -255,6 +255,10 @@ int __httpclient_create_connection(httpclient_t* client) {
 }
 
 connection_t* __httpclient_resolve(const char* host, const short port) {
+    if (host == NULL) {
+        log_error("__httpclient_resolve: host is NULL\n");
+        return NULL;
+    }
     struct addrinfo addr;
     memset(&addr, 0, sizeof(struct addrinfo));
     addr.ai_family = AF_INET;
@@ -262,37 +266,37 @@ connection_t* __httpclient_resolve(const char* host, const short port) {
     addr.ai_flags = 0;
     addr.ai_protocol = IPPROTO_TCP;
 
-    struct addrinfo* result;
     char port_string[7] = {0};
     sprintf(port_string, "%d", port);
 
+    struct addrinfo* result = NULL;
     const int r = getaddrinfo(host, port_string, &addr, &result);
     if (r != 0) {
-        log_error("Http client can't resolve host: %s\n", gai_strerror(r));
+        log_error("__httpclient_resolve: http client can't resolve host: %s\n", gai_strerror(r));
         return NULL;
     }
 
-    int fd = 0;
-    struct addrinfo* rp;
+    int fd = -1;
+    struct addrinfo* rp = NULL;
     connection_t* connection = NULL;
     for (rp = result; rp != NULL; rp = rp->ai_next) {
         fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-        if (fd <= 0)
-            continue;
-
-        in_addr_t ip = ((struct sockaddr_in*)rp->ai_addr)->sin_addr.s_addr;
-        connection = connection_client_create(fd, ip, port);
-        if (connection == NULL)
-            goto failed;
-    }
-
-    failed:
-
-    if (connection == NULL) {
-        if (fd > 0) close(fd);
+        if (fd >= 0) {
+            const in_addr_t ip = ((struct sockaddr_in*)rp->ai_addr)->sin_addr.s_addr;
+            connection = connection_client_create(fd, ip, port);
+            if (connection == NULL) {
+                close(fd);
+                fd = -1;
+            }
+            else break;
+        }
     }
 
     freeaddrinfo(result);
+
+    if (connection == NULL)
+        if (fd > 0)
+            close(fd);
 
     return connection;
 }
