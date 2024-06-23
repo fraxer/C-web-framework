@@ -830,7 +830,6 @@ int __viewparser_variable_write_body(viewparser_t* parser, const char ch) {
         if (variable_item == NULL)
             return 0;
 
-        #pragma GCC diagnostic ignored "-Wanalyzer-malloc-leak"
         __viewparser_variable_item_append(variable_item, parser->current_tag);
 
         break;

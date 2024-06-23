@@ -1,131 +1,32 @@
 {
-    "name": "Sasha",
-    "first": "First",
-    "arr": [
+    "company": "My Company",
+    "users": [
         {
-            "name": "n1",
-            "list": [
-                "l1",
-                "l2",
-                "l3"
+            "name": "Alex",
+            "authorized": true,
+            "tasks": [
+                "Task 1",
+                "Task 2",
+                "Task 3"
             ]
         },
         {
-            "name": "n2",
-            "list": [
-                "l4",
-                "l5",
-                "l6"
+            "name": "Bonnie",
+            "authorized": false,
+            "tasks": [
+                "Task 4",
+                "Task 5",
+                "Task 6"
             ]
         },
         {
-            "name": "n2",
-            "list": [
-                "l4",
-                "l5",
-                "l5",
-                "l5",
-                "l5",
-                "l6"
-            ]
-        },
-        {
-            "name": "n2",
-            "list": [
-                "l4",
-                "l5",
-                "l5",
-                "l5",
-                "l5",
-                "l5",
-                "l6"
-            ]
-        },
-        {
-            "name": "n2",
-            "list": [
-                "l4",
-                "l5",
-                "l6"
-            ]
-        },
-        {
-            "name": "n2",
-            "list": [
-                "l4",
-                "l5",
-                "l6"
-            ]
-        },
-        {
-            "name": "n2",
-            "list": [
-                "l4",
-                "l5",
-                "l6"
+            "name": "Jon",
+            "authorized": true,
+            "tasks": [
+                "Task 7",
+                "Task 8",
+                "Task 9"
             ]
         }
-    ],
-    "object": {
-        "deep_object": {
-            "name": "My object string",
-            "моя переменная": "Моё значение"
-        },
-        "array1": [
-            "String 1",
-            "String 2",
-            "String 3",
-            "String 4"
-        ],
-        "array2": [
-            {
-                "array": [
-                    [
-                        {
-                            "name": "array2 1_",
-                            "sur": "asdas",
-                            "bool": true
-                        },
-                        {
-                            "name": "array2 2",
-                            "bool": false
-                        },
-                        {
-                            "name": "array2 3",
-                            "bool": true
-                        }
-                    ],
-                    [
-                        {
-                            "name": "array2 11"
-                        },
-                        {
-                            "name": "array2 22"
-                        },
-                        {
-                            "name": "array2 33"
-                        }
-                    ]
-                ]
-            }
-        ],
-        "array3": [
-            [
-                "String 1",
-                "String 2"
-            ],
-            [
-                "String 3",
-                "String 4"
-            ],
-            [
-                "String 5",
-                "String 6"
-            ]
-        ],
-        "if_true": true,
-        "if_false": false
-    },
-    "if_true": false,
-    "if_false": true
+    ]
 }

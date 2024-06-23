@@ -358,8 +358,8 @@ jsondoc_t* http1request_payload_jsonf(http1request_t* request, const char* field
     if (payload == NULL) return NULL;
 
     jsondoc_t* document = json_init();
-    if (!document) goto failed;
-    if (json_parse(document, payload) < 0) goto failed;
+    if (document == NULL) goto failed;
+    if (!json_parse(document, payload)) goto failed;
 
     failed:
 

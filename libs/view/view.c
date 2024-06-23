@@ -563,7 +563,10 @@ void __view_copy_loop_tags_free(view_copy_tags_t* copy_tags) {
  */
 view_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, view_tag_t* tag) {
     view_loop_copy_t* copy = malloc(sizeof * copy);
-    if (copy == NULL) return NULL;
+    if (copy == NULL) {
+        printf("__view_copy_loop_tag_add: failed to allocate memory for loop tag copy\n");
+        return NULL;
+    }
 
     copy->source_address = (view_tag_t*)tag;
     memcpy(&copy->tag, tag, sizeof(view_loop_t));

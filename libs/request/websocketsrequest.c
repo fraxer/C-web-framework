@@ -145,8 +145,8 @@ jsondoc_t* websocketsrequest_payload_json(websockets_protocol_t* protocol) {
     if (payload == NULL) return NULL;
 
     jsondoc_t* document = json_init();
-    if (!document) goto failed;
-    if (json_parse(document, payload) < 0) goto failed;
+    if (document == NULL) goto failed;
+    if (!json_parse(document, payload)) goto failed;
 
     failed:
 
