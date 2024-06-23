@@ -1,1 +1,0 @@
-.{{ object . deep_object . name }}.

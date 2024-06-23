@@ -1,16 +1,22 @@
-{% for item in object.array2[0].array[0] %}key: {{index}} - {{item.name}} - {{item.sur}}  {% if item.bool %} bool true {% endif %} asd
-{% endfor %}
+{* include /header.tpl *}
 
-{% for item in object.array1 %}key: {{index}} - {{item}}
-{% endfor %}
+{% if users[0].authorized %}
+user <{{users[0].name}}> authorized
+{% elseif users[1].authorized %}
+user <{{users[1].name}}> authorized
+{% elseif users[2].authorized %}
+user <{{users[2].name}}> authorized
+{% else %}
+nothing authorized users
+{%endif%}
 
-{% for item, idx in object.array1 %}key: {{idx}} - {{item}}
-{% endfor %}
-
-{% for item, idx in object.array1 %}key: {{idx}} - {{item}}
-{% endfor %}
-
-{% for item, idx in arr %}key: {{idx}}
-    {% for item2, idx2 in item.list %}key: {{idx}} - {{idx2}} - {{item.name}} - {{item2}}
+Users:
+{% for user, index in users %}
+    Id: {{index}}
+    Name: {{user.name}}
+    Authorized: {% if user.authorized %}authorized{% else %}not authorized{% endif %}
+    Tasks:
+    {% for task, index in user.tasks %}
+        #{{index}}: {{task}}
     {% endfor %}
 {% endfor %}
