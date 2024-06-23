@@ -29,7 +29,7 @@ int http1_write_head(connection_t*);
 int http1_write_request_head(connection_t*);
 int http1_write_body(connection_t*, char*, size_t, size_t);
 int http1_get_resource(connection_t*);
-int http1_get_file(connection_t*);
+void http1_get_file(connection_t*);
 int http1_get_redirect(connection_t*);
 int http1_apply_redirect(connection_t*);
 char* http1_get_fullpath(connection_t*);
@@ -57,6 +57,7 @@ void http1_wrap_write(connection_t* connection, char* buffer, size_t buffer_size
 
 void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
     http1requestparser_t* parser = ((http1request_t*)connection->request)->parser;
+    http1response_t* response = (http1response_t*)connection->response;
     http1parser_set_connection(parser, connection);
     http1parser_set_buffer(parser, buffer);
 
@@ -76,19 +77,19 @@ void http1_read(connection_t* connection, char* buffer, size_t buffer_size) {
             switch (http1parser_run(parser)) {
             case HTTP1PARSER_ERROR:
             case HTTP1PARSER_OUT_OF_MEMORY:
-                http1response_default((http1response_t*)connection->response, 500);
+                response->def(response, 500);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_PAYLOAD_LARGE:
-                http1response_default((http1response_t*)connection->response, 413);
+                response->def(response, 413);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_BAD_REQUEST:
-                http1response_default((http1response_t*)connection->response, 400);
+                response->def(response, 400);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_HOST_NOT_FOUND:
-                http1response_default((http1response_t*)connection->response, 404);
+                response->def(response, 404);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_CONTINUE:
@@ -171,7 +172,8 @@ void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
 }
 
 void http1_client_read(connection_t* connection, char* buffer, size_t buffer_size) {
-    http1responseparser_t* parser = ((http1response_t*)connection->response)->parser;
+    http1response_t* response = (http1response_t*)connection->response;
+    http1responseparser_t* parser = response->parser;
     http1responseparser_set_connection(parser, connection);
     http1responseparser_set_buffer(parser, buffer);
 
@@ -191,19 +193,19 @@ void http1_client_read(connection_t* connection, char* buffer, size_t buffer_siz
             switch (http1responseparser_run(parser)) {
             case HTTP1PARSER_ERROR:
             case HTTP1PARSER_OUT_OF_MEMORY:
-                http1response_default((http1response_t*)connection->response, 500);
+                response->def(response, 500);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_PAYLOAD_LARGE:
-                http1response_default((http1response_t*)connection->response, 413);
+                response->def(response, 413);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_BAD_REQUEST:
-                http1response_default((http1response_t*)connection->response, 400);
+                response->def(response, 400);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_HOST_NOT_FOUND:
-                http1response_default((http1response_t*)connection->response, 404);
+                response->def(response, 404);
                 connection->after_read_request(connection);
                 return;
             case HTTP1PARSER_CONTINUE:
@@ -339,9 +341,10 @@ int http1_write_body(connection_t* connection, char* buffer, size_t payload_size
 
 void http1_handle(connection_t* connection) {
     http1request_t* request = (http1request_t*)connection->request;
+    http1response_t* response = (http1response_t*)connection->response;
 
     if (request->method == ROUTE_NONE) {
-        http1response_default((http1response_t*)connection->response, 400);
+        response->def(response, 400);
         connection->after_read_request(connection);
         return;
     }
@@ -356,7 +359,7 @@ void http1_handle(connection_t* connection) {
     if (!http1request_has_payload(request))
         http1_get_file(connection);
     else
-        http1response_default((http1response_t*)connection->response, 400);
+        response->def(response, 400);
 
     connection->after_read_request(connection);
 }
@@ -409,11 +412,11 @@ int http1_get_resource(connection_t* connection) {
     return -1;
 }
 
-int http1_get_file(connection_t* connection) {
+void http1_get_file(connection_t* connection) {
     http1request_t* request = (http1request_t*)connection->request;
     http1response_t* response = (http1response_t*)connection->response;
 
-    return response->filen(response, request->path, request->path_length);
+    response->filen(response, request->path, request->path_length);
 }
 
 int http1_apply_redirect(connection_t* connection) {
@@ -422,10 +425,10 @@ int http1_apply_redirect(connection_t* connection) {
 
     switch (http1_get_redirect(connection)) {
     case REDIRECT_OUT_OF_MEMORY:
-        http1response_default(response, 500);
+        response->def(response, 500);
         return 1;
     case REDIRECT_LOOP_CYCLE:
-        http1response_default(response, 508);
+        response->def(response, 508);
         return 1;
     case REDIRECT_FOUND:
         http1response_redirect(response, request->uri, 301);

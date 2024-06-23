@@ -295,13 +295,7 @@ void template_engine(__attribute__((unused))http1request_t* request, http1respon
         return;
     }
 
-    char* content = render(document, "views", "/index.tpl");
-    json_free(document);
+    response->view(response, document, "views", "/index.tpl");
 
-    if (content != NULL) {
-        response->data(response, content);
-        free(content);
-    }
-    else
-        response->data(response, "Error content create");
+    json_free(document);
 }

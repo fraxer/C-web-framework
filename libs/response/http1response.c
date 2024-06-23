@@ -15,52 +15,56 @@
 #include "http1response.h"
 #include "http1responseparser.h"
 #include "storage.h"
+#include "view.h"
 
-void http1response_data(http1response_t*, const char*);
-void http1response_datan(http1response_t*, const char*, size_t);
-int http1response_file(http1response_t*, const char*);
-int http1response_filen(http1response_t*, const char*, size_t);
-int http1response_filef(http1response_t*, const char*, const char*, ...);
-http1_header_t* http1response_header(http1response_t*, const char*);
-int http1response_header_add(http1response_t*, const char*, const char*);
-int http1response_headern_add(http1response_t*, const char*, size_t, const char*, size_t);
-int http1response_headeru_add(http1response_t*, const char*, size_t, const char*, size_t);
-int http1response_header_exist(http1response_t*, const char*);
-const char* http1response_status_string(int);
-size_t http1response_status_length(int);
-size_t http1response_head_size(http1response_t*);
-int http1response_alloc_body(http1response_t*, const char*, size_t);
-int http1response_header_add_content_length(http1response_t*, size_t);
-const char* http1response_get_mimetype(const char*);
-void http1response_reset(http1response_t*);
-int http1response_keepalive_enabled(http1response_t*);
-void http1response_try_enable_gzip(http1response_t*, const char*);
-void http1response_try_enable_te(http1response_t*, const char*);
+static void __http1response_data(http1response_t* response, const char* data);
+static void __http1response_datan(http1response_t* response, const char* data, size_t length);
+static void __http1response_file(http1response_t* response, const char* path);
+static void __http1response_filen(http1response_t* response, const char* path, size_t length);
+static void __http1response_filef(http1response_t*, const char*, const char*, ...);
+static void __http1response_default(http1response_t* response, int status_code);
+static http1_header_t* __http1response_header_get(http1response_t* response, const char* key);
+static int __http1response_header_add(http1response_t* response, const char* key, const char* value);
+static int __http1response_headern_add(http1response_t* response, const char* key, size_t key_length, const char* value, size_t value_length);
+static int __http1response_headeru_add(http1response_t* response, const char* key, size_t key_length, const char* value, size_t value_length);
+static int __http1response_header_exist(http1response_t* response, const char* key);
+static size_t __http1response_status_length(int status_code);
+static size_t __http1response_head_size(http1response_t* response);
+static int __http1response_alloc_body(http1response_t* response, const char* data, size_t length);
+static int __http1response_header_add_content_length(http1response_t* response, size_t length);
+static const char* __http1response_get_mimetype(const char* extension);
+
+static int __http1response_keepalive_enabled(http1response_t* response);
+static void __http1response_try_enable_gzip(http1response_t* response, const char* directive);
+static void __http1response_try_enable_te(http1response_t* response, const char* directive);
 int http1response_deflate(http1response_t*, const char*, size_t, int, ssize_t(*callback)(connection_t*, const char*, size_t, int));
 int http1response_inflate(http1response_t*, const char*, size_t);
-int http1response_prepare_body(http1response_t*, size_t);
-void http1response_cookie_add(http1response_t*, cookie_t);
-void http1response_payload_free(http1_payload_t*);
-void http1response_init_payload(http1response_t*);
-void http1response_payload_parse_plain(http1response_t*);
+static int __http1response_prepare_body(http1response_t* response, size_t length);
+static void __http1response_cookie_add(http1response_t* response, cookie_t cookie);
+static void __http1response_payload_free(http1_payload_t* payload);
+static void __http1response_init_payload(http1response_t* response);
+static void __http1response_payload_parse_plain(http1response_t* response);
+static char* __http1response_payload(http1response_t* response);
+static file_content_t __http1response_payload_file(http1response_t* response);
+static jsondoc_t* __http1response_payload_json(http1response_t* response);
 
+static void __http1response_free(void* arg);
+static int __http1response_init_parser(http1response_t* response);
+static void __http1response_reset(http1response_t* response);
+static int __http1response_data_append(char* data, size_t* pos, const char* string, size_t length);
 
-http1response_t* http1response_alloc() {
-    return (http1response_t*)malloc(sizeof(http1response_t));
-}
+void __http1response_view(http1response_t* response, jsondoc_t* document, const char* storage_name, const char* path_format, ...);
 
-void http1response_free(void* arg) {
-    http1response_t* response = (http1response_t*)arg;
+void __http1response_free(void* arg) {
+    http1response_t* response = arg;
 
-    http1response_reset(response);
+    __http1response_reset(response);
     http1responseparser_free(response->parser);
 
     free(response);
-
-    response = NULL;
 }
 
-int http1response_init_parser(http1response_t* response) {
+int __http1response_init_parser(http1response_t* response) {
     response->parser = malloc(sizeof(http1responseparser_t));
     if (response->parser == NULL) return 0;
 
@@ -69,8 +73,28 @@ int http1response_init_parser(http1response_t* response) {
     return 1;
 }
 
+void __http1response_view(http1response_t* response, jsondoc_t* document, const char* storage_name, const char* path_format, ...)
+{
+    char path[PATH_MAX];
+
+    va_list args;
+    va_start(args, path_format);
+    vsnprintf(path, sizeof(path), path_format, args);
+    va_end(args);
+
+    char* data = render(document, storage_name, path);
+    if (data == NULL) {
+        response->data(response, "Render view error");
+        return;
+    }
+
+    response->data(response, data);
+
+    free(data);
+}
+
 http1response_t* http1response_create(connection_t* connection) {
-    http1response_t* response = http1response_alloc();
+    http1response_t* response = malloc(sizeof * response);
     if (response == NULL) return NULL;
 
     response->status_code = 200;
@@ -87,30 +111,31 @@ http1response_t* http1response_create(connection_t* connection) {
     response->last_header = NULL;
     response->ranges = NULL;
     response->connection = connection;
-    response->data = http1response_data;
-    response->datan = http1response_datan;
-    response->def = http1response_default;
+    response->data = __http1response_data;
+    response->datan = __http1response_datan;
+    response->view = __http1response_view;
+    response->def = __http1response_default;
     response->redirect = http1response_redirect;
-    response->header = http1response_header;
-    response->header_add = http1response_header_add;
-    response->headern_add = http1response_headern_add;
-    response->headeru_add = http1response_headeru_add;
-    response->header_add_content_length = http1response_header_add_content_length;
+    response->header = __http1response_header_get;
+    response->header_add = __http1response_header_add;
+    response->headern_add = __http1response_headern_add;
+    response->headeru_add = __http1response_headeru_add;
+    response->header_add_content_length = __http1response_header_add_content_length;
     response->header_remove = NULL;
     response->headern_remove = NULL;
-    response->file = http1response_file;
-    response->filen = http1response_filen;
-    response->filef = http1response_filef;
+    response->file = __http1response_file;
+    response->filen = __http1response_filen;
+    response->filef = __http1response_filef;
     response->deflate = http1response_deflate;
     response->inflate = http1response_inflate;
-    response->cookie_add = http1response_cookie_add;
-    response->base.reset = (void(*)(void*))http1response_reset;
-    response->base.free = (void(*)(void*))http1response_free;
+    response->cookie_add = __http1response_cookie_add;
+    response->base.reset = (void(*)(void*))__http1response_reset;
+    response->base.free = (void(*)(void*))__http1response_free;
     response->defstream.state = NULL;
 
-    http1response_init_payload(response);
+    __http1response_init_payload(response);
 
-    if (!http1response_init_parser(response)) {
+    if (!__http1response_init_parser(response)) {
         free(response);
         return NULL;
     }
@@ -118,7 +143,7 @@ http1response_t* http1response_create(connection_t* connection) {
     return response;
 }
 
-void http1response_reset(http1response_t* response) {
+void __http1response_reset(http1response_t* response) {
     response->status_code = 200;
     response->head_writed = 0;
     response->transfer_encoding = TE_NONE;
@@ -130,7 +155,7 @@ void http1response_reset(http1response_t* response) {
         (void)deflateEnd(&response->defstream);
     }
 
-    http1response_payload_free(&response->payload_);
+    __http1response_payload_free(&response->payload_);
 
     response->file_.close(&response->file_);
     response->file_pos = 0;
@@ -148,12 +173,12 @@ void http1response_reset(http1response_t* response) {
     http1responseparser_reset(response->parser);
 }
 
-size_t http1response_head_size(http1response_t* response) {
+size_t __http1response_head_size(http1response_t* response) {
     size_t size = 0;
 
     size += 9; // "HTTP/X.X "
 
-    size += http1response_status_length(response->status_code);
+    size += __http1response_status_length(response->status_code);
 
     http1_header_t* header = response->header_;
 
@@ -171,34 +196,39 @@ size_t http1response_head_size(http1response_t* response) {
     return size;
 }
 
-int http1response_data_append(char* data, size_t* pos, const char* string, size_t length) {
-    memcpy(&data[*pos], string, length);
+int __http1response_data_append(char* data, size_t* pos, const char* string, size_t length) {
+    if (data == NULL) return 0;
 
+    memcpy(&data[*pos], string, length);
     *pos += length;
 
-    return 0;
+    return 1;
 }
 
-void http1response_data(http1response_t* response, const char* data) {
-    http1response_datan(response, data, strlen(data));
+void __http1response_data(http1response_t* response, const char* data) {
+    __http1response_datan(response, data, strlen(data));
 }
 
-void http1response_datan(http1response_t* response, const char* data, size_t length) {
-    const char* connection = http1response_keepalive_enabled(response) ? "keep-alive" : "close";
-    if (response->headeru_add(response, "Content-Type", 12, "text/html; charset=utf-8", 24) == -1) return;
-    if (response->headeru_add(response, "Connection", 10, connection, strlen(connection)) == -1) return;
-    if (response->headeru_add(response, "Cache-Control", 13, "no-store, no-cache", 18) == -1) return;
+void __http1response_datan(http1response_t* response, const char* data, size_t length) {
+    const char* connection = __http1response_keepalive_enabled(response) ? "keep-alive" : "close";
+    if (!response->headeru_add(response, "Content-Type", 12, "text/html; charset=utf-8", 24)) return;
+    if (!response->headeru_add(response, "Connection", 10, connection, strlen(connection))) return;
+    if (!response->headeru_add(response, "Cache-Control", 13, "no-store, no-cache", 18)) return;
 
-    if (http1response_prepare_body(response, length) == -1) return;
+    if (!__http1response_prepare_body(response, length)) {
+        response->def(response, 500);
+        return;
+    }
 
-    http1response_alloc_body(response, data, length);
+    if (!__http1response_alloc_body(response, data, length))
+        response->def(response, 500);
 }
 
-int http1response_file(http1response_t* response, const char* path) {
-    return http1response_filen(response, path, strlen(path));
+void __http1response_file(http1response_t* response, const char* path) {
+    __http1response_filen(response, path, strlen(path));
 }
 
-int http1response_filen(http1response_t* response, const char* path, size_t length) {
+void __http1response_filen(http1response_t* response, const char* path, size_t length) {
     const char* root = response->connection->server->root;
     size_t root_length = response->connection->server->root_length;
     size_t fullpath_length = response->connection->server->root_length + length;
@@ -221,73 +251,72 @@ int http1response_filen(http1response_t* response, const char* path, size_t leng
     {
         size_t pos = 0;
 
-        http1response_data_append(fullpath, &pos, root, root_length);
+        __http1response_data_append(fullpath, &pos, root, root_length);
 
-        if (path[0] != '/') http1response_data_append(fullpath, &pos, "/", 1);
+        if (path[0] != '/') __http1response_data_append(fullpath, &pos, "/", 1);
 
-        http1response_data_append(fullpath, &pos, path, length);
+        __http1response_data_append(fullpath, &pos, path, length);
 
         fullpath[fullpath_length] = 0;
 
         struct stat stat_obj;
         if (stat(fullpath, &stat_obj) == -1 && errno == ENOENT) {
-            http1response_default(response, 404);
-            return -1;
+            response->def(response, 404);
+            return;
         }
 
         if (S_ISDIR(stat_obj.st_mode)) {
             if (index == NULL) {
-                http1response_default(response, 403);
-                return -1;
+                response->def(response, 403);
+                return;
             }
 
             size_t index_pos = 0;
 
-            http1response_data_append(indexpath, &index_pos, fullpath, fullpath_length);
+            __http1response_data_append(indexpath, &index_pos, fullpath, fullpath_length);
 
             if (fullpath[fullpath_length - 1] != '/') {
-                http1response_data_append(indexpath, &index_pos, "/", 1);
+                __http1response_data_append(indexpath, &index_pos, "/", 1);
             }
 
-            http1response_data_append(indexpath, &index_pos, index->value, index->length);
+            __http1response_data_append(indexpath, &index_pos, index->value, index->length);
 
             indexpath[indexpath_length] = 0;
 
             if (stat(indexpath, &stat_obj) == -1 && errno == ENOENT) {
-                http1response_default(response, 404);
-                return -1;
+                response->def(response, 404);
+                return;
             }
             if (!S_ISREG(stat_obj.st_mode)) {
-                http1response_default(response, 403);
-                return -1;
+                response->def(response, 403);
+                return;
             }
 
             resultpath = indexpath;
         }
         else if (!S_ISREG(stat_obj.st_mode)) {
-            http1response_default(response, 404);
-            return -1;
+            response->def(response, 404);
+            return;
         }
     }
 
     response->file_ = file_open(resultpath, O_RDONLY);
     if (!response->file_.ok) {
-        http1response_default(response, 404);
-        return -1;
+        response->def(response, 404);
+        return;
     }
 
     const char* ext = file_extention(resultpath);
-    const char* mimetype = http1response_get_mimetype(ext);
-    const char* connection = http1response_keepalive_enabled(response) ? "keep-alive" : "close";
-    if (response->headeru_add(response, "Connection", 10, connection, strlen(connection)) == -1) return -1;
-    if (response->headeru_add(response, "Content-Type", 12, mimetype, strlen(mimetype)) == -1) return -1;
+    const char* mimetype = __http1response_get_mimetype(ext);
+    const char* connection = __http1response_keepalive_enabled(response) ? "keep-alive" : "close";
+    if (!response->headeru_add(response, "Connection", 10, connection, strlen(connection))) return;
+    if (!response->headeru_add(response, "Content-Type", 12, mimetype, strlen(mimetype))) return;
 
-    if (http1response_prepare_body(response, response->file_.size) == -1) return -1;
-
-    return 0;
+    if (!__http1response_prepare_body(response, response->file_.size))
+        response->def(response, 500);
 }
 
-int http1response_filef(http1response_t* response, const char* storage_name, const char* path_format, ...) {
+void __http1response_filef(http1response_t* response, const char* storage_name, const char* path_format, ...) {
     char path[PATH_MAX];
     va_list args;
     va_start(args, path_format);
@@ -296,25 +325,23 @@ int http1response_filef(http1response_t* response, const char* storage_name, con
 
     response->file_ = storage_file_get(storage_name, path);
     if (!response->file_.ok) {
-        http1response_default(response, 404);
-        return -1;
+        response->def(response, 404);
+        return;
     }
 
     const char* ext = file_extention(response->file_.name);
-    const char* mimetype = http1response_get_mimetype(ext);
-    const char* connection = http1response_keepalive_enabled(response) ? "keep-alive" : "close";
-    if (response->headeru_add(response, "Connection", 10, connection, strlen(connection)) == -1) return -1;
-    if (response->headeru_add(response, "Content-Type", 12, mimetype, strlen(mimetype)) == -1) return -1;
+    const char* mimetype = __http1response_get_mimetype(ext);
+    const char* connection = __http1response_keepalive_enabled(response) ? "keep-alive" : "close";
+    if (!response->headeru_add(response, "Connection", 10, connection, strlen(connection))) return;
+    if (!response->headeru_add(response, "Content-Type", 12, mimetype, strlen(mimetype))) return;
 
-    if (http1response_prepare_body(response, response->file_.size) == -1) return -1;
-
-    return 0;
+    if (!__http1response_prepare_body(response, response->file_.size))
+        response->def(response, 500);
 }
 
-http1_header_t* http1response_header(http1response_t* response, const char* key) {
+http1_header_t* __http1response_header_get(http1response_t* response, const char* key) {
     http1_header_t* header = response->header_;
-
-    while (header) {
+    while (header != NULL) {
         if (cmpstr_lower(header->key, key))
             return header;
 
@@ -324,23 +351,23 @@ http1_header_t* http1response_header(http1response_t* response, const char* key)
     return NULL;
 }
 
-int http1response_header_add(http1response_t* response, const char* key, const char* value) {
-    return http1response_headern_add(response, key, strlen(key), value, strlen(value));
+int __http1response_header_add(http1response_t* response, const char* key, const char* value) {
+    return __http1response_headern_add(response, key, strlen(key), value, strlen(value));
 }
 
-int http1response_headern_add(http1response_t* response, const char* key, size_t key_length, const char* value, size_t value_length) {
+int __http1response_headern_add(http1response_t* response, const char* key, size_t key_length, const char* value, size_t value_length) {
     if (response->ranges &&
         (cmpstr_lower(key, "Transfer-Encoding") ||
          cmpstr_lower(key, "Content-Encoding")
     )) {
-        return 0;
+        return 1;
     }
     
     http1_header_t* header = http1_header_create(key, key_length, value, value_length);
-    if (header == NULL) return -1;
+    if (header == NULL) return 0;
     if (header->key == NULL || header->value == NULL) {
         http1_header_free(header);
-        return -1;
+        return 0;
     }
 
     if (response->header_ == NULL)
@@ -353,10 +380,10 @@ int http1response_headern_add(http1response_t* response, const char* key, size_t
 
     if (!response->ranges) {
         if (cmpstr_lower(header->key, "Content-Type")) {
-            http1response_try_enable_gzip(response, header->value);
+            __http1response_try_enable_gzip(response, header->value);
         }
         else if (cmpstr_lower(header->key, "Transfer-Encoding")) {
-            http1response_try_enable_te(response, header->value);
+            __http1response_try_enable_te(response, header->value);
         }
         else if (cmpstr_lower(header->key, "Content-Encoding") &&
             cmpstr_lower(header->value, "gzip")) {
@@ -364,17 +391,17 @@ int http1response_headern_add(http1response_t* response, const char* key, size_t
         }
     }
 
+    return 1;
+}
+
+int __http1response_headeru_add(http1response_t* response, const char* key, size_t key_length, const char* value, size_t value_length) {
+    if (!__http1response_header_exist(response, key))
+        return __http1response_headern_add(response, key, key_length, value, value_length);
+
     return 0;
 }
 
-int http1response_headeru_add(http1response_t* response, const char* key, size_t key_length, const char* value, size_t value_length) {
-    if (!http1response_header_exist(response, key))
-        return http1response_headern_add(response, key, key_length, value, value_length);
-
-    return 0;
-}
-
-int http1response_header_exist(http1response_t* response, const char* key) {
+int __http1response_header_exist(http1response_t* response, const char* key) {
     http1_header_t* header = response->header_;
     while (header) {
         if (cmpstr_lower(header->key, key))
@@ -386,18 +413,15 @@ int http1response_header_exist(http1response_t* response, const char* key) {
     return 0;
 }
 
-int http1response_header_add_content_length(http1response_t* response, size_t length) {
-    if (length == 0) {
+int __http1response_header_add_content_length(http1response_t* response, size_t length) {
+    if (length == 0)
         return response->headern_add(response, "Content-Length", 14, "0", 1);
-    }
 
     size_t value = length;
     size_t content_length = 0;
-
     while (value) { content_length++; value /= 10; }
 
     char content_string[content_length + 1];
-
     sprintf(content_string, "%ld", length);
 
     return response->headern_add(response, "Content-Length", 14, content_string, content_length);
@@ -472,7 +496,7 @@ const char* http1response_status_string(int status_code) {
     return NULL;
 }
 
-size_t http1response_status_length(int status_code) {
+size_t __http1response_status_length(int status_code) {
     switch (status_code) {
     case 100: return 14;
     case 101: return 25;
@@ -541,16 +565,14 @@ size_t http1response_status_length(int status_code) {
     return 0;
 }
 
-const char* http1response_get_mimetype(const char* extension) {
+const char* __http1response_get_mimetype(const char* extension) {
     const char* mimetype = mimetype_find_type(extension);
 
-    if (mimetype == NULL) return "text/plain";
-
-    return mimetype;
+    return mimetype == NULL ? "text/plain" : mimetype;
 }
 
-void http1response_default(http1response_t* response, int status_code) {
-    http1response_reset(response);
+void __http1response_default(http1response_t* response, int status_code) {
+    __http1response_reset(response);
     response->status_code = status_code;
 
     const char* str1 = "<html><head></head><body style=\"text-align:center;margin:20px\"><h1>";
@@ -559,7 +581,7 @@ void http1response_default(http1response_t* response, int status_code) {
     const char* str2 = "</h1></body></html>";
     size_t str2_length = strlen(str2);
 
-    size_t status_code_length = http1response_status_length(status_code) - 2;
+    size_t status_code_length = __http1response_status_length(status_code) - 2;
     size_t data_length = str1_length + status_code_length + str2_length;
     size_t pos = 0;
 
@@ -572,46 +594,45 @@ void http1response_default(http1response_t* response, int status_code) {
 
     data[data_length] = 0;
 
-    http1response_datan(response, data, data_length);
+    response->datan(response, data, data_length);
 }
 
-int http1response_keepalive_enabled(http1response_t* response) {
+int __http1response_keepalive_enabled(http1response_t* response) {
     return response->connection->keepalive_enabled;
 }
 
 void http1response_redirect(http1response_t* response, const char* path, int status_code) {
-    http1response_reset(response);
-
+    __http1response_reset(response);
     response->status_code = status_code;
 
-    if (response->header_add(response, "Location", path) == -1) return;
+    if (!response->header_add(response, "Location", path))
+        return;
 
-    if (http1response_redirect_is_external(path)) {
-        if (response->header_add(response, "Connection", "Close") == -1) return;
-    }
+    if (http1response_redirect_is_external(path))
+        response->header_add(response, "Connection", "Close");
 }
 
 http1response_head_t http1response_create_head(http1response_t* response) {
     http1response_head_t head = {
-        .size = http1response_head_size(response),
+        .size = __http1response_head_size(response),
         .data = malloc(head.size)
     };
 
     size_t pos = 0;
-    if (http1response_data_append(head.data, &pos, "HTTP/1.1 ", 9) == -1) return head;
-    if (http1response_data_append(head.data, &pos, http1response_status_string(response->status_code), http1response_status_length(response->status_code)) == -1) return head;
+    if (!__http1response_data_append(head.data, &pos, "HTTP/1.1 ", 9)) return head;
+    if (!__http1response_data_append(head.data, &pos, http1response_status_string(response->status_code), __http1response_status_length(response->status_code))) return head;
 
     http1_header_t* header = response->header_;
     while (header) {
-        if (http1response_data_append(head.data, &pos, header->key, header->key_length) == -1) return head;
-        if (http1response_data_append(head.data, &pos, ": ", 2) == -1) return head;
-        if (http1response_data_append(head.data, &pos, header->value, header->value_length) == -1) return head;
-        if (http1response_data_append(head.data, &pos, "\r\n", 2) == -1) return head;
+        if (!__http1response_data_append(head.data, &pos, header->key, header->key_length)) return head;
+        if (!__http1response_data_append(head.data, &pos, ": ", 2)) return head;
+        if (!__http1response_data_append(head.data, &pos, header->value, header->value_length)) return head;
+        if (!__http1response_data_append(head.data, &pos, "\r\n", 2)) return head;
 
         header = header->next;
     }
 
-    if (http1response_data_append(head.data, &pos, "\r\n", 2) == -1) return head;
+    if (!__http1response_data_append(head.data, &pos, "\r\n", 2)) return head;
 
     return head;
 }
@@ -670,6 +691,7 @@ int http1response_inflate(http1response_t* response, const char* data, size_t le
     const size_t buffer_length = length < max_buffer_size ? max_buffer_size : length;
     unsigned char buffer[buffer_length];
     int result = 0;
+    int ret = 0;
 
     z_stream* defstream = &response->defstream;
     if (response->defstream.state == NULL) {
@@ -686,7 +708,6 @@ int http1response_inflate(http1response_t* response, const char* data, size_t le
     defstream->avail_in = (uInt)(length);
     defstream->next_in = (Bytef*)data;
 
-    int ret = 0;
     do {
         defstream->avail_out = buffer_length;
         defstream->next_out = buffer;
@@ -716,20 +737,18 @@ int http1response_inflate(http1response_t* response, const char* data, size_t le
     return result;
 }
 
-int http1response_alloc_body(http1response_t* response, const char* data, size_t length) {
+int __http1response_alloc_body(http1response_t* response, const char* data, size_t length) {
     response->body.data = malloc(length);
-    if (response->body.data == NULL) return -1;
+    if (response->body.data == NULL) return 0;
 
     memcpy(response->body.data, data, length);
-
     response->body.size = length;
 
-    return 0;
+    return 1;
 }
 
-void http1response_try_enable_gzip(http1response_t* response, const char* directive) {
+void __http1response_try_enable_gzip(http1response_t* response, const char* directive) {
     const jsontok_t* token_gzip = config()->main.gzip;
-
     for (jsonit_t it = json_init_it(token_gzip); !json_end_it(&it); it = json_next_it(&it)) {
         jsontok_t* token_mimetype = json_it_value(&it);
         if (!json_is_string(token_mimetype)) return;
@@ -742,15 +761,13 @@ void http1response_try_enable_gzip(http1response_t* response, const char* direct
     }
 }
 
-void http1response_try_enable_te(http1response_t* response, const char* directive) {
-    if (cmpstr_lower(directive, "chunked")) {
+void __http1response_try_enable_te(http1response_t* response, const char* directive) {
+    if (cmpstr_lower(directive, "chunked"))
         response->transfer_encoding = TE_CHUNKED;
-    }
 }
 
-http1_ranges_t* http1response_init_ranges() {
-    http1_ranges_t* range = malloc(sizeof* range);
-
+http1_ranges_t* http1response_init_ranges(void) {
+    http1_ranges_t* range = malloc(sizeof * range);
     if (range == NULL) return NULL;
 
     range->start = -1;
@@ -771,18 +788,18 @@ void http1response_free_ranges(http1_ranges_t* ranges) {
     }
 }
 
-int http1response_prepare_body(http1response_t* response, size_t length) {
-    if (response->headeru_add(response, "Accept-Ranges", 13, "bytes", 5) == -1) return -1;
+int __http1response_prepare_body(http1response_t* response, size_t length) {
+    if (!response->headeru_add(response, "Accept-Ranges", 13, "bytes", 5)) return 0;
 
     if (!response->ranges) {
         if (response->content_encoding == CE_GZIP) {
-            if (response->headeru_add(response, "Transfer-Encoding", 17, "chunked", 7) == -1) return -1;
-            if (response->headeru_add(response, "Content-Encoding", 16, "gzip", 4) == -1) return -1;
+            if (!response->headeru_add(response, "Transfer-Encoding", 17, "chunked", 7)) return 0;
+            if (!response->headeru_add(response, "Content-Encoding", 16, "gzip", 4)) return 0;
         }
 
         if (response->transfer_encoding != TE_CHUNKED) {
-            if (!http1response_header_exist(response, "Content-Length"))
-                if (http1response_header_add_content_length(response, length) == -1) return -1;
+            if (!__http1response_header_exist(response, "Content-Length"))
+                if (!__http1response_header_add_content_length(response, length)) return 0;
         }
     }
     // one range
@@ -790,8 +807,8 @@ int http1response_prepare_body(http1response_t* response, size_t length) {
         if (response->ranges->start > (ssize_t)length) {
             http1response_free_ranges(response->ranges);
             response->ranges = NULL;
-            http1response_default(response, 416);
-            return -1;
+            response->def(response, 416);
+            return 0;
         }
 
         response->status_code = 206;
@@ -808,18 +825,18 @@ int http1response_prepare_body(http1response_t* response, size_t length) {
         char bytes[70] = {0};
         int size = snprintf(bytes, sizeof(bytes), "bytes %ld-%ld/%ld", start, end - 1, length);
 
-        if (response->headeru_add(response, "Content-Range", 13, bytes, size) == -1) return -1;
-        if (http1response_header_add_content_length(response, end - start) == -1) return -1;
+        if (!response->headeru_add(response, "Content-Range", 13, bytes, size)) return 0;
+        if (!__http1response_header_add_content_length(response, end - start)) return 0;
     }
     // many ranges
     else if (response->ranges->next) {
         // TODO
     }
 
-    return 0;
+    return 1;
 }
 
-void http1response_cookie_add(http1response_t* response, cookie_t cookie) {
+void __http1response_cookie_add(http1response_t* response, cookie_t cookie) {
     if (cookie.name == NULL || cookie.name[0] == 0)
         return;
     if (cookie.value == NULL || cookie.value[0] == 0)
@@ -944,7 +961,7 @@ int http1response_has_payload(http1response_t* response) {
         || response->transfer_encoding != TE_NONE;
 }
 
-void http1response_payload_free(http1_payload_t* payload) {
+void __http1response_payload_free(http1_payload_t* payload) {
     if (payload->file.fd <= 0) return;
 
     payload->file.close(&payload->file);
@@ -962,7 +979,7 @@ void http1response_payload_free(http1_payload_t* payload) {
     payload->part = NULL;
 }
 
-void http1response_init_payload(http1response_t* response) {
+void __http1response_init_payload(http1response_t* response) {
     response->payload_.pos = 0;
     response->payload_.file = file_alloc();
     response->payload_.path = NULL;
@@ -970,12 +987,12 @@ void http1response_init_payload(http1response_t* response) {
     response->payload_.boundary = NULL;
     response->payload_.type = NONE;
 
-    response->payload = http1response_payload;
-    response->payload_file = http1response_payload_file;
-    response->payload_json = http1response_payload_json;
+    response->payload = __http1response_payload;
+    response->payload_file = __http1response_payload_file;
+    response->payload_json = __http1response_payload_json;
 }
 
-void http1response_payload_parse_plain(http1response_t* response) {
+void __http1response_payload_parse_plain(http1response_t* response) {
     http1_payloadpart_t* part = http1_payloadpart_create();
     if (part == NULL) return;
 
@@ -985,8 +1002,8 @@ void http1response_payload_parse_plain(http1response_t* response) {
     response->payload_.part = part;
 }
 
-char* http1response_payload(http1response_t* response) {
-    http1response_payload_parse_plain(response);
+char* __http1response_payload(http1response_t* response) {
+    __http1response_payload_parse_plain(response);
 
     http1_payloadpart_t* part = response->payload_.part;
     if (part == NULL) return NULL;
@@ -1008,8 +1025,8 @@ char* http1response_payload(http1response_t* response) {
     return buffer;
 }
 
-file_content_t http1response_payload_file(http1response_t* response) {
-    http1response_payload_parse_plain(response);
+file_content_t __http1response_payload_file(http1response_t* response) {
+    __http1response_payload_parse_plain(response);
 
     file_content_t file_content = file_content_create(0, NULL, 0, 0);
     http1_payloadpart_t* part = response->payload_.part;
@@ -1036,8 +1053,8 @@ file_content_t http1response_payload_file(http1response_t* response) {
     return file_content;
 }
 
-jsondoc_t* http1response_payload_json(http1response_t* response) {
-    char* payload = http1response_payload(response);
+jsondoc_t* __http1response_payload_json(http1response_t* response) {
+    char* payload = __http1response_payload(response);
     if (payload == NULL) return NULL;
 
     jsondoc_t* document = json_init();
