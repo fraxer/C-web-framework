@@ -2,9 +2,9 @@
 
 #include "viewcommon.h"
 
-void __view_tag_free(view_tag_t* tag);
-void __view_variable_items_free(view_variable_item_t* item);
-void __view_variable_indexes_free(view_variable_index_t* item_index);
+static void __view_tag_free(view_tag_t* tag);
+static void __view_variable_items_free(view_variable_item_t* item);
+static void __view_variable_indexes_free(view_variable_index_t* item_index);
 
 /**
  * Free a view tag.
