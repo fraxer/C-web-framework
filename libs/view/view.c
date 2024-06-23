@@ -8,16 +8,16 @@
 #include "viewstore.h"
 #include "view.h"
 
-char* __view_render(jsondoc_t* document, const char* storage_name, const char* path);
-char* __view_make_content(view_t* view, jsondoc_t* document);
-int __view_get_condition_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag);
-const char* __view_get_tag_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag);
-const jsontok_t* __view_get_loop_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag);
-void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy_tags_t* copy_tags, view_tag_t* tag);
-void __view_copy_loop_tags_init(view_copy_tags_t* copy_tags);
-void __view_copy_loop_tags_free(view_copy_tags_t* copy_tags);
-view_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, view_tag_t* tag);
-view_loop_t* __view_copy_loop_tag_get(view_copy_tags_t* copy_tags, view_tag_t* tag);
+static char* __view_render(jsondoc_t* document, const char* storage_name, const char* path);
+static char* __view_make_content(view_t* view, jsondoc_t* document);
+static int __view_get_condition_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag);
+static const char* __view_get_tag_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag);
+static const jsontok_t* __view_get_loop_value(view_copy_tags_t* copy_tags, jsondoc_t* document, view_tag_t* tag);
+static void __view_build_content_recursive(view_t* view, jsondoc_t* document, view_copy_tags_t* copy_tags, view_tag_t* tag);
+static void __view_copy_loop_tags_init(view_copy_tags_t* copy_tags);
+static void __view_copy_loop_tags_free(view_copy_tags_t* copy_tags);
+static view_loop_t* __view_copy_loop_tag_add(view_copy_tags_t* copy_tags, view_tag_t* tag);
+static view_loop_t* __view_copy_loop_tag_get(view_copy_tags_t* copy_tags, view_tag_t* tag);
 
 /**
  * Render a view using a JSON document and a storage.

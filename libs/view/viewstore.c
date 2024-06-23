@@ -5,8 +5,8 @@
 #include "log.h"
 #include "helpers.h"
 
-view_t* __viewstore_view_create(view_tag_t* tag, const char* path);
-void __viewstore_view_free(view_t* view);
+static view_t* __viewstore_view_create(view_tag_t* tag, const char* path);
+static void __viewstore_view_free(view_t* view);
 
 static viewstore_t* __store = NULL;
 
