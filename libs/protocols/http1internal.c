@@ -6,6 +6,7 @@
 #include "log.h"
 #include "openssl.h"
 #include "route.h"
+#include "config.h"
 #include "connection_queue.h"
 #include "http1request.h"
 #include "http1response.h"
@@ -276,13 +277,11 @@ ssize_t http1_write_chunked(connection_t* connection, const char* data, size_t l
         memcpy(buf + pos, "0\r\n\r\n", 5); pos += 5;
     }
 
-    ssize_t writed = http1_write_internal(connection, buf, pos);
+    const ssize_t writed = http1_write_internal(connection, buf, pos);
 
     free(buf);
 
-    if (writed < 0) return -1;
-
-    return length;
+    return writed;
 }
 
 int http1_write_head(connection_t* connection) {
@@ -323,7 +322,9 @@ int http1_write_body(connection_t* connection, char* buffer, size_t payload_size
             const size_t source_size = size;
             const int end = payload_size <= source_size;
 
-            if (!response->deflate(response, buffer, size, end, http1_write_chunked)) goto failed;
+            if (!connection->gzip.deflate(connection, buffer, size, end, http1_write_chunked)) goto failed;
+
+            // if (!response->deflate(response, buffer, size, end, http1_write_chunked)) goto failed;
 
             writed = source_size;
         } else {

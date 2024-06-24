@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <errno.h>
+#include <string.h>
 
 #include "log.h"
 #include "openssl.h"
@@ -11,11 +12,11 @@ void __connection_free_queue_item(void* arg);
 
 connection_t* connection_server_create(connection_t* socket_connection) {
     connection_t* result = NULL;
-
     struct sockaddr in_addr;
     socklen_t in_len = sizeof(in_addr);
 
-    int connfd = accept(socket_connection->fd, &in_addr, &in_len);
+    #pragma GCC diagnostic ignored "-Wanalyzer-fd-leak"
+    const int connfd = accept(socket_connection->fd, &in_addr, &in_len);
     if (connfd == -1)
         return NULL;
 
@@ -75,6 +76,10 @@ connection_t* connection_alloc(int fd, mpxapi_t* api, in_addr_t ip, unsigned sho
     connection->switch_to_protocol = NULL;
     connection->queue = cqueue_create();
 
+    if (!gzip_init(&connection->gzip)) {
+        free(connection);
+        return NULL;
+    }
     if (connection->queue == NULL) {
         free(connection);
         return NULL;
@@ -92,6 +97,8 @@ void connection_free(connection_t* connection) {
     if (connection == NULL) return;
 
     broadcast_clear(connection);
+
+    connection->gzip.free(&connection->gzip);
 
     if (connection->ssl != NULL) {
         SSL_free_buffers(connection->ssl);
@@ -117,6 +124,8 @@ void connection_free(connection_t* connection) {
 
 void connection_reset(connection_t* connection) {
     if (connection == NULL) return;
+
+    connection->gzip.reset(&connection->gzip);
 
     if (connection->request != NULL)
         connection->request->reset(connection->request);
