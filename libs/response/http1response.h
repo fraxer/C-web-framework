@@ -42,7 +42,6 @@ typedef struct http1response {
 
     void* parser;
     connection_t* connection;
-    z_stream defstream;
 
     void(*data)(struct http1response*, const char*);
     void(*datan)(struct http1response*, const char*, size_t);
@@ -59,8 +58,6 @@ typedef struct http1response {
     void(*file)(struct http1response*, const char*);
     void(*filen)(struct http1response*, const char*, size_t);
     void(*filef)(struct http1response*, const char*, const char*, ...);
-    int(*deflate)(struct http1response*, const char*, size_t, int, ssize_t(*)(connection_t*, const char*, size_t, int));
-    int(*inflate)(struct http1response*, const char*, size_t);
     void(*cookie_add)(struct http1response*, cookie_t);
 
     char*(*payload)(struct http1response*);

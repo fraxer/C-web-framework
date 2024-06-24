@@ -147,8 +147,10 @@ int __http1teparser_read_chunk(http1teparser_t* parser) {
     http1response_t* response = (http1response_t*)parser->connection->response;
 
     if (response->content_encoding == CE_GZIP) {
-        if (!response->inflate(response, &parser->buffer[parser->pos], temp_chunk_size))
+        if (!parser->connection->gzip.inflate(parser->connection, &parser->buffer[parser->pos], temp_chunk_size))
             return 0;
+        // if (!response->inflate(response, &parser->buffer[parser->pos], temp_chunk_size))
+        //     return 0;
     }
     else {
         if (!response->payload_.file.append_content(&response->payload_.file, &parser->buffer[parser->pos], temp_chunk_size))

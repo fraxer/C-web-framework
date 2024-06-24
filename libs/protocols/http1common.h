@@ -2,7 +2,6 @@
 #define __HTTP1COMMON__
 
 #include <stddef.h>
-#include <zlib.h>
 
 #include "file.h"
 

@@ -285,8 +285,10 @@ int __http1responseparser_parse_payload(http1responseparser_t* parser) {
     }
     else {
         if (response->content_encoding == CE_GZIP) {
-            if (!response->inflate(response, &parser->buffer[parser->pos_start], string_len))
+            if (!parser->connection->gzip.inflate(parser->connection, &parser->buffer[parser->pos_start], string_len))
                 return HTTP1PARSER_ERROR;
+            // if (!response->inflate(response, &parser->buffer[parser->pos_start], string_len))
+            //     return HTTP1PARSER_ERROR;
         }
         else {
             if (!response->payload_.file.append_content(&response->payload_.file, &parser->buffer[parser->pos_start], string_len))

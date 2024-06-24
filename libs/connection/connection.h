@@ -9,6 +9,7 @@
 #include "request.h"
 #include "response.h"
 #include "cqueue.h"
+#include "gzip.h"
 
 struct mpxapi;
 struct connection;
@@ -32,6 +33,7 @@ typedef struct connection {
     atomic_bool locked;
     atomic_bool onwrite;
     atomic_int cqueue;
+    gzip_t gzip;
     struct mpxapi* api;
     SSL* ssl;
     SSL_CTX* ssl_ctx;
