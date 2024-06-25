@@ -147,10 +147,24 @@ int __http1teparser_read_chunk(http1teparser_t* parser) {
     http1response_t* response = (http1response_t*)parser->connection->response;
 
     if (response->content_encoding == CE_GZIP) {
-        if (!parser->connection->gzip.inflate(parser->connection, &parser->buffer[parser->pos], temp_chunk_size))
+        gzip_t* const gzip = &parser->connection->gzip;
+        char buffer[GZIP_BUFFER];
+
+        if (!gzip_inflate_init(gzip, &parser->buffer[parser->pos], temp_chunk_size))
             return 0;
-        // if (!response->inflate(response, &parser->buffer[parser->pos], temp_chunk_size))
-        //     return 0;
+
+        do {
+            const size_t writed = gzip_inflate(gzip, buffer, GZIP_BUFFER);
+            if (gzip_inflate_has_error(gzip))
+                return 0;
+
+            if (writed > 0)
+                response->payload_.file.append_content(&response->payload_.file, buffer, writed);
+        } while (gzip_want_continue(gzip));
+
+        if (gzip_is_end(gzip))
+            if (!gzip_inflate_reset(gzip))
+                return 0;
     }
     else {
         if (!response->payload_.file.append_content(&response->payload_.file, &parser->buffer[parser->pos], temp_chunk_size))

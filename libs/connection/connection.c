@@ -1,6 +1,5 @@
 #include <unistd.h>
 #include <errno.h>
-#include <string.h>
 
 #include "log.h"
 #include "openssl.h"
@@ -98,7 +97,7 @@ void connection_free(connection_t* connection) {
 
     broadcast_clear(connection);
 
-    connection->gzip.free(&connection->gzip);
+    gzip_free(&connection->gzip);
 
     if (connection->ssl != NULL) {
         SSL_free_buffers(connection->ssl);
@@ -125,7 +124,7 @@ void connection_free(connection_t* connection) {
 void connection_reset(connection_t* connection) {
     if (connection == NULL) return;
 
-    connection->gzip.reset(&connection->gzip);
+    gzip_reset(&connection->gzip);
 
     if (connection->request != NULL)
         connection->request->reset(connection->request);

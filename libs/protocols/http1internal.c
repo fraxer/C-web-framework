@@ -322,9 +322,27 @@ int http1_write_body(connection_t* connection, char* buffer, size_t payload_size
             const size_t source_size = size;
             const int end = payload_size <= source_size;
 
-            if (!connection->gzip.deflate(connection, buffer, size, end, http1_write_chunked)) goto failed;
+            gzip_t* const gzip = &connection->gzip;
+            char compress_buffer[GZIP_BUFFER];
 
-            // if (!response->deflate(response, buffer, size, end, http1_write_chunked)) goto failed;
+            if (!gzip_deflate_init(gzip, buffer, size))
+                return -1;
+
+            do {
+                const size_t compress_writed = gzip_deflate(gzip, compress_buffer, GZIP_BUFFER, end);
+                if (gzip_deflate_has_error(gzip))
+                    return -1;
+
+                writed = http1_write_chunked(connection, compress_buffer, compress_writed, end);
+                if (writed < 0)
+                    return writed;
+
+                if (gzip_is_end(gzip))
+                    break;
+            } while (gzip_want_continue(gzip));
+
+            if (end && !gzip_deflate_reset(gzip))
+                return -1;
 
             writed = source_size;
         } else {
@@ -334,8 +352,6 @@ int http1_write_body(connection_t* connection, char* buffer, size_t payload_size
     else {
         writed = http1_write_internal(connection, buffer, size);
     }
-
-    failed:
 
     return writed;
 }
