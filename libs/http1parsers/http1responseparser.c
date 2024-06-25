@@ -285,10 +285,24 @@ int __http1responseparser_parse_payload(http1responseparser_t* parser) {
     }
     else {
         if (response->content_encoding == CE_GZIP) {
-            if (!parser->connection->gzip.inflate(parser->connection, &parser->buffer[parser->pos_start], string_len))
+            gzip_t* const gzip = &parser->connection->gzip;
+            char buffer[GZIP_BUFFER];
+
+            if (!gzip_inflate_init(gzip, &parser->buffer[parser->pos_start], string_len))
                 return HTTP1PARSER_ERROR;
-            // if (!response->inflate(response, &parser->buffer[parser->pos_start], string_len))
-            //     return HTTP1PARSER_ERROR;
+
+            do {
+                const size_t writed = gzip_inflate(gzip, buffer, GZIP_BUFFER);
+                if (gzip_inflate_has_error(gzip))
+                    return HTTP1PARSER_ERROR;
+
+                if (writed > 0)
+                    response->payload_.file.append_content(&response->payload_.file, buffer, writed);
+            } while (gzip_want_continue(gzip));
+
+            if (gzip_is_end(gzip))
+                if (!gzip_inflate_reset(gzip))
+                    return HTTP1PARSER_ERROR;
         }
         else {
             if (!response->payload_.file.append_content(&response->payload_.file, &parser->buffer[parser->pos_start], string_len))

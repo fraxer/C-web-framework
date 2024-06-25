@@ -96,6 +96,7 @@ http1response_t* http1response_create(connection_t* connection) {
     if (response == NULL) return NULL;
 
     response->status_code = 200;
+    response->version = HTTP1_VER_NONE;
     response->head_writed = 0;
     response->transfer_encoding = TE_NONE;
     response->content_encoding = CE_NONE;
