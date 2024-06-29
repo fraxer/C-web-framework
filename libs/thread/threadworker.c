@@ -5,7 +5,6 @@
 #include <signal.h>
 
 #include "log.h"
-#include "multiplexing.h"
 #include "multiplexingserver.h"
 #include "threadworker.h"
 
@@ -39,28 +38,18 @@ void* thread_worker(void* arg) {
     pthread_exit(NULL);
 }
 
-thread_worker_item_t** thread_worker_array_alloc(int count) {
-    return (thread_worker_item_t**)malloc(sizeof(thread_worker_item_t*) * count);
-}
-
 thread_worker_item_t** thread_worker_array_create(int count) {
-    thread_worker_item_t** threads = thread_worker_array_alloc(count);
-
+    thread_worker_item_t** threads = malloc(sizeof(thread_worker_item_t*) * count);
     if (threads == NULL) return NULL;
 
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count; i++)
         threads[i] = NULL;
-    }
 
     return threads;
 }
 
-thread_worker_item_t* thread_worker_alloc() {
-    return (thread_worker_item_t*)malloc(sizeof(thread_worker_item_t));
-}
-
 thread_worker_item_t* thread_worker_create(server_chain_t* server_chain) {
-    thread_worker_item_t* item = thread_worker_alloc();
+    thread_worker_item_t* item = malloc(sizeof * item);
 
     if (item == NULL) return NULL;
 
@@ -94,12 +83,17 @@ int thread_worker_run(int worker_count, server_chain_t* server_chain) {
 
     for (int i = thread_worker_count; i < thread_worker_count + worker_count; i++) {
         thread_worker_item_t* item = thread_worker_create(server_chain);
-
-        if (item == NULL) return -1;
+        if (item == NULL) {
+            free(threads);
+            return -1;
+        }
 
         if (pthread_create(&item->thread, NULL, thread_worker, item) != 0) {
             log_error("Thread error: Unable to create worker thread\n");
-            if (thread_workers) free(thread_workers);
+            if (thread_workers)
+                free(thread_workers);
+
+            free(threads);
             return -1;
         }
 

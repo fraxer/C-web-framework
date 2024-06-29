@@ -413,10 +413,12 @@ void broadcast_send(const char* broadcast_name, connection_t* connection, const 
             __broadcast_unlock_list(list);
             while (item) {
                 if (connection != item->connection) {
-                    if (id && compare_handler && compare_handler(item->id, id))
-                        __broadcast_queue_add(item->connection, payload, size, item->response_handler);
-                    else if (!id && !compare_handler)
-                        __broadcast_queue_add(item->connection, payload, size, item->response_handler);
+                    if (!connection->destroyed) {
+                        if (id && compare_handler && compare_handler(item->id, id))
+                            __broadcast_queue_add(item->connection, payload, size, item->response_handler);
+                        else if (!id && !compare_handler)
+                            __broadcast_queue_add(item->connection, payload, size, item->response_handler);
+                    }
                 }
 
                 broadcast_item_t* next_item = __broadcast_lock_item(item->next);

@@ -86,7 +86,7 @@ void __mpx_epoll_free(void* arg) {
     mpxapi_epoll_t* api = arg;
     if (api == NULL) return;
 
-    if (api->fd)
+    if (api->fd != -1)
         close(api->fd);
 
     __mpx_epoll_config_free(api->base.config);
@@ -135,9 +135,7 @@ int __mpx_epoll_process_events(void* arg) {
         epoll_event_t* ev = &events[n];
         connection_t* connection = ev->data.ptr;
 
-        if (connection == NULL) continue;
-
-        if ((ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) || (*api->is_deprecated && apiconfig->is_hard_reload))
+        if (connection->destroyed || (ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) || (*api->is_deprecated && apiconfig->is_hard_reload))
             connection->close(connection);
         else if (ev->events & EPOLLIN)
             connection->read(connection, apiconfig->buffer, apiconfig->buffer_size);

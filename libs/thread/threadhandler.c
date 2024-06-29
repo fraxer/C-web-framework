@@ -25,6 +25,9 @@ void* thread_handler(void* arg) {
     while (1) {
         // connection already locked
         connection_t* connection = connection_queue_guard_pop();
+        if (thread_handler->is_deprecated)
+            break;
+
         if (connection == NULL) continue;
 
         cqueue_lock(connection->queue);
@@ -32,20 +35,15 @@ void* thread_handler(void* arg) {
         cqueue_unlock(connection->queue);
 
         if (item == NULL) {
+            log_error("Connection queue error: Can't pop item\n");
             connection_unlock(connection);
-
-            if (thread_handler->is_deprecated)
-                break;
-
             continue;
         }
 
         item->handle(item);
         item->free(item);
-        connection_unlock(connection);
-
-        if (thread_handler->is_deprecated)
-            break;
+        if (connection_dec(connection) == CONNECTION_DEC_RESULT_DECREMENT)
+            connection_unlock(connection);
     }
 
     free(thread_handler);
@@ -53,29 +51,18 @@ void* thread_handler(void* arg) {
     pthread_exit(NULL);
 }
 
-thread_handler_item_t** thread_handler_array_alloc(int count) {
-    return (thread_handler_item_t**)malloc(sizeof(thread_handler_item_t*) * count);
-}
-
 thread_handler_item_t** thread_handler_array_create(int count) {
-    thread_handler_item_t** threads = thread_handler_array_alloc(count);
-
+    thread_handler_item_t** threads = malloc(sizeof(thread_handler_item_t*) * count);
     if (threads == NULL) return NULL;
 
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count; i++)
         threads[i] = NULL;
-    }
 
     return threads;
 }
 
-thread_handler_item_t* thread_handler_alloc() {
-    return (thread_handler_item_t*)malloc(sizeof(thread_handler_item_t));
-}
-
 thread_handler_item_t* thread_handler_create() {
-    thread_handler_item_t* item = thread_handler_alloc();
-
+    thread_handler_item_t* item = malloc(sizeof * item);
     if (item == NULL) return NULL;
 
     item->is_deprecated = 0;
@@ -105,16 +92,19 @@ int thread_handler_run(int handler_count) {
         }
     }
 
-    connection_queue_broadcast();
-
     for (int i = thread_handler_count; i < thread_handler_count + handler_count; i++) {
         thread_handler_item_t* item = thread_handler_create();
-
-        if (item == NULL) return -1;
+        if (item == NULL) {
+            free(threads);
+            return -1;
+        }
 
         if (pthread_create(&item->thread, NULL, thread_handler, item) != 0) {
             log_error("Thread error: Unable to create handler thread\n");
-            if (thread_handlers) free(thread_handlers);
+            if (thread_handlers)
+                free(thread_handlers);
+
+            free(threads);
             return -1;
         }
 
