@@ -26,6 +26,8 @@ int gzip_free(gzip_t* gzip) {
     else if (gzip->is_deflate_init == 1)
         return gzip_inflate_free(gzip);
 
+    gzip->is_deflate_init = -1;
+
     return 0;
 }
 
@@ -68,7 +70,11 @@ int gzip_deflate_reset(gzip_t* const gzip) {
 }
 
 int gzip_deflate_free(gzip_t* gzip) {
-    if (deflateEnd(&gzip->stream) != Z_OK) {
+    switch (deflateEnd(&gzip->stream)) {
+    case Z_OK:
+    case Z_DATA_ERROR:
+        return 1;
+    default:
         log_error("gzip_deflate_free: Error gzip deflate free\n");
         return 0;
     }

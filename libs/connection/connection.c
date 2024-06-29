@@ -7,7 +7,6 @@
 #include "multiplexing.h"
 
 void broadcast_clear(connection_t*);
-void __connection_free_queue_item(void* arg);
 
 connection_t* connection_server_create(connection_t* socket_connection) {
     connection_t* result = NULL;
@@ -47,13 +46,14 @@ connection_t* connection_client_create(const int fd, const in_addr_t ip, const s
 }
 
 connection_t* connection_alloc(int fd, mpxapi_t* api, in_addr_t ip, unsigned short int port) {
-    connection_t* connection = malloc(sizeof(connection_t));
+    connection_t* connection = malloc(sizeof * connection);
     if (connection == NULL) return NULL;
 
     connection->fd = fd;
     connection->api = api;
     connection->keepalive_enabled = 0;
-    connection->cqueue = 0;
+    connection->destroyed = 0;
+    atomic_store(&connection->ref_count, 1);
     connection->ip = ip;
     connection->port = port;
     atomic_store(&connection->locked, 0);
@@ -87,15 +87,8 @@ connection_t* connection_alloc(int fd, mpxapi_t* api, in_addr_t ip, unsigned sho
     return connection;
 }
 
-void __connection_free_queue_item(void* arg) {
-    connection_queue_item_t* item = arg;
-    item->free(item);
-}
-
 void connection_free(connection_t* connection) {
     if (connection == NULL) return;
-
-    broadcast_clear(connection);
 
     gzip_free(&connection->gzip);
 
@@ -115,9 +108,7 @@ void connection_free(connection_t* connection) {
         connection->response = NULL;
     }
 
-    cqueue_freecb(connection->queue, __connection_free_queue_item);
-    connection->queue = NULL;
-
+    free(connection->queue);
     free(connection);
 }
 
@@ -131,17 +122,6 @@ void connection_reset(connection_t* connection) {
 
     if (connection->response != NULL)
         connection->response->reset(connection->response);
-}
-
-int connection_trylock(connection_t* connection) {
-    if (connection == NULL) return 0;
-
-    _Bool expected = 0;
-    _Bool desired = 1;
-
-    if (atomic_compare_exchange_strong(&connection->locked, &expected, desired)) return 1;
-
-    return 0;
 }
 
 int connection_lock(connection_t* connection) {
@@ -158,12 +138,11 @@ int connection_lock(connection_t* connection) {
 }
 
 int connection_unlock(connection_t* connection) {
-    if (connection) {
-        atomic_store(&connection->locked, 0);
-        return 1;
-    }
+    if (connection == NULL) return 0;
 
-    return 0;
+    atomic_store(&connection->locked, 0);
+
+    return 1;
 }
 
 int connection_trylockwrite(connection_t* connection) {
@@ -175,4 +154,19 @@ int connection_trylockwrite(connection_t* connection) {
     if (atomic_compare_exchange_strong(&connection->onwrite, &expected, desired)) return 1;
 
     return 0;
+}
+
+void connection_inc(connection_t* connection) {
+    atomic_fetch_add(&connection->ref_count, 1);
+}
+
+connection_dec_result_e connection_dec(connection_t* connection) {
+    atomic_fetch_sub(&connection->ref_count, 1);
+    if (atomic_load(&connection->ref_count) == 0) {
+        broadcast_clear(connection);
+        connection_free(connection);
+        return CONNECTION_DEC_RESULT_DESTROY;
+    }
+
+    return CONNECTION_DEC_RESULT_DECREMENT;
 }

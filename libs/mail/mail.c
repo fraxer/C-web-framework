@@ -258,7 +258,7 @@ int __mail_connect(mail_t* instance, const char* email) {
 
 connection_t* __mail_connection_create() {
     const int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd <= 0) {
+    if (fd < 0) {
         log_error("Error mail socket create\n");
         return NULL;
     }

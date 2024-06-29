@@ -17,12 +17,15 @@
 #define OPENSSL_ERROR_ZERO_RETURN "Openssl error: ssl zero return\n"
 
 int openssl_context_init(openssl_t*);
-
-openssl_t* openssl_alloc();
-
+static int lib_init = 0;
 
 int openssl_init(openssl_t* openssl) {
-    SSL_library_init();
+    if (!lib_init) {
+        SSL_library_init();
+        SSL_load_error_strings();
+        OpenSSL_add_all_algorithms();
+    }
+    lib_init = 1;
 
     if (openssl_context_init(openssl) == -1) return -1;
 
@@ -70,9 +73,8 @@ int openssl_context_init(openssl_t* openssl) {
     return result;
 }
 
-openssl_t* openssl_create() {
-    openssl_t* openssl = openssl_alloc();
-
+openssl_t* openssl_create(void) {
+    openssl_t* openssl = malloc(sizeof * openssl);
     if (openssl == NULL) return NULL;
 
     openssl->fullchain = NULL;
@@ -83,11 +85,9 @@ openssl_t* openssl_create() {
     return openssl;
 }
 
-openssl_t* openssl_alloc() {
-    return (openssl_t*)malloc(sizeof(openssl_t));
-}
-
 void openssl_free(openssl_t* openssl) {
+    if (openssl == NULL) return;
+
     if (openssl->fullchain) free(openssl->fullchain);
     openssl->fullchain = NULL;
 
@@ -100,46 +100,20 @@ void openssl_free(openssl_t* openssl) {
     if (openssl->ctx) SSL_CTX_free(openssl->ctx);
     openssl->ctx = NULL;
 
-    if (openssl) free(openssl);
+    free(openssl);
 }
 
 int openssl_read(SSL* ssl, void* buffer, int num) {
     return SSL_read(ssl, buffer, num);
 }
 
-int openssl_write(SSL* ssl, const void* buffer, int num) {
-    return SSL_write(ssl, buffer, num);
-}
+int openssl_write(SSL* ssl, const void* buffer, size_t num) {
+    const int result = SSL_write(ssl, buffer, num);
 
-int openssl_get_status(SSL* ssl, int result) {
-    int error = SSL_get_error(ssl, result);
+#ifdef DEBUG
+    if (result < 0)
+        log_error("openssl_write: errno %d\n", errno);
+#endif
 
-    switch (error) {
-        case SSL_ERROR_WANT_READ:
-            // log_error(OPENSSL_ERROR_WANT_READ);
-            return 1;
-
-        case SSL_ERROR_WANT_WRITE:
-            // log_error(OPENSSL_ERROR_WANT_WRITE);
-            return 1;
-
-        case SSL_ERROR_SYSCALL:
-        case SSL_ERROR_SSL:
-            // log_error(OPENSSL_ERROR_SSL);
-            return 3;
-
-        case SSL_ERROR_WANT_ACCEPT:
-            // log_error(OPENSSL_ERROR_WANT_ACCEPT);
-            return 4;
-
-        case SSL_ERROR_WANT_CONNECT:
-            // log_error(OPENSSL_ERROR_WANT_CONNECT);
-            return 5;
-
-        case SSL_ERROR_ZERO_RETURN:
-            // log_error(OPENSSL_ERROR_ZERO_RETURN);
-            return 6;
-    }
-
-    return 0;
+    return result;
 }

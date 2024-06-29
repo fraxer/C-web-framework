@@ -127,7 +127,9 @@ void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
         buffer = &response->body.data[pos];
 
         ssize_t writed = http1_write_body(connection, buffer, payload_size, size);
-        if (writed < 0) goto write;
+        if (writed < 0) {
+            goto write;
+        }
 
         if (response->ranges) {
             response->ranges->pos += writed;
@@ -152,10 +154,14 @@ void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
         lseek(response->file_.fd, pos, SEEK_SET);
 
         ssize_t readed = read(response->file_.fd, buffer, size);
-        if (readed < 0) goto write;
+        if (readed < 0) {
+            goto write;
+        }
 
         ssize_t writed = http1_write_body(connection, buffer, payload_size, readed);
-        if (writed < 0) goto write;
+        if (writed < 0) {
+            goto write;
+        }
 
         if (response->ranges) {
             response->ranges->pos += writed;
@@ -325,8 +331,10 @@ int http1_write_body(connection_t* connection, char* buffer, size_t payload_size
             gzip_t* const gzip = &connection->gzip;
             char compress_buffer[GZIP_BUFFER];
 
-            if (!gzip_deflate_init(gzip, buffer, size))
+            if (!gzip_deflate_init(gzip, buffer, size)) {
+                log_error("gzip_deflate_init error\n");
                 return -1;
+            }
 
             do {
                 const size_t compress_writed = gzip_deflate(gzip, compress_buffer, GZIP_BUFFER, end);

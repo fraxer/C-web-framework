@@ -10,6 +10,7 @@ if(CMAKE_BUILD_TYPE STREQUAL Debug OR CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo)
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fanalyzer")
 
 	add_compile_options(-Wall -Wextra -Wpedantic -fsanitize=address -fsanitize=leak -g)
+	add_compile_definitions(DEBUG)
 endif()
 
 add_compile_definitions(CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}")

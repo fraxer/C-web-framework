@@ -4,7 +4,6 @@
 #include <stdatomic.h>
 
 typedef struct cqueue_item {
-    atomic_bool locked;
     void* data;
     struct cqueue_item* next;
 } cqueue_item_t;
@@ -28,11 +27,8 @@ cqueue_item_t* cqueue_last(cqueue_t*);
 int cqueue_lock(cqueue_t*);
 int cqueue_trylock(cqueue_t*);
 int cqueue_unlock(cqueue_t*);
-int cqueue_data_remove(cqueue_t*, void*);
 
 cqueue_item_t* cqueue_item_create(void* data);
 void cqueue_item_free(cqueue_item_t*);
-int cqueue_item_lock(cqueue_item_t*);
-int cqueue_item_unlock(cqueue_item_t*);
 
 #endif

@@ -10,7 +10,7 @@ void __listener_connection_set_hooks(connection_t*);
 int __listener_after_read_request(connection_t*);
 int __listener_after_write_request(connection_t*);
 int __listener_queue_append(connection_queue_item_t*);
-int __listener_queue_append_broadcast(connection_queue_item_t*);
+void __listener_queue_append_broadcast(connection_queue_item_t*);
 int __listener_queue_pop(connection_t*);
 int __listener_connection_set_event(connection_t*);
 
@@ -33,12 +33,10 @@ int __listener_create_connection(connection_t* connection, server_t* server) {
         s = s->next;
     }
 
-    connection->server = s;
-    if (s->openssl)
+    if (s->openssl) {
         connection->ssl_ctx = s->openssl->ctx;
-
-    if (connection->server->openssl)
         protmgr_set_tls(connection);
+    }
     else
         protmgr_set_http1(connection);
 
@@ -62,9 +60,7 @@ int __listener_after_read_request(connection_t* connection) {
 
 int __listener_after_write_request(connection_t* connection) {
     if (connection->keepalive_enabled == 0) {
-        broadcast_clear(connection);
-        connection_queue_clear(connection);
-
+        connection->destroyed = 1;
         return connection->api->control_mod(connection, MPXOUT | MPXIN | MPXHUP);
     }
 
@@ -75,7 +71,7 @@ int __listener_after_write_request(connection_t* connection) {
         connection->switch_to_protocol = NULL;
     }
 
-    if (connection->cqueue > 0) {
+    if (!cqueue_empty(connection->queue)) {
         atomic_store(&connection->onwrite, 0);
         return 1;
     }
@@ -96,10 +92,8 @@ int __listener_queue_append(connection_queue_item_t* item) {
     return 1;
 }
 
-int __listener_queue_append_broadcast(connection_queue_item_t* item) {
+void __listener_queue_append_broadcast(connection_queue_item_t* item) {
     connection_queue_guard_append(item);
-
-    return 1;
 }
 
 int __listener_queue_pop(connection_t* connection) {
@@ -117,10 +111,12 @@ int listener_connection_close(connection_t* connection) {
         SSL_clear(connection->ssl);
     }
 
-    shutdown(connection->fd, 2);
+    shutdown(connection->fd, SHUT_RDWR);
     close(connection->fd);
 
-    connection_free(connection);
+    connection->destroyed = 1;
+    if (connection_dec(connection) == CONNECTION_DEC_RESULT_DECREMENT)
+        connection_unlock(connection);
 
     return 1;
 }
