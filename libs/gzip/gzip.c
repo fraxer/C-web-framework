@@ -11,22 +11,11 @@ int gzip_init(gzip_t* gzip) {
     return 1;
 }
 
-int gzip_reset(gzip_t* gzip) {
-    if (gzip->is_deflate_init == 0)
-        return gzip_deflate_reset(gzip);
-    else if (gzip->is_deflate_init == 1)
-        return gzip_inflate_reset(gzip);
-
-    return 0;
-}
-
 int gzip_free(gzip_t* gzip) {
     if (gzip->is_deflate_init == 0)
         return gzip_deflate_free(gzip);
     else if (gzip->is_deflate_init == 1)
         return gzip_inflate_free(gzip);
-
-    gzip->is_deflate_init = -1;
 
     return 0;
 }
@@ -60,16 +49,9 @@ size_t gzip_deflate(gzip_t* gzip, const char* compress_data, const size_t compre
     return compress_length - gzip->stream.avail_out;
 }
 
-int gzip_deflate_reset(gzip_t* const gzip) {
-    if (deflateReset(&gzip->stream) != Z_OK) {
-        log_error("gzip_deflate_reset: Error gzip deflate reset\n");
-        return 0;
-    }
-
-    return 1;
-}
-
 int gzip_deflate_free(gzip_t* gzip) {
+    gzip->is_deflate_init = -1;
+
     switch (deflateEnd(&gzip->stream)) {
     case Z_OK:
     case Z_DATA_ERROR:
@@ -117,16 +99,9 @@ size_t gzip_inflate(gzip_t* gzip, const char* data, const size_t length) {
     return length - gzip->stream.avail_out;
 }
 
-int gzip_inflate_reset(gzip_t* gzip) {
-    if (inflateReset(&gzip->stream) != Z_OK) {
-        log_error("gzip_inflate_reset: Error gzip inflate reset\n");
-        return 0;
-    }
-
-    return 1;
-}
-
 int gzip_inflate_free(gzip_t* gzip) {
+    gzip->is_deflate_init = -1;
+
     if (inflateEnd(&gzip->stream) != Z_OK) {
         log_error("gzip_inflate_free: Error gzip inflate free\n");
         return 0;

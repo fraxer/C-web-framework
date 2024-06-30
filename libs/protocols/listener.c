@@ -5,14 +5,13 @@
 #include "broadcast.h"
 #include "connection_queue.h"
 
-int __listener_create_connection(connection_t*, server_t*);
-void __listener_connection_set_hooks(connection_t*);
-int __listener_after_read_request(connection_t*);
-int __listener_after_write_request(connection_t*);
-int __listener_queue_append(connection_queue_item_t*);
-void __listener_queue_append_broadcast(connection_queue_item_t*);
-int __listener_queue_pop(connection_t*);
-int __listener_connection_set_event(connection_t*);
+static int __listener_create_connection(connection_t*, server_t*);
+static void __listener_connection_set_hooks(connection_t*);
+static int __listener_after_read_request(connection_t*);
+static int __listener_after_write_request(connection_t*);
+static int __listener_queue_append(connection_queue_item_t*);
+static void __listener_queue_append_broadcast(connection_queue_item_t*);
+static int __listener_queue_pop(connection_t*);
 
 void listener_read(connection_t* socket_connection, char* buffer, size_t buffer_size) {
     (void)buffer;

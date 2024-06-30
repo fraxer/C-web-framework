@@ -12,18 +12,15 @@ typedef struct gzip {
 } gzip_t;
 
 int gzip_init(gzip_t* gzip);
-int gzip_reset(gzip_t* gzip);
 int gzip_free(gzip_t* gzip);
 
 int gzip_deflate_init(gzip_t* gzip, const char* data, const size_t length);
 size_t gzip_deflate(gzip_t* gzip, const char* compress_data, const size_t compress_length, const int end);
-int gzip_deflate_reset(gzip_t* gzip);
 int gzip_deflate_free(gzip_t* gzip);
 int gzip_deflate_has_error(gzip_t* gzip);
 
 int gzip_inflate_init(gzip_t* gzip, const char* compress_data, const size_t compress_length);
 size_t gzip_inflate(gzip_t* gzip, const char* data, const size_t length);
-int gzip_inflate_reset(gzip_t* gzip);
 int gzip_inflate_free(gzip_t* gzip);
 int gzip_inflate_has_error(gzip_t* gzip);
 

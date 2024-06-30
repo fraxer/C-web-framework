@@ -163,7 +163,7 @@ int __http1teparser_read_chunk(http1teparser_t* parser) {
         } while (gzip_want_continue(gzip));
 
         if (gzip_is_end(gzip))
-            if (!gzip_inflate_reset(gzip))
+            if (!gzip_inflate_free(gzip))
                 return 0;
     }
     else {

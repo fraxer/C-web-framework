@@ -115,7 +115,7 @@ void connection_free(connection_t* connection) {
 void connection_reset(connection_t* connection) {
     if (connection == NULL) return;
 
-    gzip_reset(&connection->gzip);
+    gzip_free(&connection->gzip);
 
     if (connection->request != NULL)
         connection->request->reset(connection->request);

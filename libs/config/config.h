@@ -32,6 +32,7 @@ typedef struct config {
     config_main_t main;
     config_mail_t mail;
     config_migrations_t migrations;
+    jsondoc_t* document;
     const jsontok_t* servers;
     const jsontok_t* mimetypes;
     const jsontok_t* databases;
@@ -40,7 +41,7 @@ typedef struct config {
 
 int config_reload();
 int config_init(int argc, char* argv[]);
-void config_free();
+void config_free(config_t*);
 
 const config_t* config();
 void config_set(const config_t*);

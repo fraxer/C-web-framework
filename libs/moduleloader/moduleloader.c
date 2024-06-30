@@ -65,7 +65,7 @@ int module_loader_init(int argc, char* argv[]) {
     failed:
 
     if (result == -1)
-        config_free();
+        config_free((config_t*)config());
 
     return result;
 }
@@ -82,7 +82,7 @@ int module_loader_reload() {
     failed:
 
     if (result == -1)
-        config_free();
+        config_free((config_t*)config());
 
     return result;
 }

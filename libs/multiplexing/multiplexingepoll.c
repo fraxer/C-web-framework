@@ -69,7 +69,7 @@ epoll_config_t* __mpx_epoll_config_init(int basefd) {
     if (iconfig == NULL) return NULL;
 
     iconfig->basefd = basefd;
-    iconfig->timeout = -1;
+    iconfig->timeout = 5000;
     iconfig->is_hard_reload = config()->main.reload == CONFIG_RELOAD_HARD;
     iconfig->buffer = malloc(sizeof(char) * config()->main.read_buffer);
     iconfig->buffer_size = config()->main.read_buffer;
@@ -129,7 +129,9 @@ int __mpx_epoll_process_events(void* arg) {
     mpxapi_t* api = arg;
     epoll_config_t* apiconfig = api->config;
     epoll_event_t events[EPOLL_MAX_EVENTS];
+
     int n = epoll_wait(apiconfig->basefd, events, EPOLL_MAX_EVENTS, apiconfig->timeout);
+    if (n == -1) return 0;
 
     while (--n >= 0) {
         epoll_event_t* ev = &events[n];

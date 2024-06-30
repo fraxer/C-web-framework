@@ -2,7 +2,6 @@
 #include <stddef.h>
 #include <pthread.h>
 #include <stdlib.h>
-#include <unistd.h>
 
 #include "log.h"
 #include "threadhandler.h"
@@ -25,20 +24,16 @@ void* thread_handler(void* arg) {
     while (1) {
         // connection already locked
         connection_t* connection = connection_queue_guard_pop();
-        if (thread_handler->is_deprecated)
-            break;
+        if (connection == NULL) {
+            if (thread_handler->is_deprecated)
+                break;
 
-        if (connection == NULL) continue;
+            continue;
+        }
 
         cqueue_lock(connection->queue);
         connection_queue_item_t* item = cqueue_pop(connection->queue);
         cqueue_unlock(connection->queue);
-
-        if (item == NULL) {
-            log_error("Connection queue error: Can't pop item\n");
-            connection_unlock(connection);
-            continue;
-        }
 
         item->handle(item);
         item->free(item);
