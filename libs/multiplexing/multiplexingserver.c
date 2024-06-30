@@ -1,16 +1,15 @@
-#include <unistd.h>
-
 #include "log.h"
 #include "socket.h"
 #include "multiplexing.h"
 #include "multiplexingserver.h"
 #include "listener.h"
 
-int __mpxserver_open_listener_sockets(mpxapi_t*, server_t*);
-mpxlistener_t* __mpxserver_listener_create(connection_t*);
-void __mpxserver_listener_append(mpxlistener_t*, mpxapi_t*);
-int __mpxserver_socket_exist(socket_t*, server_t*);
-void __mpxserver_close_listener_sockets(mpxapi_t*);
+static int __mpxserver_open_listener_sockets(mpxapi_t* api, server_t* server);
+static mpxlistener_t* __mpxserver_listener_create(connection_t* connection);
+static void __mpxserver_listener_append(mpxlistener_t*, mpxapi_t* api);
+static int __mpxserver_socket_exist(socket_t* socket, server_t* server);
+static void __mpxserver_close_listener_sockets(mpxapi_t* api);
+static void __mpxserver_listeners_connection_close(mpxlistener_t* listener);
 
 void mpxserver_run(server_chain_t* server_chain) {
     mpxapi_t* api = mpx_create(MULTIPLEX_TYPE_EPOLL);
@@ -25,11 +24,14 @@ void mpxserver_run(server_chain_t* server_chain) {
         api->process_events(api);
 
         if (server_chain->is_deprecated) {
-            __mpxserver_close_listener_sockets(api);
+            __mpxserver_listeners_connection_close(api->listeners);
 
-            if (api->connection_count == 0) break;
+            if (api->connection_count == 0)
+                break;
         }
     }
+
+    __mpxserver_close_listener_sockets(api);
 
     failed:
 
@@ -38,6 +40,45 @@ void mpxserver_run(server_chain_t* server_chain) {
     api->free(api);
 
     return;
+}
+
+void __mpxserver_listeners_connection_close(mpxlistener_t* listener) {
+    while (listener) {
+        mpxlistener_t* next = listener->next;
+        listener->connection->close(listener->connection);
+        listener = next;
+    }
+}
+
+int __mpxserver_connection_close(connection_t* connection) {
+    connection_lock(connection);
+
+    if (!connection->destroyed) {
+        if (!connection->api->control_del(connection))
+            log_error("Connection not removed from api\n");
+
+        connection->destroyed = 1;
+    }
+
+    connection_unlock(connection);
+
+    return 1;
+}
+
+int __mpxserver_connection_destroy(connection_t* connection) {
+    connection_lock(connection);
+
+    if (connection->ssl != NULL) {
+        SSL_shutdown(connection->ssl);
+        SSL_clear(connection->ssl);
+    }
+
+    shutdown(connection->fd, SHUT_RDWR);
+    close(connection->fd);
+
+    connection_dec(connection);
+
+    return 1;
 }
 
 int __mpxserver_open_listener_sockets(mpxapi_t* api, server_t* first_server) {
@@ -65,7 +106,7 @@ int __mpxserver_open_listener_sockets(mpxapi_t* api, server_t* first_server) {
         connection->api = api;
         connection->read = listener_read;
         connection->server = first_server;
-        connection->close = listener_connection_close;
+        connection->close = __mpxserver_connection_close;
 
         if (!api->control_add(connection, MPXIN | MPXRDHUP))
             goto failed;
@@ -81,7 +122,9 @@ int __mpxserver_open_listener_sockets(mpxapi_t* api, server_t* first_server) {
 
     failed:
 
-    close_sockets = !result;
+    if (!result)
+        close_sockets = 1;
+
     socket_free(first_socket, close_sockets);
 
     return result;
@@ -121,7 +164,8 @@ void __mpxserver_close_listener_sockets(mpxapi_t* api) {
     mpxlistener_t* listener = api->listeners;
     while (listener) {
         mpxlistener_t* next = listener->next;
-        listener->connection->close(listener->connection);
+
+        __mpxserver_connection_destroy(listener->connection);
 
         mpxlistener_free(listener);
 

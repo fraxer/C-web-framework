@@ -141,6 +141,7 @@ int signal_init() {
     signal(SIGBUS,  signal_before_segmentation_fault);
     signal(SIGABRT, signal_before_abort);
     signal(SIGUSR1, signal_USR1);
+    signal(SIGUSR2, SIG_IGN);
 
     return 0;
 }

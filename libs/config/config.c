@@ -11,15 +11,14 @@
 #include "config.h"
 
 static char* _config_path = NULL;
-static jsondoc_t* _document = NULL;
 static config_t* _config = NULL;
 
 config_t* __config_create();
-int __config_load(const char* path);
-int __config_parse_data(const char* data);
+int __config_load(config_t* config, const char* path);
+int __config_parse_data(config_t* config, const char* data);
 const char* __config_get_path(int argc, char* argv[]);
 int __config_save_path(const char* path);
-int __config_fill_struct();
+int __config_fill_struct(config_t* config);
 
 const char* __config_get_path(int argc, char* argv[]) {
     int opt = 0;
@@ -86,6 +85,7 @@ config_t* __config_create() {
     config->mail.dkim_selector = "";
     config->mail.host = "";
     config->migrations.source_directory = "";
+    config->document = NULL;
     config->servers = NULL;
     config->mimetypes = NULL;
     config->databases = NULL;
@@ -94,7 +94,7 @@ config_t* __config_create() {
     return config;
 }
 
-int __config_load(const char *path) {
+int __config_load(config_t* config, const char *path) {
     if (path == NULL) return 0;
 
     int fd = open(path, O_RDONLY);
@@ -108,7 +108,7 @@ int __config_load(const char *path) {
 
     int result = 0;
 
-    if (!__config_parse_data(data)) goto failed;
+    if (!__config_parse_data(config, data)) goto failed;
 
     result = 1;
 
@@ -126,54 +126,78 @@ int config_reload() {
     if (strlen(_config_path) == 0)
         return 0;
 
-    config_free();
+    config_t* config = __config_create();
+    if (config == NULL) return 0;
 
-    return __config_load(_config_path);
-}
+    config_t* oldconfig =_config;
 
-int config_init(int argc, char* argv[]) {
-    _config = __config_create();
-    if (_config == NULL)
-        return 0;
+    __config_load(config, _config_path);
 
-    const char* config_path = __config_get_path(argc, argv);
-    if (config_path == NULL) {
-        log_print("Usage: -c <path to config file>\n", "");
-        return 0;
-    }
+    _config = config;
 
-    if (__config_load(config_path) == -1) {
-        log_print("Can't load config\n", "");
-        return 0;
-    }
-
-    if (!__config_save_path(config_path)) {
-        log_print("Can't save config path\n", "");
-        return 0;
-    }
+    config_free(oldconfig);
 
     return 1;
 }
 
-void config_free() {
-    json_free(_document);
+int config_init(int argc, char* argv[]) {
+    config_t* config = __config_create();
+    if (config == NULL) return 0;
 
-    if (_config->mail.dkim_private != NULL) {
-        free(_config->mail.dkim_private);
-        _config->mail.dkim_private = NULL;
+    int result = 0;
+
+    const char* config_path = __config_get_path(argc, argv);
+    if (config_path == NULL) {
+        log_print("Usage: -c <path to config file>\n", "");
+        goto failed;
     }
+
+    if (__config_load(config, config_path) == -1) {
+        log_print("Can't load config\n", "");
+        goto failed;
+    }
+
+    if (!__config_save_path(config_path)) {
+        log_print("Can't save config path\n", "");
+        goto failed;
+    }
+
+    _config = config;
+
+    result = 1;
+
+    failed:
+
+    if (!result) {
+        config_free(config);
+    }
+
+    return result;
 }
 
-int __config_parse_data(const char* data) {
-    _document = json_init();
-    if (_document == NULL) return 0;
+void config_free(config_t* config) {
+    json_free(config->document);
 
-    if (!json_parse(_document, data)) return 0;
+    if (config->mail.dkim_private != NULL) {
+        free(config->mail.dkim_private);
+        config->mail.dkim_private = NULL;
+    }
 
-    const jsontok_t* root = json_root(_document);
+    free(config);
+}
+
+int __config_parse_data(config_t* config, const char* data) {
+    jsondoc_t* document = json_init();
+    if (document == NULL) return 0;
+
+    config->document = document;
+
+    if (!json_parse(document, data)) return 0;
+
+    const jsontok_t* root = json_root(document);
     if (!json_is_object(root)) return 0;
 
-    if (!__config_fill_struct())
+    if (!__config_fill_struct(config))
         return 0;
 
     return 1;
@@ -187,19 +211,19 @@ void config_set(const config_t* config) {
     _config = (config_t*)config;
 }
 
-int __config_fill_struct() {
-    const jsontok_t* root = json_root(_document);
+int __config_fill_struct(config_t* config) {
+    const jsontok_t* root = json_root(config->document);
 
     const jsontok_t* token_migrations = json_object_get(root, "migrations");
     if (token_migrations == NULL) {
-        _config->migrations.source_directory = "";
+        config->migrations.source_directory = "";
     }
     else {
         if (!json_is_object(token_migrations)) return 0;
 
         const jsontok_t* token_source_directory = json_object_get(token_migrations, "source_directory");
         if (!json_is_string(token_source_directory)) return 0;
-        _config->migrations.source_directory = json_string(token_source_directory);
+        config->migrations.source_directory = json_string(token_source_directory);
     }
 
     const jsontok_t* token_main = json_object_get(root, "main");
@@ -207,55 +231,55 @@ int __config_fill_struct() {
 
     const jsontok_t* token_workers = json_object_get(token_main, "workers");
     if (!json_is_int(token_workers)) return 0;
-    _config->main.workers = json_uint(token_workers);
+    config->main.workers = json_uint(token_workers);
 
     const jsontok_t* token_threads = json_object_get(token_main, "threads");
     if (!json_is_int(token_threads)) return 0;
-    _config->main.threads = json_uint(token_threads);
+    config->main.threads = json_uint(token_threads);
 
     const jsontok_t* token_reload = json_object_get(token_main, "reload");
     if (!json_is_string(token_reload)) return 0;
-    _config->main.reload = (strcmp(json_string(token_reload), "hard") == 0)
+    config->main.reload = (strcmp(json_string(token_reload), "hard") == 0)
         ? CONFIG_RELOAD_HARD
         : CONFIG_RELOAD_SOFT;
 
     const jsontok_t* token_read_buffer = json_object_get(token_main, "read_buffer");
     if (!json_is_int(token_read_buffer)) return 0;
-    _config->main.read_buffer = json_uint(token_read_buffer);
+    config->main.read_buffer = json_uint(token_read_buffer);
 
     const jsontok_t* token_client_max_body_size = json_object_get(token_main, "client_max_body_size");
     if (!json_is_int(token_client_max_body_size)) return 0;
-    _config->main.client_max_body_size = json_uint(token_client_max_body_size);
+    config->main.client_max_body_size = json_uint(token_client_max_body_size);
 
     const jsontok_t* token_tmp = json_object_get(token_main, "tmp");
     if (!json_is_string(token_tmp)) return 0;
-    _config->main.tmp = json_string(token_tmp);
-    const size_t tmp_length = strlen(_config->main.tmp);
-    if (_config->main.tmp[tmp_length - 1] == '/') {
+    config->main.tmp = json_string(token_tmp);
+    const size_t tmp_length = strlen(config->main.tmp);
+    if (config->main.tmp[tmp_length - 1] == '/') {
         log_print("[Error][Config] Remove last slash from main.tmp\n");
         return 0;
     }
 
     const jsontok_t* token_gzip = json_object_get(token_main, "gzip");
     if (!json_is_array(token_gzip)) return 0;
-    _config->main.gzip = token_gzip;
+    config->main.gzip = token_gzip;
 
 
     const jsontok_t* token_servers = json_object_get(root, "servers");
     if (!json_is_object(token_servers)) return 0;
-    _config->servers = token_servers;
+    config->servers = token_servers;
 
     const jsontok_t* token_databases = json_object_get(root, "databases");
     if (!json_is_object(token_databases)) return 0;
-    _config->databases = token_databases;
+    config->databases = token_databases;
 
     const jsontok_t* token_storages = json_object_get(root, "storages");
     if (!json_is_object(token_storages)) return 0;
-    _config->storages = token_storages;
+    config->storages = token_storages;
 
     const jsontok_t* token_mimetypes = json_object_get(root, "mimetypes");
     if (!json_is_object(token_mimetypes)) return 0;
-    _config->mimetypes = token_mimetypes;
+    config->mimetypes = token_mimetypes;
 
 
 
@@ -269,20 +293,20 @@ int __config_fill_struct() {
     file_t file = file_open(dkim_private, O_RDONLY);
     if (!file.ok) return 0;
 
-    _config->mail.dkim_private = file.content(&file);
+    config->mail.dkim_private = file.content(&file);
 
     file.close(&file);
 
-    if (_config->mail.dkim_private == NULL)
+    if (config->mail.dkim_private == NULL)
         return 0;
 
     const jsontok_t* token_dkim_selector = json_object_get(token_mail, "dkim_selector");
     if (!json_is_string(token_dkim_selector)) return 0;
-    _config->mail.dkim_selector = json_string(token_dkim_selector);
+    config->mail.dkim_selector = json_string(token_dkim_selector);
 
     const jsontok_t* token_host = json_object_get(token_mail, "host");
     if (!json_is_string(token_host)) return 0;
-    _config->mail.host = json_string(token_host);
+    config->mail.host = json_string(token_host);
 
     return 1;
 }

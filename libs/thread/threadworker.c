@@ -2,7 +2,6 @@
 #include <stddef.h>
 #include <pthread.h>
 #include <stdlib.h>
-#include <signal.h>
 
 #include "log.h"
 #include "multiplexingserver.h"
@@ -77,7 +76,6 @@ int thread_worker_run(int worker_count, server_chain_t* server_chain) {
         if (thread_workers[i]) {
             threads[j] = thread_workers[i];
             (*threads[j]).server_chain->is_deprecated = 1;
-            pthread_kill((*threads[j]).thread, SIGHUP);
         }
     }
 

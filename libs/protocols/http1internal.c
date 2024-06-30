@@ -127,9 +127,7 @@ void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
         buffer = &response->body.data[pos];
 
         ssize_t writed = http1_write_body(connection, buffer, payload_size, size);
-        if (writed < 0) {
-            goto write;
-        }
+        if (writed < 0) goto write;
 
         if (response->ranges) {
             response->ranges->pos += writed;
@@ -154,14 +152,10 @@ void http1_write(connection_t* connection, char* buffer, size_t buffer_size) {
         lseek(response->file_.fd, pos, SEEK_SET);
 
         ssize_t readed = read(response->file_.fd, buffer, size);
-        if (readed < 0) {
-            goto write;
-        }
+        if (readed < 0) goto write;
 
         ssize_t writed = http1_write_body(connection, buffer, payload_size, readed);
-        if (writed < 0) {
-            goto write;
-        }
+        if (writed < 0) goto write;
 
         if (response->ranges) {
             response->ranges->pos += writed;
@@ -349,7 +343,7 @@ int http1_write_body(connection_t* connection, char* buffer, size_t payload_size
                     break;
             } while (gzip_want_continue(gzip));
 
-            if (end && !gzip_deflate_reset(gzip))
+            if (end && !gzip_deflate_free(gzip))
                 return -1;
 
             writed = source_size;

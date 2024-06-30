@@ -35,8 +35,7 @@ int openssl_init(openssl_t* openssl) {
 int openssl_context_init(openssl_t* openssl) {
     int result = -1;
 
-    openssl->ctx = SSL_CTX_new(TLS_method());
-
+    openssl->ctx = SSL_CTX_new(TLS_server_method());
     if (openssl->ctx == NULL) return -1;
 
     if (SSL_CTX_use_certificate_chain_file(openssl->ctx, openssl->fullchain) != 1) {
@@ -56,10 +55,6 @@ int openssl_context_init(openssl_t* openssl) {
 
     SSL_CTX_set_options(openssl->ctx, SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_RENEGOTIATION);
     SSL_CTX_set_quiet_shutdown(openssl->ctx, 1);
-
-    int dh_enable = 1;
-
-    if (SSL_CTX_set_dh_auto(openssl->ctx, dh_enable) != 1) goto failed;
 
     if (SSL_CTX_set_cipher_list(openssl->ctx, openssl->ciphers) != 1) {
         log_error(OPENSSL_ERROR_CIPHER_LIST);
