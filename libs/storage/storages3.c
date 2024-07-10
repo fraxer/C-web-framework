@@ -1,6 +1,7 @@
  #include <openssl/evp.h>
  #include <openssl/hmac.h>
  
+ #include "appconfig.h"
  #include "base64.h"
  #include "helpers.h"
  #include "mimetype.h"
@@ -55,21 +56,26 @@ file_t __storages3_file_get(void* storage, const char* path) {
 
     const char* method = "GET";
     const char* mimetype = "";
+    char* uri = NULL;
+    char* url = NULL;
+    char* date = NULL;
+    char* authorization = NULL;
+    httpclient_t* client = NULL;
 
-    char* uri = __storages3_create_uri(s, path);
+    uri = __storages3_create_uri(s, path);
     if (uri == NULL) goto failed;
 
-    char* url = __storages3_create_url(s, uri);
+    url = __storages3_create_url(s, uri);
     if (url == NULL) goto failed;
 
-    char* date = __storages3_create_date();
+    date = __storages3_create_date();
     if (date == NULL) goto failed;
 
-    char* authorization = __storages3_create_authtoken(s, method, mimetype, date, uri);
+    authorization = __storages3_create_authtoken(s, method, mimetype, date, uri);
     if (authorization == NULL) goto failed;
 
     const int timeout = 3;
-    httpclient_t* client = httpclient_init(ROUTE_GET, url, timeout);
+    client = httpclient_init(ROUTE_GET, url, timeout);
     if (client == NULL)
         goto failed;
 
@@ -123,24 +129,30 @@ int __storages3_file_content_put(void* storage, const file_content_t* file_conte
 
     const char* method = "PUT";
     const char* ext = file_extention(file_content->filename);
-    const char* mimetype = mimetype_find_type(ext);
+    const char* mimetype = mimetype_find_type(appconfig()->mimetype, ext);
     if (mimetype == NULL)
         mimetype = "text/plain";
 
-    char* uri = __storages3_create_uri(s, path);
+    char* uri = NULL;
+    char* url = NULL;
+    char* date = NULL;
+    char* authorization = NULL;
+    httpclient_t* client =  NULL;
+
+    uri = __storages3_create_uri(s, path);
     if (uri == NULL) goto failed;
 
-    char* url = __storages3_create_url(s, uri);
+    url = __storages3_create_url(s, uri);
     if (url == NULL) goto failed;
 
-    char* date = __storages3_create_date();
+    date = __storages3_create_date();
     if (date == NULL) goto failed;
 
-    char* authorization = __storages3_create_authtoken(s, method, mimetype, date, uri);
+    authorization = __storages3_create_authtoken(s, method, mimetype, date, uri);
     if (authorization == NULL) goto failed;
 
     const int timeout = 3;
-    httpclient_t* client = httpclient_init(ROUTE_PUT, url, timeout);
+    client = httpclient_init(ROUTE_PUT, url, timeout);
     if (client == NULL)
         goto failed;
 
@@ -184,21 +196,26 @@ int __storages3_file_remove(void* storage, const char* path) {
 
     const char* method = "DELETE";
     const char* mimetype = "";
+    char* uri = NULL;
+    char* url = NULL;
+    char* date = NULL;
+    char* authorization = NULL;
+    httpclient_t* client =  NULL;
 
-    char* uri = __storages3_create_uri(s, path);
+    uri = __storages3_create_uri(s, path);
     if (uri == NULL) goto failed;
 
-    char* url = __storages3_create_url(s, uri);
+    url = __storages3_create_url(s, uri);
     if (url == NULL) goto failed;
 
-    char* date = __storages3_create_date();
+    date = __storages3_create_date();
     if (date == NULL) goto failed;
 
-    char* authorization = __storages3_create_authtoken(s, method, mimetype, date, uri);
+    authorization = __storages3_create_authtoken(s, method, mimetype, date, uri);
     if (authorization == NULL) goto failed;
 
     const int timeout = 3;
-    httpclient_t* client = httpclient_init(ROUTE_DELETE, url, timeout);
+    client = httpclient_init(ROUTE_DELETE, url, timeout);
     if (client == NULL)
         goto failed;
 
@@ -231,21 +248,26 @@ int __storages3_file_exist(void* storage, const char* path) {
 
     const char* method = "HEAD";
     const char* mimetype = "";
+    char* uri = NULL;
+    char* url = NULL;
+    char* date = NULL;
+    char* authorization = NULL;
+    httpclient_t* client = NULL;
 
-    char* uri = __storages3_create_uri(s, path);
+    uri = __storages3_create_uri(s, path);
     if (uri == NULL) goto failed;
 
-    char* url = __storages3_create_url(s, uri);
+    url = __storages3_create_url(s, uri);
     if (url == NULL) goto failed;
 
-    char* date = __storages3_create_date();
+    date = __storages3_create_date();
     if (date == NULL) goto failed;
 
-    char* authorization = __storages3_create_authtoken(s, method, mimetype, date, uri);
+    authorization = __storages3_create_authtoken(s, method, mimetype, date, uri);
     if (authorization == NULL) goto failed;
 
     const int timeout = 3;
-    httpclient_t* client = httpclient_init(ROUTE_HEAD, url, timeout);
+    client = httpclient_init(ROUTE_HEAD, url, timeout);
     if (client == NULL)
         goto failed;
 

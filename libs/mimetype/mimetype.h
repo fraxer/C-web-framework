@@ -1,3 +1,7 @@
+#ifndef __USE_GNU
+#define __USE_GNU
+#endif
+
 #ifndef __MIMETYPE__
 #define __MIMETYPE__
 
@@ -5,50 +9,17 @@
 
 typedef struct hsearch_data hsearch_data_t;
 
-typedef struct mimetypelist {
-    char* value;
-    struct mimetypelist* next;
-} mimetypelist_t;
-
 typedef struct {
-    hsearch_data_t* table_ext;
-    hsearch_data_t* table_type;
-    mimetypelist_t* list;
-    mimetypelist_t* newlist;
-    mimetypelist_t* last_list;
-} hsearch_external_t;
+    hsearch_data_t table_ext;
+    hsearch_data_t table_type;
+} mimetype_t;
 
-void mimetype_lock();
-void mimetype_unlock();
-hsearch_external_t* mimetype_config();
-void mimetype_set(const hsearch_external_t*);
-
-int mimetype_init_ext(size_t);
-
-int mimetype_init_type(size_t);
-
-void mimetype_destroy(hsearch_data_t*);
-
-hsearch_data_t* mimetype_get_table_ext();
-
-hsearch_data_t* mimetype_get_table_type();
-
-int mimetype_add(hsearch_data_t*, const char*, const char*);
-
-const char* mimetype_find_ext(const char*);
-
-const char* mimetype_find_type(const char*);
-
-mimetypelist_t* mimetype_create_item(const char*);
-
-mimetypelist_t* mimetype_find_item(const char*);
-
-mimetypelist_t* mimetype_get_item(const char*);
-
-void mimetype_append_listitem(mimetypelist_t*);
-
-void mimetype_free_listitem(mimetypelist_t*);
-
-void mimetype_update();
+mimetype_t* mimetype_create(size_t table_type_size, size_t table_ext_size);
+void mimetype_destroy(mimetype_t* mimetype);
+hsearch_data_t* mimetype_get_table_ext(mimetype_t* mimetype);
+hsearch_data_t* mimetype_get_table_type(mimetype_t* mimetype);
+int mimetype_add(hsearch_data_t* table, const char* key, const char* value);
+const char* mimetype_find_ext(mimetype_t* mimetype, const char* key);
+const char* mimetype_find_type(mimetype_t* mimetype, const char* key);
 
 #endif

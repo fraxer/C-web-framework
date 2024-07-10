@@ -163,7 +163,6 @@ void connection_inc(connection_t* connection) {
 connection_dec_result_e connection_dec(connection_t* connection) {
     atomic_fetch_sub(&connection->ref_count, 1);
     if (atomic_load(&connection->ref_count) == 0) {
-        broadcast_clear(connection);
         connection_free(connection);
         return CONNECTION_DEC_RESULT_DESTROY;
     }

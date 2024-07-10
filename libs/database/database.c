@@ -7,27 +7,12 @@
 #include "log.h"
 #include "database.h"
 
-static db_t* _list = NULL;
-static db_t* _last_item = NULL;
-
-db_t* db_alloc() {
-    return (db_t*)malloc(sizeof(db_t));
-}
-
-const char* db_alloc_id(const char* db_id) {
-    char* string = (char*)malloc(strlen(db_id) + 1);
-
-    if (string == NULL) return NULL;
-
-    return strcpy(string, db_id);
-}
-
 db_t* db_create(const char* db_id) {
     db_t* result = NULL;
-    db_t* db = db_alloc();
+    db_t* db = malloc(sizeof * db);
     if (db == NULL) return NULL;
 
-    db->id = db_alloc_id(db_id);
+    db->id = strdup(db_id);
     if (db->id == NULL) goto failed;
 
     atomic_init(&db->lock_connection, 0);
@@ -45,50 +30,6 @@ db_t* db_create(const char* db_id) {
     return result;
 }
 
-int db_add(db_t* database) {
-    if (_list == NULL)
-        _list = database;
-
-    if (_last_item != NULL)
-        _last_item->next = database;
-
-    _last_item = database;
-
-    return 1;
-}
-
-void db_clear() {
-    db_free(_list);
-
-    _list = NULL;
-    _last_item = NULL;
-}
-
-db_t* database() {
-    return _list;
-}
-
-void db_set(db_t* database) {
-    _list = database;
-
-    db_t* db = database;
-    while (db) {
-        if (db->next == NULL)
-            _last_item = db;
-
-        db = db->next;
-    }
-}
-
-dbhost_t* db_host_create() {
-    dbhost_t* host = malloc(sizeof *host);
-
-    host->free = NULL;
-    host->next = NULL;
-
-    return host;
-}
-
 void db_next_host(dbhosts_t* hosts) {
     if (hosts->current_host->next != NULL) {
         hosts->current_host = hosts->current_host->next;
@@ -98,19 +39,16 @@ void db_next_host(dbhosts_t* hosts) {
     hosts->current_host = hosts->host;
 }
 
-void db_free(db_t* db) {
-    while (db) {
+void db_destroy(db_t* db) {
+    while (db != NULL) {
         db_t* next = db->next;
 
-        atomic_store(&db->lock_connection, 0);
+        db_hosts_free(db->hosts);
 
-        if (db->hosts != NULL) {
-            db_hosts_free(db->hosts);
-        }
-        if (db->connection != NULL) {
+        if (db->connection != NULL)
             db->connection->free(db->connection);
-        }
-        free((void*)db->id);
+
+        free(db->id);
         free(db);
 
         db = next;
@@ -118,7 +56,7 @@ void db_free(db_t* db) {
 }
 
 void db_host_free(dbhost_t* host) {
-    while (host) {
+    while (host != NULL) {
         dbhost_t* next = host->next;
         host->free(host);
         host = next;
@@ -126,19 +64,16 @@ void db_host_free(dbhost_t* host) {
 }
 
 void db_hosts_free(dbhosts_t* hosts) {
+    if (hosts == NULL) return;
+
     db_host_free(hosts->host);
-
-    hosts->host = NULL;
-    hosts->current_host = NULL;
-    hosts->connection_create = NULL;
-
     free(hosts);
 }
 
 void db_cell_free(db_table_cell_t* cell) {
     if (cell == NULL) return;
 
-    if (cell->value) {
+    if (cell->value != NULL) {
         free(cell->value);
         cell->value = NULL;
     }
@@ -146,9 +81,8 @@ void db_cell_free(db_table_cell_t* cell) {
 
 dbconnection_t* db_connection_find(dbconnection_t* connection) {
     while (connection) {
-        if (db_connection_trylock(connection) == 0) {
+        if (db_connection_trylock(connection))
             return connection;
-        }
 
         connection = connection->next;
     }
@@ -223,12 +157,14 @@ void db_connection_pop(dbinstance_t* instance, dbconnection_t* connection) {
 }
 
 int db_connection_trylock(dbconnection_t* connection) {
+    if (connection == NULL) return 0;
+
     _Bool expected = 0;
     _Bool desired = 1;
 
-    if (atomic_compare_exchange_strong(&connection->locked, &expected, desired)) return 0;
+    if (atomic_compare_exchange_strong(&connection->locked, &expected, desired)) return 1;
 
-    return -1;
+    return 0;
 }
 
 int db_connection_lock(dbconnection_t* connection) {
@@ -247,5 +183,7 @@ void db_connection_unlock(dbconnection_t* connection) {
 }
 
 void db_connection_free(dbconnection_t* connection) {
+    if (connection == NULL) return;
+
     connection->free(connection);
 }

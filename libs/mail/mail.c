@@ -7,7 +7,7 @@
 #include <netdb.h>
 
 #include "log.h"
-#include "config.h"
+#include "appconfig.h"
 #include "helpers.h"
 #include "base64.h"
 #include "protocolmanager.h"
@@ -71,7 +71,7 @@ mail_t* mail_create() {
 
     instance->ssl_ctx = NULL;
     instance->connection = NULL;
-    instance->buffer_size = config()->main.read_buffer;
+    instance->buffer_size = env()->main.buffer_size;
     instance->buffer = malloc(sizeof(char) * instance->buffer_size);
     if (instance->buffer == NULL) {
         free(instance);
@@ -324,7 +324,7 @@ int __mail_read_banner(mail_t* instance) {
 
 int __mail_send_hello(mail_t* instance) {
     if (!__mail_can_interact(instance)) return 0;
-    if (!__mail_send_command(instance, "EHLO %s\r\n", config()->mail.host)) return 0;
+    if (!__mail_send_command(instance, "EHLO %s\r\n", env()->mail.host)) return 0;
 
     return 1;
 }
@@ -455,7 +455,7 @@ int __mail_set_message_id(mail_t* instance, time_t* rawtime) {
     if (instance == NULL) return 0;
 
     char template[80];
-    const int r = snprintf(template, sizeof(template), "<%%Y%%m%%d%%H%%M%%S@%s>", config()->mail.host);
+    const int r = snprintf(template, sizeof(template), "<%%Y%%m%%d%%H%%M%%S@%s>", env()->mail.host);
     if (r <= 0) return 0;
 
     struct tm* timeinfo = localtime(rawtime);
@@ -879,9 +879,9 @@ int __mail_build_content(mail_t* instance) {
     if (dkim == NULL)
         goto failed;
 
-    dkim_set_private_key(dkim, config()->mail.dkim_private);
-    dkim_set_domain(dkim, config()->mail.host);
-    dkim_set_selector(dkim, config()->mail.dkim_selector);
+    dkim_set_private_key(dkim, env()->mail.dkim_private);
+    dkim_set_domain(dkim, env()->mail.host);
+    dkim_set_selector(dkim, env()->mail.dkim_selector);
     dkim_set_timestamp(dkim, rawtime);
 
     if (!__mail_set_dkim_headers(dkim, instance))

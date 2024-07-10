@@ -106,6 +106,8 @@ int websockets_create_tmpfile(websockets_protocol_t* protocol, const char* tmp_d
 }
 
 char* websocketsrequest_payload(websockets_protocol_t* protocol) {
+    if (protocol->payload.fd <= 0) return NULL;
+
     off_t payload_size = lseek(protocol->payload.fd, 0, SEEK_END);
     lseek(protocol->payload.fd, 0, SEEK_SET);
 

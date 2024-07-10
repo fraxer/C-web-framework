@@ -86,7 +86,6 @@ typedef struct view_copy_tags {
 } view_copy_tags_t;
 
 typedef struct view {
-    atomic_int counter;
     char* path;
     view_tag_t* root_tag;
     struct view* next;

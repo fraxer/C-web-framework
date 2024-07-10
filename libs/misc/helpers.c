@@ -9,38 +9,6 @@
 
 #include "helpers.h"
 
-char* helpers_read_file(int fd) {
-
-    long int size = helpers_file_size(fd);
-
-    char* buf = (char*)malloc(size + 1);
-
-    if (buf == NULL) return NULL;
-
-    long int bytesRead = read(fd, buf, size);
-
-    if (bytesRead == -1) return NULL;
-
-    buf[size] = 0;
-
-    return buf;
-}
-
-long int helpers_file_size(int fd) {
-
-    struct stat stat_buf;
-
-    int r = fstat(fd, &stat_buf);
-
-    return r == 0 ? stat_buf.st_size : -1;
-}
-
-void helpers_free_null(void* ptr) {
-    free(ptr);
-
-    ptr = NULL;
-}
-
 int helpers_mkdir(const char* path) {
     if (path == NULL) return 0;
     if (path[0] == 0) return 0;
@@ -112,18 +80,6 @@ int cmpstrn_lower(const char *a, size_t a_length, const char *b, size_t b_length
         if (tolower(a[i]) != tolower(b[j])) return 0;
 
     return 1;
-}
-
-int append_to_filefd(int fd, const char* data, size_t size) {
-    if (fd <= 0) return 0;
-    if (data == NULL) return 0;
-    if (size == 0) return 0;
-
-    lseek(fd, 0, SEEK_END);
-    int r = write(fd, data, size);
-    lseek(fd, 0, SEEK_SET);
-
-    return r > 0;
 }
 
 char* create_tmppath(const char* tmp_path)

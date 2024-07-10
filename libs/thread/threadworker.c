@@ -7,119 +7,47 @@
 #include "multiplexingserver.h"
 #include "threadworker.h"
 
-typedef struct thread_worker_item {
-    pthread_t thread;
-    server_chain_t* server_chain;
-} thread_worker_item_t;
-
-static int thread_worker_index = 0;
-static int thread_worker_count = 0;
-
-static thread_worker_item_t** thread_workers = NULL;
-
-static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+static void(*__thread_worker_threads_pause)(appconfig_t* config) = NULL;
+static void(*__thread_worker_threads_shutdown)(void) = NULL;
 
 void* thread_worker(void* arg) {
-    thread_worker_item_t* thread_worker = (thread_worker_item_t*)arg;
+    appconfig_t* appconfig = arg;
 
-    mpxserver_run(thread_worker->server_chain);
+    appconfg_threads_increment(appconfig);
+    appconfg_threads_wait(appconfig);
 
-    if (pthread_mutex_trylock(&mutex) == 0) {
-        server_chain_t* chain = thread_worker->server_chain;
-        if (chain && chain->thread_count == 0)
-            chain->destroy(chain);
-
-        pthread_mutex_unlock(&mutex);
+    if (!mpxserver_run(appconfig, __thread_worker_threads_pause)) {
+        __thread_worker_threads_shutdown();
+        appconfg_threads_decrement(appconfig);
+        pthread_exit(NULL);
     }
 
-    if (thread_worker) free(thread_worker);
+    appconfg_threads_decrement(appconfig);
 
     pthread_exit(NULL);
 }
 
-thread_worker_item_t** thread_worker_array_create(int count) {
-    thread_worker_item_t** threads = malloc(sizeof(thread_worker_item_t*) * count);
-    if (threads == NULL) return NULL;
+int thread_worker_run(appconfig_t* appconfig, int thread_count) {
+    for (int i = 0; i < thread_count; i++) {
+        pthread_t thread;
+        if (pthread_create(&thread, NULL, thread_worker, appconfig) != 0) {
+            log_error("thread_worker_run: unable to create thread worker\n");
+            return 0;
+        }
 
-    for (int i = 0; i < count; i++)
-        threads[i] = NULL;
+        pthread_detach(thread);
+        pthread_setname_np(thread, "Server worker");
+    }
 
-    return threads;
+    return 1;
 }
 
-thread_worker_item_t* thread_worker_create(server_chain_t* server_chain) {
-    thread_worker_item_t* item = malloc(sizeof * item);
-
-    if (item == NULL) return NULL;
-
-    item->server_chain = server_chain;
-    item->thread = 0;
-
-    return item;
+void thread_worker_set_threads_pause_cb(void (*thread_worker_threads_pause)(appconfig_t* config)) {
+    if (__thread_worker_threads_pause == NULL)
+        __thread_worker_threads_pause = thread_worker_threads_pause;
 }
 
-int thread_worker_run(int worker_count, server_chain_t* server_chain) {
-    thread_worker_item_t** threads = NULL;
-
-    if (thread_worker_count > worker_count) {
-        // -
-        threads = thread_worker_array_create(thread_worker_count + worker_count);
-    }
-    else {
-        // +
-        threads = thread_worker_array_create(thread_worker_count * 2 + worker_count);
-    }
-
-    if (threads == NULL) return -1;
-
-    for (int i = thread_worker_index, j = 0; i < thread_worker_index + thread_worker_count; i++, j++) {
-        if (thread_workers[i]) {
-            threads[j] = thread_workers[i];
-            (*threads[j]).server_chain->is_deprecated = 1;
-        }
-    }
-
-    for (int i = thread_worker_count; i < thread_worker_count + worker_count; i++) {
-        thread_worker_item_t* item = thread_worker_create(server_chain);
-        if (item == NULL) {
-            free(threads);
-            return -1;
-        }
-
-        if (pthread_create(&item->thread, NULL, thread_worker, item) != 0) {
-            log_error("Thread error: Unable to create worker thread\n");
-            if (thread_workers)
-                free(thread_workers);
-
-            free(threads);
-            return -1;
-        }
-
-        server_chain->thread_count++;
-
-        pthread_detach(item->thread);
-
-        pthread_setname_np(item->thread, "Server worker");
-
-        threads[i] = item;
-    }
-
-    if (thread_worker_count > worker_count) {
-        // -
-        thread_worker_index = thread_worker_count;
-
-        thread_worker_count = worker_count;
-    }
-    else {
-        // +
-        thread_worker_count = thread_worker_count + worker_count;
-
-        thread_worker_index = thread_worker_count - worker_count;
-    }
-
-    if (thread_workers) free(thread_workers);
-
-    thread_workers = threads;
-
-    return 0;
+void thread_worker_set_threads_shutdown_cb(void (*thread_worker_threads_shutdown)(void)) {
+    if (__thread_worker_threads_shutdown == NULL)
+        __thread_worker_threads_shutdown = thread_worker_threads_shutdown;
 }

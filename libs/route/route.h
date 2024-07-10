@@ -44,7 +44,7 @@ int route_set_http_handler(route_t*, const char*, void(*)(void*, void*));
 
 int route_set_websockets_handler(route_t*, const char*, void(*)(void*, void*));
 
-void route_free(route_t*);
+void routes_free(route_t* route);
 
 int route_compare_primitive(route_t*, const char*, size_t);
 

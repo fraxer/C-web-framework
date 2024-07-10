@@ -6,17 +6,11 @@
 #include "log.h"
 #include "server.h"
 
-static server_chain_t* server_chain = NULL;
-static server_chain_t* last_server_chain = NULL;
-
-server_t* server_alloc();
-server_chain_t* server_chain_alloc();
 void broadcast_free(struct broadcast* broadcast);
 
 
 server_t* server_create() {
-    server_t* server = server_alloc();
-
+    server_t* server = malloc(sizeof * server);
     if (server == NULL) return NULL;
 
     server->port = 0;
@@ -37,41 +31,31 @@ server_t* server_create() {
     return server;
 }
 
-server_t* server_alloc() {
-    return malloc(sizeof(server_t));
-}
-
-void server_free(server_t* server) {
-    while (server) {
+void servers_free(server_t* server) {
+    while (server != NULL) {
         server_t* next = server->next;
 
         server->port = 0;
         server->root_length = 0;
 
-        if (server->domain) domain_free(server->domain);
+        if (server->domain) domains_free(server->domain);
         server->domain = NULL;
 
         server->ip = 0;
 
         if (server->root) free(server->root);
         server->root = NULL;
-
         
-        if (server->index) {
-            if (server->index->value) {
-                free(server->index->value);
-            }
-            free(server->index);
-        }
+        if (server->index) server_index_destroy(server->index);
         server->index = NULL;
 
         if (server->http.redirect) redirect_free(server->http.redirect);
         server->http.redirect = NULL;
 
-        if (server->http.route) route_free(server->http.route);
+        if (server->http.route) routes_free(server->http.route);
         server->http.route = NULL;
 
-        if (server->websockets.route) route_free(server->websockets.route);
+        if (server->websockets.route) routes_free(server->websockets.route);
         server->websockets.route = NULL;
 
         if (server->openssl) openssl_free(server->openssl);
@@ -88,101 +72,68 @@ void server_free(server_t* server) {
     }
 }
 
-index_t* server_create_index(const char* value) {
+index_t* server_index_create(const char* value) {
     index_t* result = NULL;
+    index_t* index = malloc(sizeof * index);
+    if (index == NULL) {
+        log_error("server_index_create: alloc memory for index failed\n");
+        goto failed;
+    }
 
-    index_t* index = malloc(sizeof(index_t));
+    index->value = NULL;
+    index->length = 0;
 
-    if (index == NULL) goto failed;
-
-    size_t length = strlen(value);
+    const size_t length = strlen(value);
+    if (length == 0) {
+        log_error("server_index_create: index value is empty\n");
+        goto failed;
+    }
 
     index->value = malloc(length + 1);
-
-    if (index->value == NULL) goto failed;
+    if (index->value == NULL) {
+        log_error("server_index_create: alloc memory for index value failed\n");
+        goto failed;
+    }
 
     strcpy(index->value, value);
-
     index->length = length;
 
     result = index;
 
     failed:
 
-    if (result == NULL) {
-        if (index != NULL) free(index);
-    }
+    if (result == NULL)
+        server_index_destroy(index);
 
     return result;
 }
 
-server_chain_t* server_chain_alloc() {
-    return (server_chain_t*)malloc(sizeof(server_chain_t));
+void server_index_destroy(index_t* index) {
+    if (index == NULL) return;
+
+    if (index->value != NULL)
+        free(index->value);
+
+    free(index);
 }
 
-server_chain_t* server_chain_create(server_t* server, routeloader_lib_t* lib, int is_hard_reload) {
-    server_chain_t* chain = server_chain_alloc();
-
+server_chain_t* server_chain_create(server_t* server, routeloader_lib_t* lib) {
+    server_chain_t* chain = malloc(sizeof * chain);
     if (chain == NULL) return NULL;
 
-    if (server_chain == NULL) {
-        server_chain = chain;
-    }
-
-    chain->is_deprecated = 0;
-    chain->is_hard_reload = is_hard_reload;
-    chain->thread_count = 0;
-    chain->routeloader = lib;
-    chain->server = server;
-    chain->prev = NULL;
-    chain->next = NULL;
-    chain->destroy = server_chain_destroy;
-
     pthread_mutex_init(&chain->mutex, NULL);
+    chain->server = server;
+    chain->routeloader = lib;
 
     return chain;
 }
 
-server_chain_t* server_chain_last() {
-    return last_server_chain;
-}
+void server_chain_destroy(server_chain_t* server_chain) {
+    if (server_chain == NULL) return;
 
-int server_chain_append(server_t* server, routeloader_lib_t* lib, int is_hard_reload) {
-    server_chain_t* chain = server_chain_create(server, lib, is_hard_reload);
+    pthread_mutex_destroy(&server_chain->mutex);
+    servers_free(server_chain->server);
+    routeloader_free(server_chain->routeloader);
 
-    if (chain == NULL) return -1;
-
-    if (last_server_chain) {
-        last_server_chain->next = chain;
-
-        chain->prev = last_server_chain;
-    }
-
-    last_server_chain = chain;
-
-    return 0;
-}
-
-void server_chain_destroy(server_chain_t* _server_chain) {
-    if (_server_chain == NULL) return;
-
-    server_chain_t* chain = _server_chain;
-
-    if (chain->prev) {
-        chain->prev = chain->next;
-    }
-
-    if (server_chain == _server_chain) {
-        server_chain = server_chain->next;
-    }
-
-    if (server_chain == NULL) last_server_chain = NULL;
-
-    server_free(_server_chain->server);
-
-    routeloader_free(_server_chain->routeloader);
-
-    pthread_mutex_destroy(&_server_chain->mutex);
-
-    free(_server_chain);
+    free(server_chain);
 }

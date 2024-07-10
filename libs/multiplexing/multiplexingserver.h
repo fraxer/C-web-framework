@@ -4,9 +4,10 @@
 #include <errno.h>
 #include <sys/epoll.h>
 
+#include "appconfig.h"
 #include "server.h"
 #include "multiplexing.h"
 
-void mpxserver_run(server_chain_t*);
+int mpxserver_run(appconfig_t* appconfig, void(*thread_worker_threads_pause)(appconfig_t* config));
 
 #endif

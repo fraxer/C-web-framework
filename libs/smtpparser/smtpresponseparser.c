@@ -6,7 +6,7 @@
 #include "smtprequest.h"
 #include "smtpresponse.h"
 #include "log.h"
-#include "config.h"
+#include "appconfig.h"
 #include "smtpresponseparser.h"
 
 int __smtpresponseparser_set_status(smtpresponse_t*, smtpresponseparser_t*);

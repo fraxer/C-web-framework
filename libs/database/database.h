@@ -73,22 +73,16 @@ typedef struct dbinstance {
 
 typedef struct db {
     atomic_bool lock_connection;
-    const char* id;
+    char* id;
     dbhosts_t* hosts;
     dbconnection_t* connection;
     struct db* next;
 } db_t;
 
-db_t* db_alloc();
 db_t* db_create(const char*);
-int db_add(db_t*);
-void db_clear();
-db_t* database();
-void db_set(db_t*);
 
-dbhost_t* db_host_create();
 void db_next_host(dbhosts_t*);
-void db_free(db_t*);
+void db_destroy(db_t*);
 void db_host_free(dbhost_t*);
 void db_hosts_free(dbhosts_t*);
 void db_cell_free(db_table_cell_t*);

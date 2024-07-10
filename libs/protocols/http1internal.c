@@ -6,7 +6,7 @@
 #include "log.h"
 #include "openssl.h"
 #include "route.h"
-#include "config.h"
+#include "appconfig.h"
 #include "connection_queue.h"
 #include "http1request.h"
 #include "http1response.h"

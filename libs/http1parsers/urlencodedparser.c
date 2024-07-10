@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include "urlencodedparser.h"
 
 int urlencodedparser_add_part(urlencodedparser_t*);

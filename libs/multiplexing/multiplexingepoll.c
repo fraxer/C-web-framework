@@ -3,7 +3,6 @@
 #include <sys/epoll.h>
 
 #include "log.h"
-#include "config.h"
 #include "multiplexingepoll.h"
 
 #define EPOLL_MAX_EVENTS 16
@@ -14,7 +13,7 @@ void __mpx_epoll_free(void*);
 int __mpx_epoll_control_add(connection_t*, int);
 int __mpx_epoll_control_mod(connection_t*, int);
 int __mpx_epoll_control_del(connection_t*);
-int __mpx_epoll_process_events(void*);
+int __mpx_epoll_process_events(appconfig_t* appconfig, void* arg);
 int __mpx_epoll_convert_events(int);
 int __mpx_epoll_control(connection_t*, int, uint32_t);
 void __mpx_epoll_config_free(epoll_config_t*);
@@ -30,7 +29,6 @@ mpxapi_epoll_t* mpx_epoll_init() {
     const int fd = __mpx_epoll_init();
 
     api->base.connection_count = 0;
-    api->base.is_deprecated = NULL;
     api->base.config = __mpx_epoll_config_init(fd);
     api->base.listeners = NULL;
     api->base.free = __mpx_epoll_free;
@@ -69,10 +67,9 @@ epoll_config_t* __mpx_epoll_config_init(int basefd) {
     if (iconfig == NULL) return NULL;
 
     iconfig->basefd = basefd;
-    iconfig->timeout = 5000;
-    iconfig->is_hard_reload = config()->main.reload == CONFIG_RELOAD_HARD;
-    iconfig->buffer = malloc(sizeof(char) * config()->main.read_buffer);
-    iconfig->buffer_size = config()->main.read_buffer;
+    iconfig->timeout = 1000;
+    iconfig->buffer = malloc(sizeof(char) * env()->main.buffer_size);
+    iconfig->buffer_size = env()->main.buffer_size;
 
     if (iconfig->buffer == NULL) {
         free(iconfig);
@@ -125,10 +122,11 @@ int __mpx_epoll_convert_events(int events) {
     return epoll_events;
 }
 
-int __mpx_epoll_process_events(void* arg) {
+int __mpx_epoll_process_events(appconfig_t* appconfig, void* arg) {
     mpxapi_t* api = arg;
     epoll_config_t* apiconfig = api->config;
     epoll_event_t events[EPOLL_MAX_EVENTS];
+    const int config_shutdown = atomic_load(&appconfig->shutdown) && appconfig->reload == APPCONFIG_RELOAD_HARD;
 
     int n = epoll_wait(apiconfig->basefd, events, EPOLL_MAX_EVENTS, apiconfig->timeout);
     if (n == -1) return 0;
@@ -137,7 +135,7 @@ int __mpx_epoll_process_events(void* arg) {
         epoll_event_t* ev = &events[n];
         connection_t* connection = ev->data.ptr;
 
-        if (connection->destroyed || (ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) || (*api->is_deprecated && apiconfig->is_hard_reload))
+        if (connection->destroyed || (ev->events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) || config_shutdown)
             connection->close(connection);
         else if (ev->events & EPOLLIN)
             connection->read(connection, apiconfig->buffer, apiconfig->buffer_size);

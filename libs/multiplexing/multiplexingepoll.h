@@ -11,7 +11,6 @@ typedef struct epoll_event epoll_event_t;
 typedef struct epoll_config {
     int basefd;
     int timeout;
-    int is_hard_reload : 1;
     char* buffer;
     size_t buffer_size;
 } epoll_config_t;

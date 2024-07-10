@@ -10,7 +10,6 @@
 #include <stdlib.h>
 
 #include "json.h"
-#include "moduleloader.h"
 #include "dbquery.h"
 #include "dbresult.h"
 #include "database.h"
@@ -58,7 +57,7 @@ void mg_config_free(mgconfig_t* config) {
     config->action = NONE;
     config->count_migrations = 0;
     config->count_applied_migrations = 0;
-    if (config->database) db_free(config->database);
+    if (config->database) db_destroy(config->database);
     if (config->server) free(config->server);
     if (config->migration_name) free(config->migration_name);
     if (config->config_path) free(config->config_path);
@@ -168,14 +167,70 @@ const char* mg_config_read(const char* config_path) {
     return result;
 }
 
+int __module_loader_databases_load(mgconfig_t* config, const jsontok_t* token_databases) {
+    if (token_databases == NULL) return 1;
+    if (!json_is_object(token_databases)) {
+        return 0;
+    }
+
+    int result = 0;
+    db_t* last_database = NULL;
+    for (jsonit_t it = json_init_it(token_databases); !json_end_it(&it); json_next_it(&it)) {
+        jsontok_t* token_array = json_it_value(&it);
+        if (!json_is_array(token_array)) {
+            goto failed;
+        }
+        if (json_array_size(token_array) == 0) {
+            goto failed;
+        }
+
+        const char* driver = json_it_key(&it);
+        db_t* database = NULL;
+
+        #ifdef PostgreSQL_FOUND
+        if (strcmp(driver, "postgresql") == 0)
+            database = postgresql_load(driver, token_array);
+        #endif
+
+        #ifdef MySQL_FOUND
+        if (strcmp(driver, "mysql") == 0)
+            database = my_load(driver, token_array);
+        #endif
+
+        #ifdef Redis_FOUND
+        if (strcmp(driver, "redis") == 0)
+            database = redis_load(driver, token_array);
+        #endif
+
+        if (database == NULL) {
+            goto failed;
+        }
+
+        if (config->database == NULL)
+            config->database = database;
+
+        if (last_database != NULL)
+            last_database->next = database;
+
+        last_database = database;
+    }
+
+    result = 1;
+
+    failed:
+
+    if (result == 0)
+        db_destroy(config->database);
+
+    return result;
+}
+
 int mg_database_parse(mgconfig_t* config, const jsontok_t* token_object) {
     if (token_object == NULL) return -1;
     if (!json_is_object(token_object)) return -1;
 
-    if (module_loader_databases_load_token(token_object) == -1)
+    if (__module_loader_databases_load(config, token_object) == -1)
         return -1;
-
-    config->database = database();
 
     return 0;
 }

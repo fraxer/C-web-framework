@@ -19,18 +19,12 @@ typedef struct postgresqlconnection {
     PGconn* connection;
 } postgresqlconnection_t;
 
-postgresqlhost_t* postgresql_host_create();
-
+postgresqlhost_t* postgresql_host_create(void);
 void postgresql_host_free(void*);
-
-dbconnection_t* postgresql_connection_create(dbhosts_t*);
-
-dbconnection_t* postgresql_connection_create_manual(dbhosts_t*);
-
-const char* postgresql_table_exist_sql(const char*);
-
-const char* postgresql_table_migration_create_sql();
-
-db_t* postgresql_load(const char*, const jsontok_t*);
+dbconnection_t* postgresql_connection_create(dbhosts_t* hosts);
+dbconnection_t* postgresql_connection_create_manual(dbhosts_t* hosts);
+const char* postgresql_table_exist_sql(const char* table);
+const char* postgresql_table_migration_create_sql(void);
+db_t* postgresql_load(const char* database_id, const jsontok_t* token_array);
 
 #endif

@@ -10,7 +10,7 @@
 #include "log.h"
 #include "helpers.h"
 #include "json.h"
-#include "config.h"
+#include "appconfig.h"
 #include "mimetype.h"
 #include "http1response.h"
 #include "http1responseparser.h"
@@ -558,7 +558,7 @@ size_t __http1response_status_length(int status_code) {
 }
 
 const char* __http1response_get_mimetype(const char* extension) {
-    const char* mimetype = mimetype_find_type(extension);
+    const char* mimetype = mimetype_find_type(appconfig()->mimetype, extension);
 
     return mimetype == NULL ? "text/plain" : mimetype;
 }
@@ -640,16 +640,13 @@ int __http1response_alloc_body(http1response_t* response, const char* data, size
 }
 
 void __http1response_try_enable_gzip(http1response_t* response, const char* directive) {
-    const jsontok_t* token_gzip = config()->main.gzip;
-    for (jsonit_t it = json_init_it(token_gzip); !json_end_it(&it); it = json_next_it(&it)) {
-        jsontok_t* token_mimetype = json_it_value(&it);
-        if (!json_is_string(token_mimetype)) return;
-
-        const char* mimetype = json_string(token_mimetype);
-        if (cmpstr_lower(mimetype, directive)) {
+    env_gzip_str_t* item = env()->main.gzip;
+    while (item != NULL) {
+        if (cmpstr_lower(item->mimetype, directive)) {
             response->content_encoding = CE_GZIP;
             break;
         }
+        item = item->next;
     }
 }
 

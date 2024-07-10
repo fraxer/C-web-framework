@@ -1,7 +1,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-#include "config.h"
+#include "appconfig.h"
 #include "multiplexing.h"
 #include "multiplexingepoll.h"
 

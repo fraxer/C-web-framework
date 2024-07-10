@@ -9,8 +9,7 @@
 
 #include "file.h"
 #include "log.h"
-#include "helpers.h"
-#include "config.h"
+#include "appconfig.h"
 
 size_t __file_size(const int fd);
 int __file_set_name(file_t* file, const char* name);
@@ -33,7 +32,7 @@ file_t file_create_tmp(const char* filename) {
     file.ok = 1;
     file.tmp = 1;
 
-    char* path = create_tmppath(config()->main.tmp);
+    char* path = create_tmppath(env()->main.tmp);
     if (path == NULL) {
         file.ok = 0;
         return file;

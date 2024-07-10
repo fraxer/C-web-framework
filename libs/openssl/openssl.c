@@ -27,9 +27,9 @@ int openssl_init(openssl_t* openssl) {
     }
     lib_init = 1;
 
-    if (openssl_context_init(openssl) == -1) return -1;
+    if (openssl_context_init(openssl) == -1) return 0;
 
-    return 0;
+    return 1;
 }
 
 int openssl_context_init(openssl_t* openssl) {
@@ -83,17 +83,17 @@ openssl_t* openssl_create(void) {
 void openssl_free(openssl_t* openssl) {
     if (openssl == NULL) return;
 
-    if (openssl->fullchain) free(openssl->fullchain);
-    openssl->fullchain = NULL;
+    if (openssl->fullchain != NULL)
+        free(openssl->fullchain);
 
-    if (openssl->private) free(openssl->private);
-    openssl->private = NULL;
+    if (openssl->private != NULL)
+        free(openssl->private);
 
-    if (openssl->ciphers) free(openssl->ciphers);
-    openssl->ciphers = NULL;
+    if (openssl->ciphers != NULL)
+        free(openssl->ciphers);
 
-    if (openssl->ctx) SSL_CTX_free(openssl->ctx);
-    openssl->ctx = NULL;
+    if (openssl->ctx != NULL)
+        SSL_CTX_free(openssl->ctx);
 
     free(openssl);
 }

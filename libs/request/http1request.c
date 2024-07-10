@@ -11,7 +11,7 @@
 
 #include "file.h"
 #include "helpers.h"
-#include "config.h"
+#include "appconfig.h"
 #include "mimetype.h"
 #include "urlencodedparser.h"
 #include "formdataparser.h"
@@ -405,7 +405,7 @@ void http1request_payload_parse_multipart(http1request_t* request, const char* h
     multipartparser_t mparser;
     multipartparser_init(&mparser, request->payload_.file.fd, boundary);
 
-    size_t buffer_size = config()->main.read_buffer;
+    size_t buffer_size = env()->main.buffer_size;
     char* buffer = malloc(buffer_size);
     if (buffer == NULL) {
         free(boundary);
@@ -431,7 +431,7 @@ void http1request_payload_parse_multipart(http1request_t* request, const char* h
 }
 
 void http1request_payload_parse_urlencoded(http1request_t* request) {
-    size_t buffer_size = config()->main.read_buffer;
+    size_t buffer_size = env()->main.buffer_size;
     char* buffer = malloc(buffer_size);
     if (buffer == NULL) return;
 
@@ -619,7 +619,7 @@ http1request_head_t http1request_create_head(http1request_t* request) {
 }
 
 int http1request_create_payload_file(http1_payload_t* payload) {
-    payload->path = create_tmppath(config()->main.tmp);
+    payload->path = create_tmppath(env()->main.tmp);
     if (payload->path == NULL)
         return 0;
 
@@ -831,7 +831,7 @@ int http1request_append_formdata_file_content(http1request_t* request, const cha
         goto failed;
 
     const char* ext = file_extention(file_content->filename);
-    const char* mimetype = mimetype_find_type(ext);
+    const char* mimetype = mimetype_find_type(appconfig()->mimetype, ext);
     if (mimetype == NULL)
         mimetype = "text/plain";
 
@@ -938,7 +938,7 @@ int http1request_set_payload_file_content(http1request_t* request, const file_co
     }
 
     const char* ext = file_extention(file_content->filename);
-    const char* mimetype = mimetype_find_type(ext);
+    const char* mimetype = mimetype_find_type(appconfig()->mimetype, ext);
     if (mimetype == NULL)
         mimetype = "text/plain";
 

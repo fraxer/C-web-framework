@@ -16,7 +16,7 @@ domain_t* domain_create(const char*);
 
 domain_t* domain_alloc(const char*);
 
-void domain_free(domain_t*);
+void domains_free(domain_t*);
 
 int domain_parse(domain_t*);
 

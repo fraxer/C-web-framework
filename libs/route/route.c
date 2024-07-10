@@ -340,13 +340,13 @@ int route_set_http_handler(route_t* route, const char* method, void(*function)(v
         m = ROUTE_HEAD;
     }
 
-    if (m == ROUTE_NONE) return -1;
+    if (m == ROUTE_NONE) return 0;
 
-    if (route->handler[m]) return 0;
+    if (route->handler[m]) return 1;
 
     route->handler[m] = function;
 
-    return 0;
+    return 1;
 }
 
 int route_set_websockets_handler(route_t* route, const char* method, void(*function)(void*, void*)) {
@@ -365,22 +365,21 @@ int route_set_websockets_handler(route_t* route, const char* method, void(*funct
         m = ROUTE_PATCH;
     }
 
-    if (m == ROUTE_NONE) return -1;
+    if (m == ROUTE_NONE) return 0;
 
-    if (route->handler[m]) return 0;
+    if (route->handler[m]) return 1;
 
     route->handler[m] = function;
 
-    return 0;
+    return 1;
 }
 
-void route_free(route_t* route) {
-    while (route) {
+void routes_free(route_t* route) {
+    while (route != NULL) {
         route_t* route_next = route->next;
-
+        
         route_param_t* param = route->param;
-
-        while (param) {
+        while (param != NULL) {
             route_param_t* param_next = param->next;
 
             free(param->string);
@@ -389,7 +388,8 @@ void route_free(route_t* route) {
             param = param_next;
         }
 
-        pcre_free(route->location);
+        if (route->location != NULL)
+            pcre_free(route->location);
 
         free(route->path);
         free(route);

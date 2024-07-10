@@ -10,13 +10,14 @@
 #define WITH_LOOP 1
 #define WITHOUT_LOOP 0
 
-dbhosts_t* my_hosts_create();
-void my_connection_free(dbconnection_t*);
-void my_send_query(dbresult_t*, dbconnection_t*, const char*);
-MYSQL* my_connect(dbhosts_t*, int);
+static dbhosts_t* __my_hosts_create(void);
+static void __my_connection_free(dbconnection_t* connection);
+static void __my_send_query(dbresult_t* result, dbconnection_t* connection, const char* string);
+static MYSQL* __my_connect(dbhosts_t* hosts, int with_loop);
 
-dbhosts_t* my_hosts_create() {
-    dbhosts_t* hosts = malloc(sizeof *hosts);
+dbhosts_t* __my_hosts_create(void) {
+    dbhosts_t* hosts = malloc(sizeof * hosts);
+    if (hosts == NULL) return NULL;
 
     hosts->host = NULL;
     hosts->current_host = NULL;
@@ -28,8 +29,9 @@ dbhosts_t* my_hosts_create() {
     return hosts;
 }
 
-myhost_t* my_host_create() {
+myhost_t* my_host_create(void) {
     myhost_t* host = malloc(sizeof *host);
+    if (host == NULL) return NULL;
 
     host->base.free = my_host_free;
     host->base.migration = 0;
@@ -59,7 +61,7 @@ void my_host_free(void* arg) {
 }
 
 void my_free(db_t* db) {
-    db_free(db);
+    db_destroy(db);
 }
 
 dbconnection_t* my_connection_create(dbhosts_t* hosts) {
@@ -69,20 +71,20 @@ dbconnection_t* my_connection_create(dbhosts_t* hosts) {
 
     connection->base.locked = 0;
     connection->base.next = NULL;
-    connection->base.free = my_connection_free;
-    connection->base.send_query = my_send_query;
+    connection->base.free = __my_connection_free;
+    connection->base.send_query = __my_send_query;
 
     void* host_address = hosts->current_host;
 
     while (1) {
-        connection->connection = my_connect(hosts, WITH_LOOP);
+        connection->connection = __my_connect(hosts, WITH_LOOP);
 
         if (connection->connection != NULL) break;
 
         log_error("Mysql error: connection error\n");
 
         if (host_address == hosts->current_host) {
-            my_connection_free((dbconnection_t*)connection);
+            __my_connection_free((dbconnection_t*)connection);
             return NULL;
         }
 
@@ -99,9 +101,9 @@ dbconnection_t* my_connection_create_manual(dbhosts_t* hosts) {
 
     connection->base.locked = 0;
     connection->base.next = NULL;
-    connection->base.free = my_connection_free;
-    connection->base.send_query = my_send_query;
-    connection->connection = my_connect(hosts, WITHOUT_LOOP);
+    connection->base.free = __my_connection_free;
+    connection->base.send_query = __my_send_query;
+    connection->connection = __my_connect(hosts, WITHOUT_LOOP);
 
     if (connection->connection != NULL) {
         return (dbconnection_t*)connection;
@@ -109,7 +111,7 @@ dbconnection_t* my_connection_create_manual(dbhosts_t* hosts) {
 
     log_error("Mysql error: connection error\n");
 
-    my_connection_free((dbconnection_t*)connection);
+    __my_connection_free((dbconnection_t*)connection);
 
     return NULL;
 }
@@ -132,8 +134,7 @@ const char* my_table_exist_sql(const char* table) {
     return strdup(&tmp[0]);
 }
 
-const char* my_table_migration_create_sql()
-{
+const char* my_table_migration_create_sql(void) {
     char tmp[512] = {0};
 
     strcpy(
@@ -148,7 +149,7 @@ const char* my_table_migration_create_sql()
     return strdup(&tmp[0]);
 }
 
-void my_connection_free(dbconnection_t* connection) {
+void __my_connection_free(dbconnection_t* connection) {
     if (connection == NULL) return;
 
     myconnection_t* conn = (myconnection_t*)connection;
@@ -157,7 +158,7 @@ void my_connection_free(dbconnection_t* connection) {
     free(conn);
 }
 
-void my_send_query(dbresult_t* result, dbconnection_t* connection, const char* string) {
+void __my_send_query(dbresult_t* result, dbconnection_t* connection, const char* string) {
     myconnection_t* myconnection = (myconnection_t*)connection;
 
     if (mysql_query(myconnection->connection, string) != 0) {
@@ -240,7 +241,7 @@ void my_send_query(dbresult_t* result, dbconnection_t* connection, const char* s
     return;
 }
 
-MYSQL* my_connect(dbhosts_t* hosts, int with_loop) {
+MYSQL* __my_connect(dbhosts_t* hosts, int with_loop) {
     MYSQL* connection = mysql_init(NULL);
 
     if (connection == NULL) return NULL;
@@ -266,89 +267,149 @@ MYSQL* my_connect(dbhosts_t* hosts, int with_loop) {
 db_t* my_load(const char* database_id, const jsontok_t* token_array) {
     db_t* result = NULL;
     db_t* database = db_create(database_id);
-    if (database == NULL) goto failed;
+    if (database == NULL) return NULL;
 
-    database->hosts = my_hosts_create();
-    if (database->hosts == NULL) goto failed;
+    database->hosts = __my_hosts_create();
+    if (database->hosts == NULL) {
+        log_error("my_load: can't create hosts\n");
+        goto failed;
+    }
 
     enum fields { PORT = 0, IP, DBNAME, USER, PASSWORD, MIGRATION, FIELDS_COUNT };
     enum required_fields { R_PORT = 0, R_IP, R_DBNAME, R_USER, R_PASSWORD, R_FIELDS_COUNT };
-    int finded_fields[FIELDS_COUNT] = {0};
+    char* field_names[FIELDS_COUNT] = {"port", "ip", "dbname", "user", "password", "migration"};
     dbhost_t* host_last = NULL;
 
     for (jsonit_t it_array = json_init_it(token_array); !json_end_it(&it_array); json_next_it(&it_array)) {
         jsontok_t* token_object = json_it_value(&it_array);
+        int lresult = 0;
+        int finded_fields[FIELDS_COUNT] = {0};
         myhost_t* host = my_host_create();
+        if (host == NULL) {
+            log_error("my_load: can't create host\n");
+            goto failed;
+        }
 
         for (jsonit_t it_object = json_init_it(token_object); !json_end_it(&it_object); json_next_it(&it_object)) {
             const char* key = json_it_key(&it_object);
             jsontok_t* token_value = json_it_value(&it_object);
 
             if (strcmp(key, "port") == 0) {
-                if (!json_is_int(token_value)) goto failed;
+                if (finded_fields[PORT]) {
+                    log_error("my_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_int(token_value)) {
+                    log_error("my_load: field %s must be int\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[PORT] = 1;
 
                 host->base.port = json_int(token_value);
             }
             else if (strcmp(key, "ip") == 0) {
-                if (!json_is_string(token_value)) goto failed;
+                if (finded_fields[IP]) {
+                    log_error("my_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_string(token_value)) {
+                    log_error("my_load: field %s must be string\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[IP] = 1;
 
-                const char* value = json_string(token_value);
+                if (host->base.ip != NULL) free(host->base.ip);
 
-                host->base.ip = (char*)malloc(strlen(value) + 1);
+                host->base.ip = malloc(token_value->size + 1);
+                if (host->base.ip == NULL) {
+                    log_error("my_load: alloc memory for %s failed\n", key);
+                    goto host_failed;
+                }
 
-                if (host->base.ip == NULL) goto failed;
-
-                strcpy(host->base.ip, value);
+                strcpy(host->base.ip, json_string(token_value));
             }
             else if (strcmp(key, "dbname") == 0) {
-                if (!json_is_string(token_value)) goto failed;
+                if (finded_fields[DBNAME]) {
+                    log_error("my_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_string(token_value)) {
+                    log_error("my_load: field %s must be string\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[DBNAME] = 1;
 
-                const char* value = json_string(token_value);
+                if (host->dbname != NULL) free(host->dbname);
 
-                host->dbname = (char*)malloc(strlen(value) + 1);
+                host->dbname = malloc(token_value->size + 1);
+                if (host->dbname == NULL) {
+                    log_error("my_load: alloc memory for %s failed\n", key);
+                    goto host_failed;
+                }
 
-                if (host->dbname == NULL) goto failed;
-
-                strcpy(host->dbname, value);
+                strcpy(host->dbname, json_string(token_value));
             }
             else if (strcmp(key, "user") == 0) {
-                if (!json_is_string(token_value)) goto failed;
+                if (finded_fields[USER]) {
+                    log_error("my_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_string(token_value)) {
+                    log_error("my_load: field %s must be string\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[USER] = 1;
 
-                const char* value = json_string(token_value);
+                if (host->user != NULL) free(host->user);
 
-                host->user = (char*)malloc(strlen(value) + 1);
+                host->user = malloc(token_value->size + 1);
+                if (host->user == NULL) {
+                    log_error("my_load: alloc memory for %s failed\n", key);
+                    goto host_failed;
+                }
 
-                if (host->user == NULL) goto failed;
-
-                strcpy(host->user, value);
+                strcpy(host->user, json_string(token_value));
             }
             else if (strcmp(key, "password") == 0) {
-                if (!json_is_string(token_value)) goto failed;
+                if (finded_fields[PASSWORD]) {
+                    log_error("my_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_string(token_value)) {
+                    log_error("my_load: field %s must be string\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[PASSWORD] = 1;
 
-                const char* value = json_string(token_value);
+                if (host->password != NULL) free(host->password);
 
-                host->password = (char*)malloc(strlen(value) + 1);
+                host->password = malloc(token_value->size + 1);
+                if (host->password == NULL) goto host_failed;
 
-                if (host->password == NULL) goto failed;
-
-                strcpy(host->password, value);
+                strcpy(host->password, json_string(token_value));
             }
             else if (strcmp(key, "migration") == 0) {
-                if (!json_is_bool(token_value)) goto failed;
+                if (finded_fields[MIGRATION]) {
+                    log_error("my_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_bool(token_value)) {
+                    log_error("my_load: field %s must be bool\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[MIGRATION] = 1;
 
                 host->base.migration = json_bool(token_value);
+            }
+            else {
+                log_error("my_load: unknown field: %s\n", key);
+                goto host_failed;
             }
         }
 
@@ -356,16 +417,25 @@ db_t* my_load(const char* database_id, const jsontok_t* token_array) {
             database->hosts->host = (dbhost_t*)host;
             database->hosts->current_host = (dbhost_t*)host;
         }
-        if (host_last != NULL) {
+        if (host_last != NULL)
             host_last->next = (dbhost_t*)host;
-        }
+
         host_last = (dbhost_t*)host;
 
         for (int i = 0; i < R_FIELDS_COUNT; i++) {
             if (finded_fields[i] == 0) {
-                log_error("Error: Fill mysql config\n");
-                goto failed;
+                log_error("my_load: required field %s not found\n", field_names[i]);
+                goto host_failed;
             }
+        }
+
+        lresult = 1;
+
+        host_failed:
+
+        if (lresult == 0) {
+            my_host_free(host);
+            goto failed;
         }
     }
 
@@ -373,9 +443,8 @@ db_t* my_load(const char* database_id, const jsontok_t* token_array) {
 
     failed:
 
-    if (result == NULL) {
-        db_free(database);
-    }
+    if (result == NULL)
+        db_destroy(database);
 
     return result;
 }

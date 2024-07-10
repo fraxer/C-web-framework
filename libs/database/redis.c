@@ -15,8 +15,9 @@ int redis_auth(redisContext*, const char*, const char*);
 int redis_selectdb(redisContext*, const int);
 redisContext* redis_connect(dbhosts_t*);
 
-dbhosts_t* redis_hosts_create() {
-    dbhosts_t* hosts = malloc(sizeof *hosts);
+dbhosts_t* redis_hosts_create(void) {
+    dbhosts_t* hosts = malloc(sizeof * hosts);
+    if (hosts == NULL) return NULL;
 
     hosts->host = NULL;
     hosts->current_host = NULL;
@@ -28,8 +29,9 @@ dbhosts_t* redis_hosts_create() {
     return hosts;
 }
 
-redishost_t* redis_host_create() {
-    redishost_t* host = malloc(sizeof *host);
+redishost_t* redis_host_create(void) {
+    redishost_t* host = malloc(sizeof * host);
+    if (host == NULL) return NULL;
 
     host->base.free = redis_host_free;
     host->base.migration = 0;
@@ -59,7 +61,7 @@ void redis_host_free(void* arg) {
 }
 
 void redis_free(db_t* db) {
-    db_free(db);
+    db_destroy(db);
 }
 
 dbconnection_t* redis_connection_create(dbhosts_t* hosts) {
@@ -236,75 +238,134 @@ redisContext* redis_connect(dbhosts_t* hosts) {
 db_t* redis_load(const char* database_id, const jsontok_t* token_array) {
     db_t* result = NULL;
     db_t* database = db_create(database_id);
-    if (database == NULL) goto failed;
+    if (database == NULL) return NULL;
 
     database->hosts = redis_hosts_create();
-    if (database->hosts == NULL) goto failed;
+    if (database->hosts == NULL) {
+        log_error("redis_load: can't create hosts\n");
+        goto failed;
+    }
 
     enum fields { PORT = 0, IP, DBINDEX, USER, PASSWORD, FIELDS_COUNT };
     enum required_fields { R_PORT = 0, R_IP, R_DBINDEX, R_FIELDS_COUNT };
-    int finded_fields[FIELDS_COUNT] = {0};
+    char* field_names[FIELDS_COUNT] = {"port", "ip", "dbindex", "user", "password"};
     dbhost_t* host_last = NULL;
 
     for (jsonit_t it_array = json_init_it(token_array); !json_end_it(&it_array); json_next_it(&it_array)) {
         jsontok_t* token_object = json_it_value(&it_array);
+        int lresult = 0;
+        int finded_fields[FIELDS_COUNT] = {0};
         redishost_t* host = redis_host_create();
+        if (host == NULL) {
+            log_error("redis_load: can't create host\n");
+            goto failed;
+        }
 
         for (jsonit_t it_object = json_init_it(token_object); !json_end_it(&it_object); json_next_it(&it_object)) {
             const char* key = json_it_key(&it_object);
             jsontok_t* token_value = json_it_value(&it_object);
 
             if (strcmp(key, "port") == 0) {
-                if (!json_is_int(token_value)) goto failed;
+                if (finded_fields[PORT]) {
+                    log_error("redis_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_int(token_value)) {
+                    log_error("redis_load: field %s must be int\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[PORT] = 1;
 
                 host->base.port = json_int(token_value);
             }
             else if (strcmp(key, "ip") == 0) {
-                if (!json_is_string(token_value)) goto failed;
+                if (finded_fields[IP]) {
+                    log_error("redis_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_string(token_value)) {
+                    log_error("redis_load: field %s must be string\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[IP] = 1;
 
-                const char* value = json_string(token_value);
+                if (host->base.ip != NULL) free(host->base.ip);
 
-                host->base.ip = (char*)malloc(strlen(value) + 1);
-                if (host->base.ip == NULL) goto failed;
+                host->base.ip = malloc(token_value->size + 1);
+                if (host->base.ip == NULL) {
+                    log_error("redis_load: alloc memory for %s failed\n", key);
+                    goto host_failed;
+                }
 
-                strcpy(host->base.ip, value);
+                strcpy(host->base.ip, json_string(token_value));
             }
             else if (strcmp(key, "dbindex") == 0) {
-                if (!json_is_int(token_value)) goto failed;
+                if (finded_fields[DBINDEX]) {
+                    log_error("redis_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_int(token_value)) {
+                    log_error("redis_load: field %s must be int\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[DBINDEX] = 1;
 
                 host->dbindex = json_int(token_value);
-
-                if (host->dbindex < 0 || host->dbindex > 16) goto failed;
+                if (host->dbindex < 0 || host->dbindex > 16) {
+                    log_error("redis_load: dbindex must be in range 0..16\n");
+                    goto host_failed;
+                }
             }
             else if (strcmp(key, "user") == 0) {
-                if (!json_is_string(token_value)) goto failed;
+                if (finded_fields[USER]) {
+                    log_error("redis_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_string(token_value)) {
+                    log_error("redis_load: field %s must be string\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[USER] = 1;
 
-                const char* value = json_string(token_value);
+                if (host->user != NULL) free(host->user);
 
-                host->user = (char*)malloc(strlen(value) + 1);
-                if (host->user == NULL) goto failed;
+                host->user = malloc(token_value->size + 1);
+                if (host->user == NULL) {
+                    log_error("redis_load: alloc memory for %s failed\n", key);
+                    goto host_failed;
+                }
 
-                strcpy(host->user, value);
+                strcpy(host->user, json_string(token_value));
             }
             else if (strcmp(key, "password") == 0) {
-                if (!json_is_string(token_value)) goto failed;
+                if (finded_fields[PASSWORD]) {
+                    log_error("redis_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_string(token_value)) {
+                    log_error("redis_load: field %s must be string\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[PASSWORD] = 1;
 
-                const char* value = json_string(token_value);
+                if (host->password != NULL) free(host->password);
 
-                host->password = (char*)malloc(strlen(value) + 1);
-                if (host->password == NULL) goto failed;
+                host->password = malloc(token_value->size + 1);
+                if (host->password == NULL) {
+                    log_error("redis_load: alloc memory for %s failed\n", key);
+                    goto host_failed;
+                }
 
-                strcpy(host->password, value);
+                strcpy(host->password, json_string(token_value));
+            }
+            else {
+                log_error("redis_load: unknown field: %s\n", key);
+                goto host_failed;
             }
         }
 
@@ -312,28 +373,47 @@ db_t* redis_load(const char* database_id, const jsontok_t* token_array) {
             database->hosts->host = (dbhost_t*)host;
             database->hosts->current_host = (dbhost_t*)host;
         }
-        if (host_last != NULL) {
+        if (host_last != NULL)
             host_last->next = (dbhost_t*)host;
-        }
+
         host_last = (dbhost_t*)host;
 
         if (finded_fields[USER] == 0) {
-            host->user = (char*)malloc(1);
-            if (host->user == NULL) goto failed;
+            if (host->user == NULL)
+                host->user = malloc(1);
+
+            if (host->user == NULL) {
+                log_error("redir_load: can't alloc memory for user\n");
+                goto host_failed;
+            }
             strcpy(host->user, "");
         }
 
         if (finded_fields[PASSWORD] == 0) {
-            host->password = (char*)malloc(1);
-            if (host->password == NULL) goto failed;
+            if (host->password == NULL)
+                host->password = malloc(1);
+
+            if (host->password == NULL) {
+                log_error("redir_load: can't alloc memory for password\n");
+                goto host_failed;
+            }
             strcpy(host->password, "");
         }
 
         for (int i = 0; i < R_FIELDS_COUNT; i++) {
             if (finded_fields[i] == 0) {
-                log_error("Error: Fill database config\n");
-                goto failed;
+                log_error("redir_load: required field %s not found\n", field_names[i]);
+                goto host_failed;
             }
+        }
+
+        lresult = 1;
+
+        host_failed:
+
+        if (lresult == 0) {
+            redis_host_free(host);
+            goto failed;
         }
     }
 
@@ -341,9 +421,8 @@ db_t* redis_load(const char* database_id, const jsontok_t* token_array) {
 
     failed:
 
-    if (result == NULL) {
-        db_free(database);
-    }
+    if (result == NULL)
+        db_destroy(database);
 
     return result;
 }
