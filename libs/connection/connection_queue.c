@@ -1,6 +1,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 #include "log.h"
 #include "connection_queue.h"
@@ -104,9 +105,16 @@ void connection_queue_guard_append(connection_queue_item_t* item) {
 }
 
 connection_t* connection_queue_guard_pop() {
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    struct timespec timeToWait = {
+        .tv_sec = now.tv_sec + 1,
+        .tv_nsec = 0
+    };
+
     if (__connection_queue_empty(queue)) {
         pthread_mutex_lock(&connection_queue_mutex);
-        pthread_cond_wait(&connection_queue_cond, &connection_queue_mutex);
+        pthread_cond_timedwait(&connection_queue_cond, &connection_queue_mutex, &timeToWait);
         pthread_mutex_unlock(&connection_queue_mutex);
     }
 

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <linux/limits.h>
 
+#include "appconfig.h"
 #include "viewparser.h"
 #include "viewstore.h"
 #include "view.h"
@@ -40,30 +41,6 @@ char* render(jsondoc_t* document, const char* storage_name, const char* path_for
 }
 
 /**
- * Increment the reference counter of a view.
- *
- * @param view The view to increment the reference counter of.
- * @return void
- */
-void view_increment(view_t* view) {
-    if (view == NULL) return;
-
-    atomic_fetch_add(&view->counter, 1);
-}
-
-/**
- * Decrement the reference counter of a view.
- *
- * @param view The view to decrement the reference counter of.
- * @return void
- */
-void view_decrement(view_t* view) {
-    if (view == NULL) return;
-
-    atomic_fetch_sub(&view->counter, 1);
-}
-
-/**
  * Render a view.
  *
  * @param document The JSON document to render.
@@ -72,10 +49,11 @@ void view_decrement(view_t* view) {
  * @return The rendered content of the view, or NULL if an error occurred.
  */
 char* __view_render(jsondoc_t* document, const char* storage_name, const char* path) {
-    viewstore_lock();
-    view_t* view = viewstore_get_view(path);
+    viewstore_t* viewstore = appconfig()->viewstore;
+    viewstore_lock(viewstore);
+    view_t* view = viewstore_get_view(viewstore, path);
     if (view == NULL) {
-        viewstore_unlock();
+        viewstore_unlock(viewstore);
 
         viewparser_t* parser = viewparser_init(storage_name, path);
         if (parser == NULL) return NULL;
@@ -85,23 +63,18 @@ char* __view_render(jsondoc_t* document, const char* storage_name, const char* p
             return NULL;
         }
 
-        viewstore_lock();
-        view = viewstore_add_view(viewparser_move_root_tag(parser), path);
-        view_increment(view);
-        viewstore_unlock();
+        viewstore_lock(viewstore);
+        view = viewstore_add_view(viewstore, viewparser_move_root_tag(parser), path);
+        viewstore_unlock(viewstore);
 
         viewparser_free(parser);
 
         if (view == NULL) return NULL;
-    } else {
-        view_increment(view);
-        viewstore_unlock();
     }
+    else
+        viewstore_unlock(viewstore);
 
-    char* data = __view_make_content(view, document);
-    view_decrement(view);
-
-    return data;
+    return __view_make_content(view, document);
 }
 
 /**

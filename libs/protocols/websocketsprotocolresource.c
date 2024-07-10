@@ -1,6 +1,6 @@
 #include <string.h>
 
-#include "config.h"
+#include "appconfig.h"
 #include "websocketsprotocolresource.h"
 #include "websocketsparser.h"
 
@@ -209,11 +209,11 @@ int websockets_protocol_resource_payload_parse(websocketsrequest_t* request, cha
         if (!websocketsrequest_has_payload(protocol))
             return 0;
 
-        if (!websockets_create_tmpfile(request->protocol, config()->main.tmp))
+        if (!websockets_create_tmpfile(request->protocol, env()->main.tmp))
             return 0;
 
         off_t payloadlength = lseek(request->protocol->payload.fd, 0, SEEK_END);
-        if (payloadlength + length > config()->main.client_max_body_size)
+        if (payloadlength + length > env()->main.client_max_body_size)
             return 0;
 
         int r = write(request->protocol->payload.fd, &string[offset], length - offset);

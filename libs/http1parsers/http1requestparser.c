@@ -7,7 +7,7 @@
 #include "cookieparser.h"
 #include "domain.h"
 #include "log.h"
-#include "config.h"
+#include "appconfig.h"
 #include "http1common.h"
 #include "http1requestparser.h"
 #include "helpers.h"
@@ -244,7 +244,7 @@ int http1parser_parse_payload(http1requestparser_t* parser) {
     parser->pos = parser->bytes_readed;
 
     if (request->payload_.file.fd <= 0) {
-        request->payload_.path = create_tmppath(config()->main.tmp);
+        request->payload_.path = create_tmppath(env()->main.tmp);
         if (request->payload_.path == NULL)
             return HTTP1PARSER_ERROR;
 
@@ -254,7 +254,7 @@ int http1parser_parse_payload(http1requestparser_t* parser) {
     }
 
     size_t string_len = parser->pos - parser->pos_start;
-    if (parser->content_saved_length + string_len > config()->main.client_max_body_size) {
+    if (parser->content_saved_length + string_len > env()->main.client_max_body_size) {
         return HTTP1PARSER_PAYLOAD_LARGE;
     }
 
@@ -671,7 +671,7 @@ http1_ranges_t* http1parser_parse_range(char* str, size_t length) {
                 str[i] = ',';
 
                 if (end > max) goto failed;
-                if (end < last_range->start) goto failed;
+                if (last_range && end < last_range->start) goto failed;
                 if (start_finded == 0) goto failed;
 
                 if (last_range->end <= end) {
@@ -689,7 +689,7 @@ http1_ranges_t* http1parser_parse_range(char* str, size_t length) {
                 end = atoll(&str[start_position]);
 
                 if (end > max) goto failed;
-                if (end < last_range->start) goto failed;
+                if (last_range && end < last_range->start) goto failed;
                 if (start_finded == 0) goto failed;
 
                 if (last_range->end <= end) {

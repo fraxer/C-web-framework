@@ -1,5 +1,6 @@
 #include "log.h"
 #include "socket.h"
+#include "broadcast.h"
 #include "multiplexing.h"
 #include "multiplexingserver.h"
 #include "listener.h"
@@ -11,19 +12,20 @@ static int __mpxserver_socket_exist(socket_t* socket, server_t* server);
 static void __mpxserver_close_listener_sockets(mpxapi_t* api);
 static void __mpxserver_listeners_connection_close(mpxlistener_t* listener);
 
-void mpxserver_run(server_chain_t* server_chain) {
+int mpxserver_run(appconfig_t* appconfig, void(*thread_worker_threads_pause)(appconfig_t* config)) {
+    int result = 0;
     mpxapi_t* api = mpx_create(MULTIPLEX_TYPE_EPOLL);
-    if (api == NULL) return;
+    if (api == NULL) return result;
 
-    api->is_deprecated = &server_chain->is_deprecated;
-
-    if (!__mpxserver_open_listener_sockets(api, server_chain->server))
+    if (!__mpxserver_open_listener_sockets(api, appconfig->server_chain->server))
         goto failed;
 
     while (1) {
-        api->process_events(api);
+        thread_worker_threads_pause(appconfig);
 
-        if (server_chain->is_deprecated) {
+        api->process_events(appconfig, api);
+
+        if (atomic_load(&appconfig->shutdown)) {
             __mpxserver_listeners_connection_close(api->listeners);
 
             if (api->connection_count == 0)
@@ -33,17 +35,19 @@ void mpxserver_run(server_chain_t* server_chain) {
 
     __mpxserver_close_listener_sockets(api);
 
-    failed:
+    result = 1;
 
-    server_chain->thread_count--;
+    failed:
 
     api->free(api);
 
-    return;
+    return result;
 }
 
 void __mpxserver_listeners_connection_close(mpxlistener_t* listener) {
-    while (listener) {
+    if (listener->connection->destroyed) return;
+
+    while (listener != NULL) {
         mpxlistener_t* next = listener->next;
         listener->connection->close(listener->connection);
         listener = next;
@@ -58,6 +62,8 @@ int __mpxserver_connection_close(connection_t* connection) {
             log_error("Connection not removed from api\n");
 
         connection->destroyed = 1;
+
+        shutdown(connection->fd, SHUT_RDWR);
     }
 
     connection_unlock(connection);
@@ -73,7 +79,6 @@ int __mpxserver_connection_destroy(connection_t* connection) {
         SSL_clear(connection->ssl);
     }
 
-    shutdown(connection->fd, SHUT_RDWR);
     close(connection->fd);
 
     connection_dec(connection);

@@ -217,7 +217,7 @@ void redirect_parser_free(redirect_parser_t* parser) {
 }
 
 void redirect_free(redirect_t* redirect) {
-    while (redirect) {
+    while (redirect != NULL) {
         redirect_t* redirect_next = redirect->next;
 
         redirect_param_t* param = redirect->param;

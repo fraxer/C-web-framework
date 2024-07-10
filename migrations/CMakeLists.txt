@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.12.4)
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,--exclude-libs,libpcre")
+
 MACRO(SUBDIRLIST result curdir)
   FILE(GLOB children RELATIVE ${curdir} ${curdir}/*)
   SET(dirlist "")

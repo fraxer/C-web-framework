@@ -97,10 +97,8 @@ routeloader_lib_t* __routeloader_init_container(const char* filepath, void* shar
     return routeloader_lib;
 }
 
-int routeloader_has_lib(routeloader_lib_t* first_lib, const char* filepath) {
-    routeloader_lib_t* lib = first_lib;
-
-    while (lib) {
+int routeloader_has_lib(routeloader_lib_t* lib, const char* filepath) {
+    while (lib != NULL) {
         if (strcmp(lib->filepath, filepath) == 0) return 1;
 
         lib = lib->next;
@@ -109,11 +107,10 @@ int routeloader_has_lib(routeloader_lib_t* first_lib, const char* filepath) {
     return 0;
 }
 
-routeloader_lib_t* routeloader_get_last(routeloader_lib_t* first_lib) {
-    routeloader_lib_t* lib = first_lib;
-
-    while (lib) {
-        if (lib->next == NULL) return lib;
+routeloader_lib_t* routeloader_get_last(routeloader_lib_t* lib) {
+    while (lib != NULL) {
+        if (lib->next == NULL)
+            return lib;
 
         lib = lib->next;
     }

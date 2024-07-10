@@ -48,7 +48,7 @@ void smtp_client_write_command(connection_t* connection, char* buffer, size_t bu
 
     smtprequest_t* request = (smtprequest_t*)connection->request;
 
-    ssize_t r = __smtp_write_internal(connection, request->command, strlen(request->command));
+    (void)__smtp_write_internal(connection, request->command, strlen(request->command));
 
     connection->after_write_request(connection);
 }
@@ -59,7 +59,7 @@ void smtp_client_write_content(connection_t* connection, char* buffer, size_t bu
 
     smtprequest_data_t* request = (smtprequest_data_t*)connection->request;
 
-    ssize_t r = __smtp_write_internal(connection, request->content, request->content_size);
+    (void)__smtp_write_internal(connection, request->content, request->content_size);
 
     connection->after_write_request(connection);
 }

@@ -114,6 +114,8 @@ int listener_connection_close(connection_t* connection) {
     close(connection->fd);
 
     connection->destroyed = 1;
+    broadcast_clear(connection);
+
     if (connection_dec(connection) == CONNECTION_DEC_RESULT_DECREMENT)
         connection_unlock(connection);
 

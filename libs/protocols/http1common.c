@@ -174,22 +174,27 @@ char http1_to_hex(char code) {
 }
 
 http1_urlendec_t http1_urlencode(const char* string, size_t length) {
+    if (string == NULL)
+        return (http1_urlendec_t){ .string = NULL, .length = 0 };
+
     char* buffer = malloc(length * 3 + 1);
+    if (buffer == NULL)
+        return (http1_urlendec_t){ .string = NULL, .length = 0 };
+
     char* pbuffer = buffer;
 
-    while (*string) {
-        if (isalnum(*string) || *string == '-' || *string == '_' || *string == '.' || *string == '~') {
-            *pbuffer++ = *string;
-        }
-        else if (*string == ' ') {
+    for (size_t i = 0; i < length; i++) {
+        char ch = string[i];
+
+        if (isalnum(ch) || ch == '-' || ch == '_' || ch == '.' || ch == '~')
+            *pbuffer++ = ch;
+        else if (ch == ' ')
             *pbuffer++ = '+';
-        }
         else {
             *pbuffer++ = '%';
-            *pbuffer++ = http1_to_hex(*string >> 4);
-            *pbuffer++ = http1_to_hex(*string & 15);
+            *pbuffer++ = http1_to_hex(ch >> 4);
+            *pbuffer++ = http1_to_hex(ch & 15);
         }
-        string++;
     }
 
     *pbuffer = 0;

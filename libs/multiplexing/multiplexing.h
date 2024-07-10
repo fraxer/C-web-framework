@@ -3,6 +3,7 @@
 
 #include <stdatomic.h>
 
+#include "appconfig.h"
 #include "connection.h"
 
 enum mpxevents {
@@ -25,14 +26,13 @@ typedef struct mpxlistener {
 
 typedef struct mpxapi {
     atomic_int connection_count;
-    atomic_bool* is_deprecated;
     void* config;
     mpxlistener_t* listeners;
     void(*free)(void*);
     int(*control_add)(connection_t*, int);
     int(*control_mod)(connection_t*, int);
     int(*control_del)(connection_t*);
-    int(*process_events)(void*);
+    int(*process_events)(appconfig_t* appconfig, void* arg);
 } mpxapi_t;
 
 mpxapi_t* mpx_create(mpxtype_e);

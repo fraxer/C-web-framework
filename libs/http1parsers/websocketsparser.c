@@ -1,6 +1,6 @@
 #include <string.h>
 
-#include "config.h"
+#include "appconfig.h"
 #include "websocketsrequest.h"
 #include "websocketscommon.h"
 #include "websocketsparser.h"

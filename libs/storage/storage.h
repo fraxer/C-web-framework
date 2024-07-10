@@ -31,17 +31,13 @@ typedef struct storage {
     struct storage* next;
 } storage_t;
 
-storage_t* storages();
-void storage_set(storage_t*);
-
 file_t storage_file_get(const char* storage_name, const char* path_format, ...);
 int storage_file_put(const char* storage_name, file_t* file, const char* path_format, ...);
 int storage_file_content_put(const char* storage_name, file_content_t* file_content, const char* path_format, ...);
 int storage_file_remove(const char* storage_name, const char* path_format, ...);
 int storage_file_exist(const char* storage_name, const char* path_format, ...);
 int storage_file_duplicate(const char* from_storage_name, const char* to_storage_name, const char* path_format, ...);
-int storage_add_to_list(void* storage);
-void storage_clear_list();
+void storages_free(storage_t* storage);
 void storage_merge_slash(char* path);
 
 #endif

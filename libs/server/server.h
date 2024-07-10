@@ -43,26 +43,17 @@ typedef struct server {
 } server_t;
 
 typedef struct server_chain {
-    atomic_bool is_deprecated;
-    int is_hard_reload;
-    atomic_int thread_count;
-    int domain_hash_bucket_size;
     pthread_mutex_t mutex;
-
     server_t* server;
     routeloader_lib_t* routeloader;
-    struct server_chain* prev;
-    struct server_chain* next;
-    void(*destroy)(struct server_chain*);
 } server_chain_t;
 
 server_t* server_create();
-index_t* server_create_index(const char*);
-void server_free(server_t*);
+index_t* server_index_create(const char*);
+void server_index_destroy(index_t*);
+void servers_free(server_t* server);
 
-server_chain_t* server_chain_create(server_t* server, routeloader_lib_t*, int);
-server_chain_t* server_chain_last();
-int server_chain_append(server_t*, routeloader_lib_t*, int);
+server_chain_t* server_chain_create(server_t* server, routeloader_lib_t*);
 void server_chain_destroy(server_chain_t*);
 
 #endif

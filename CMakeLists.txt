@@ -13,6 +13,7 @@ if(CMAKE_BUILD_TYPE STREQUAL Debug OR CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo)
 	add_compile_definitions(DEBUG)
 endif()
 
+add_link_options(-rdynamic)
 add_compile_definitions(CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
 
 find_package(Threads REQUIRED)

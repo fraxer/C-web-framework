@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "appconfig.h"
 #include "dbquery.h"
 
 dbinstance_t dbinstance(const char* dbid) {
@@ -17,7 +18,7 @@ dbinstance_t dbinstance(const char* dbid) {
         .table_migration_create_sql = NULL
     };
 
-    db_t* db = database();
+    db_t* db = appconfig()->databases;
     while (db) {
         if (strcmp(db->id, dbid) == 0) {
             inst.ok = 1;
@@ -68,7 +69,7 @@ dbresult_t dbquery(dbinstance_t* instance, const char* format, ...) {
                 goto exit;
             }
 
-            db_connection_trylock(connection);
+            db_connection_trylock(connection); // UNDONE maybe db_connection_lock
             db_connection_append(instance, connection);
         }
 

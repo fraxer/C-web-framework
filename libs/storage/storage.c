@@ -4,6 +4,7 @@
 #include <linux/limits.h>
 
 #include "storage.h"
+#include "appconfig.h"
 
 #define STORAGE_BUILD_PATH(path) \
     va_list args; \
@@ -11,26 +12,7 @@
     vsnprintf(path, sizeof(path), path_format, args); \
     va_end(args); \
 
-static storage_t* _list = NULL;
-static storage_t* _last_item = NULL;
-
 storage_t* __storage_find(const char* storage_name);
-
-
-storage_t* storages() {
-    return _list;
-}
-
-void storage_set(storage_t* storage) {
-    _list = storage;
-
-    while (storage) {
-        if (storage->next == NULL)
-            _last_item = storage;
-
-        storage = storage->next;
-    }
-}
 
 file_t storage_file_get(const char* storage_name, const char* path_format, ...) {
     storage_t* storage = __storage_find(storage_name);
@@ -107,28 +89,12 @@ int storage_file_duplicate(const char* from_storage_name, const char* to_storage
     return result;
 }
 
-int storage_add_to_list(void* storage) {
-    if (_list == NULL)
-        _list = storage;
-
-    if (_last_item != NULL)
-        _last_item->next = storage;
-
-    _last_item = storage;
-
-    return 1;
-}
-
-void storage_clear_list() {
-    storage_t* item = _list;
-    while (item) {
-        storage_t* next = item->next;
-        item->free(item);
-        item = next;
+void storages_free(storage_t* storage) {
+    while (storage != NULL) {
+        storage_t* next = storage->next;
+        storage->free(storage);
+        storage = next;
     }
-
-    _list = NULL;
-    _last_item = NULL;
 }
 
 void storage_merge_slash(char* path) {
@@ -157,7 +123,7 @@ void storage_merge_slash(char* path) {
 }
 
 storage_t* __storage_find(const char* storage_name) {
-    storage_t* item = _list;
+    storage_t* item = appconfig()->storages;
     while (item) {
         if (strcmp(item->name, storage_name) == 0)
             return item;

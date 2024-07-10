@@ -1,7 +1,10 @@
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <string.h>
 
 #include "log.h"
 #include "socket.h"
@@ -28,7 +31,7 @@ socket_t* socket_listen_create(in_addr_t ip, unsigned short int port) {
 
     socket->fd = __socket_open_listen(ip, port);
     if (socket->fd == -1) {
-        log_error("Socket error: Can't create socket on port %d\n", port);
+        log_error("Socket error: %s %d\n", strerror(errno), port);
         goto failed;
     }
 

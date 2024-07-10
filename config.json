@@ -2,8 +2,7 @@
     "main": {
         "workers": 1,
         "threads": 1,
-        "reload": "hard",
-        "read_buffer": 16384,
+        "buffer_size": 16384,
         "client_max_body_size": 110485760,
         "tmp": "/tmp",
         "gzip": [

@@ -35,6 +35,7 @@ set(LIBS "")
 list(APPEND LIBS misc)
 list(APPEND LIBS log)
 list(APPEND LIBS json)
+list(APPEND LIBS config)
 
 list(APPEND SOURCES database.c database.h)
 list(APPEND SOURCES dbquery.c dbquery.h)

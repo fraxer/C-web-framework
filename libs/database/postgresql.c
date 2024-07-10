@@ -10,14 +10,14 @@
 #define WITH_LOOP 1
 #define WITHOUT_LOOP 0
 
-dbhosts_t* postgresql_hosts_create();
-void postgresql_connection_free(dbconnection_t*);
-void postgresql_send_query(dbresult_t*, dbconnection_t*, const char*);
-void postgresql_append_string(char*, size_t, postgresqlhost_t*);
-PGconn* postgresql_connect(dbhosts_t*, int);
+static dbhosts_t* __postgresql_hosts_create(void);
+static void __postgresql_connection_free(dbconnection_t* connection);
+static void __postgresql_send_query(dbresult_t* result, dbconnection_t* connection, const char* string);
+static PGconn* postgresql_connect(dbhosts_t* hosts, int with_loop);
 
-dbhosts_t* postgresql_hosts_create() {
+dbhosts_t* __postgresql_hosts_create(void) {
     dbhosts_t* hosts = malloc(sizeof *hosts);
+    if (hosts == NULL) return NULL;
 
     hosts->host = NULL;
     hosts->current_host = NULL;
@@ -29,8 +29,9 @@ dbhosts_t* postgresql_hosts_create() {
     return hosts;
 }
 
-postgresqlhost_t* postgresql_host_create() {
-    postgresqlhost_t* host = malloc(sizeof *host);
+postgresqlhost_t* postgresql_host_create(void) {
+    postgresqlhost_t* host = malloc(sizeof * host);
+    if (host == NULL) return NULL;
 
     host->base.free = postgresql_host_free;
     host->base.migration = 0;
@@ -62,7 +63,7 @@ void postgresql_host_free(void* arg) {
 }
 
 void postgresql_free(db_t* db) {
-    db_free(db);
+    db_destroy(db);
 }
 
 dbconnection_t* postgresql_connection_create(dbhosts_t* hosts) {
@@ -72,8 +73,8 @@ dbconnection_t* postgresql_connection_create(dbhosts_t* hosts) {
 
     connection->base.locked = 0;
     connection->base.next = NULL;
-    connection->base.free = postgresql_connection_free;
-    connection->base.send_query = postgresql_send_query;
+    connection->base.free = __postgresql_connection_free;
+    connection->base.send_query = __postgresql_send_query;
 
     void* host_address = hosts->current_host;
 
@@ -85,7 +86,7 @@ dbconnection_t* postgresql_connection_create(dbhosts_t* hosts) {
         log_error("Postgresql error: %s\n", PQerrorMessage(connection->connection));
 
         if (host_address == hosts->current_host) {
-            postgresql_connection_free((dbconnection_t*)connection);
+            __postgresql_connection_free((dbconnection_t*)connection);
             return NULL;
         }
         
@@ -102,8 +103,8 @@ dbconnection_t* postgresql_connection_create_manual(dbhosts_t* hosts) {
 
     connection->base.locked = 0;
     connection->base.next = NULL;
-    connection->base.free = postgresql_connection_free;
-    connection->base.send_query = postgresql_send_query;
+    connection->base.free = __postgresql_connection_free;
+    connection->base.send_query = __postgresql_send_query;
     connection->connection = postgresql_connect(hosts, WITHOUT_LOOP);
 
     if (PQstatus(connection->connection) == CONNECTION_OK) {
@@ -112,7 +113,7 @@ dbconnection_t* postgresql_connection_create_manual(dbhosts_t* hosts) {
 
     log_error("Postgresql error: %s\n", PQerrorMessage(connection->connection));
 
-    postgresql_connection_free((dbconnection_t*)connection);
+    __postgresql_connection_free((dbconnection_t*)connection);
 
     return NULL;
 }
@@ -135,7 +136,7 @@ const char* postgresql_table_exist_sql(const char* table) {
     return strdup(&tmp[0]);
 }
 
-const char* postgresql_table_migration_create_sql()
+const char* postgresql_table_migration_create_sql(void)
 {
     char tmp[512] = {0};
 
@@ -151,7 +152,7 @@ const char* postgresql_table_migration_create_sql()
     return strdup(&tmp[0]);
 }
 
-void postgresql_connection_free(dbconnection_t* connection) {
+void __postgresql_connection_free(dbconnection_t* connection) {
     if (connection == NULL) return;
 
     postgresqlconnection_t* conn = (postgresqlconnection_t*)connection;
@@ -160,7 +161,7 @@ void postgresql_connection_free(dbconnection_t* connection) {
     free(conn);
 }
 
-void postgresql_send_query(dbresult_t* result, dbconnection_t* connection, const char* string) {
+void __postgresql_send_query(dbresult_t* result, dbconnection_t* connection, const char* string) {
     postgresqlconnection_t* pgconnection = (postgresqlconnection_t*)connection;
 
     if (!PQsendQuery(pgconnection->connection, string)) {
@@ -279,92 +280,166 @@ PGconn* postgresql_connect(dbhosts_t* hosts, int with_loop) {
 db_t* postgresql_load(const char* database_id, const jsontok_t* token_array) {
     db_t* result = NULL;
     db_t* database = db_create(database_id);
-    if (database == NULL) goto failed;
+    if (database == NULL) return NULL;
 
-    database->hosts = postgresql_hosts_create();
-    if (database->hosts == NULL) goto failed;
+    database->hosts = __postgresql_hosts_create();
+    if (database->hosts == NULL) {
+        log_error("postgresql_load: can't create hosts\n");
+        goto failed;
+    }
 
     enum fields { PORT = 0, IP, DBNAME, USER, PASSWORD, CONNECTION_TIMEOUT, MIGRATION, FIELDS_COUNT };
     enum reqired_fields { R_PORT = 0, R_IP, R_DBNAME, R_USER, R_PASSWORD, R_CONNECTION_TIMEOUT, R_FIELDS_COUNT };
-    int finded_fields[FIELDS_COUNT] = {0};
+    char* field_names[FIELDS_COUNT] = {"port", "ip", "dbname", "user", "password", "connection_timeout", "migration"};
     dbhost_t* host_last = NULL;
 
     for (jsonit_t it_array = json_init_it(token_array); !json_end_it(&it_array); json_next_it(&it_array)) {
         jsontok_t* token_object = json_it_value(&it_array);
+        int lresult = 0;
+        int finded_fields[FIELDS_COUNT] = {0};
         postgresqlhost_t* host = postgresql_host_create();
-        
+        if (host == NULL) {
+            log_error("postgresql_load: can't create host\n");
+            goto failed;
+        }
+
         for (jsonit_t it_object = json_init_it(token_object); !json_end_it(&it_object); json_next_it(&it_object)) {
             const char* key = json_it_key(&it_object);
             jsontok_t* token_value = json_it_value(&it_object);
 
             if (strcmp(key, "port") == 0) {
-                if (!json_is_int(token_value)) goto failed;
+                if (finded_fields[PORT]) {
+                    log_error("postgresql_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_int(token_value)) {
+                    log_error("postgresql_load: field %s must be int\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[PORT] = 1;
 
                 host->base.port = json_int(token_value);
             }
             else if (strcmp(key, "ip") == 0) {
-                if (!json_is_string(token_value)) goto failed;
+                if (finded_fields[IP]) {
+                    log_error("postgresql_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_string(token_value)) {
+                    log_error("postgresql_load: field %s must be string\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[IP] = 1;
 
-                const char* value = json_string(token_value);
+                if (host->base.ip != NULL) free(host->base.ip);
 
-                host->base.ip = (char*)malloc(strlen(value) + 1);
-                if (host->base.ip == NULL) goto failed;
+                host->base.ip = malloc(token_value->size + 1);
+                if (host->base.ip == NULL) {
+                    log_error("postgresql_load: alloc memory for %s failed\n", key);
+                    goto host_failed;
+                }
 
-                strcpy(host->base.ip, value);
+                strcpy(host->base.ip, json_string(token_value));
             }
             else if (strcmp(key, "dbname") == 0) {
-                if (!json_is_string(token_value)) goto failed;
+                if (finded_fields[DBNAME]) {
+                    log_error("postgresql_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_string(token_value)) {
+                    log_error("postgresql_load: field %s must be string\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[DBNAME] = 1;
 
-                const char* value = json_string(token_value);
+                if (host->dbname != NULL) free(host->dbname);
 
-                host->dbname = (char*)malloc(strlen(value) + 1);
-                if (host->dbname == NULL) goto failed;
+                host->dbname = malloc(token_value->size + 1);
+                if (host->dbname == NULL) {
+                    log_error("postgresql_load: alloc memory for %s failed\n", key);
+                    goto host_failed;
+                }
 
-                strcpy(host->dbname, value);
+                strcpy(host->dbname, json_string(token_value));
             }
             else if (strcmp(key, "user") == 0) {
-                if (!json_is_string(token_value)) goto failed;
+                if (finded_fields[USER]) {
+                    log_error("postgresql_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_string(token_value)) {
+                    log_error("postgresql_load: field %s must be string\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[USER] = 1;
 
-                const char* value = json_string(token_value);
+                if (host->user != NULL) free(host->user);
 
-                host->user = (char*)malloc(strlen(value) + 1);
-                if (host->user == NULL) goto failed;
+                host->user = malloc(token_value->size + 1);
+                if (host->user == NULL) {
+                    log_error("postgresql_load: alloc memory for %s failed\n", key);
+                    goto host_failed;
+                }
 
-                strcpy(host->user, value);
+                strcpy(host->user, json_string(token_value));
             }
             else if (strcmp(key, "password") == 0) {
-                if (!json_is_string(token_value)) goto failed;
+                if (finded_fields[PASSWORD]) {
+                    log_error("postgresql_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_string(token_value)) {
+                    log_error("postgresql_load: field %s must be string\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[PASSWORD] = 1;
 
-                const char* value = json_string(token_value);
+                if (host->password != NULL) free(host->password);
 
-                host->password = (char*)malloc(strlen(value) + 1);
-                if (host->password == NULL) goto failed;
+                host->password = malloc(token_value->size + 1);
+                if (host->password == NULL) {
+                    log_error("postgresql_load: alloc memory for %s failed\n", key);
+                    goto host_failed;
+                }
 
-                strcpy(host->password, value);
+                strcpy(host->password, json_string(token_value));
             }
             else if (strcmp(key, "connection_timeout") == 0) {
-                if (!json_is_int(token_value)) goto failed;
+                if (finded_fields[CONNECTION_TIMEOUT]) {
+                    log_error("postgresql_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_int(token_value)) {
+                    log_error("postgresql_load: field %s must be int\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[CONNECTION_TIMEOUT] = 1;
 
                 host->connection_timeout = json_int(token_value);
             }
             else if (strcmp(key, "migration") == 0) {
-                if (!json_is_bool(token_value)) goto failed;
+                if (finded_fields[MIGRATION]) {
+                    log_error("postgresql_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_bool(token_value)) {
+                    log_error("postgresql_load: field %s must be bool\n", key);
+                    goto host_failed;
+                }
 
                 finded_fields[MIGRATION] = 1;
 
                 host->base.migration = json_bool(token_value);
+            }
+            else {
+                log_error("postgresql_load: unknown field: %s\n", key);
+                goto host_failed;
             }
         }
 
@@ -372,16 +447,25 @@ db_t* postgresql_load(const char* database_id, const jsontok_t* token_array) {
             database->hosts->host = (dbhost_t*)host;
             database->hosts->current_host = (dbhost_t*)host;
         }
-        if (host_last != NULL) {
+        if (host_last != NULL)
             host_last->next = (dbhost_t*)host;
-        }
+
         host_last = (dbhost_t*)host;
 
         for (int i = 0; i < R_FIELDS_COUNT; i++) {
             if (finded_fields[i] == 0) {
-                log_error("Error: Fill postgresql config\n");
-                goto failed;
+                log_error("postgresql_load: required field %s not found\n", field_names[i]);
+                goto host_failed;
             }
+        }
+
+        lresult = 1;
+
+        host_failed:
+
+        if (lresult == 0) {
+            postgresql_host_free(host);
+            goto failed;
         }
     }
 
@@ -390,7 +474,7 @@ db_t* postgresql_load(const char* database_id, const jsontok_t* token_array) {
     failed:
 
     if (result == NULL) {
-        db_free(database);
+        db_destroy(database);
     }
 
     return result;

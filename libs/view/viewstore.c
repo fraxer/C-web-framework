@@ -8,56 +8,23 @@
 static view_t* __viewstore_view_create(view_tag_t* tag, const char* path);
 static void __viewstore_view_free(view_t* view);
 
-static viewstore_t* __store = NULL;
-
 /**
- * Returns 1 if viewstore has been initialized, 0 otherwise.
+ * Create a new view store.
  *
- * @return int 1 if viewstore has been initialized, 0 otherwise.
+ * @return viewstore_t* The newly created view store, or NULL if allocation failed.
  */
-int viewstore_inited(void) {
-    return __store != NULL;
-}
-
-/**
- * Initialize the view store and return 1 on success, 0 on failure.
- *
- * @return int 1 on success, 0 on failure.
- */
-int viewstore_init(void) {
-    viewstore_t* store = malloc(sizeof * __store);
+viewstore_t* viewstore_create(void) {
+    viewstore_t* store = malloc(sizeof * store);
     if (store == NULL) {
-        log_error("viewstore_init: failed to allocate memory for view store");
-        return 0;
+        log_error("viewstore_create: failed to allocate memory for view store");
+        return NULL;
     }
 
     atomic_init(&store->locked, 0);
     store->view = NULL;
     store->last_view = NULL;
-    store->disable_view = NULL;
 
-    __store = store;
-
-    return 1;
-}
-
-/**
- * Returns the view store.
- *
- * @return viewstore_t* The view store.
- */
-viewstore_t* viewstore(void) {
-    return __store;
-}
-
-/**
- * Set the view store.
- *
- * @param store The view store to set.
- * @return void
- */
-void viewstore_set(viewstore_t* store) {
-    __store = store;
+    return store;
 }
 
 /**
@@ -67,20 +34,20 @@ void viewstore_set(viewstore_t* store) {
  * @param path The path of the view.
  * @return view_t* The newly added view, or NULL if allocation failed.
  */
-view_t* viewstore_add_view(view_tag_t* tag, const char* path) {
+view_t* viewstore_add_view(viewstore_t* viewstore, view_tag_t* tag, const char* path) {
     view_t* view = __viewstore_view_create(tag, path);
     if (view == NULL) {
         log_error("viewstore_add_view: failed to allocate memory for view");
         return NULL;
     }
 
-    if (__store->view == NULL)
-        __store->view = view;
+    if (viewstore->view == NULL)
+        viewstore->view = view;
 
-    if (__store->last_view != NULL)
-        __store->last_view->next = view;
+    if (viewstore->last_view != NULL)
+        viewstore->last_view->next = view;
 
-    __store->last_view = view;
+    viewstore->last_view = view;
 
     return view;
 }
@@ -91,8 +58,8 @@ view_t* viewstore_add_view(view_tag_t* tag, const char* path) {
  * @param path The path of the view.
  * @return view_t* The view, or NULL if not found.
  */
-view_t* viewstore_get_view(const char* path) {
-    view_t* view = __store->view;
+view_t* viewstore_get_view(viewstore_t* viewstore, const char* path) {
+    view_t* view = viewstore->view;
     while (view != NULL) {
         if (cmpstr(view->path, path))
             return view;
@@ -104,41 +71,22 @@ view_t* viewstore_get_view(const char* path) {
 }
 
 /**
- * Clear the view store.
+ * Free a view store.
  *
+ * @param viewstore The view store to free.
  * @return void
  */
-void viewstore_clear(void) {
-    if (__store == NULL) return;
+void viewstore_destroy(viewstore_t* viewstore) {
+    if (viewstore == NULL) return;
 
-    if (__store->view != NULL) {
-        __store->last_view->next = __store->disable_view;
-        __store->disable_view = __store->view;
-    }
-
-    __store->view = NULL;
-    __store->last_view = NULL;
-
-    view_t* view = __store->disable_view;
-    view_t* prev = NULL;
+    view_t* view = viewstore->view;
     while (view != NULL) {
         view_t* next = view->next;
-
-        if (atomic_load(&(view->counter)) == 0) {
-            if (view == __store->disable_view) {
-                __store->disable_view = next;
-            }
-
-            __viewstore_view_free(view);
-
-            if (prev != NULL)
-                prev->next = next;
-        }
-        else 
-            prev = view;
-
+        __viewstore_view_free(view);
         view = next;
     }
+
+    free(viewstore);
 }
 
 /**
@@ -155,7 +103,6 @@ view_t* __viewstore_view_create(view_tag_t* tag, const char* path) {
         return NULL;
     }
 
-    atomic_init(&view->counter, 0);
     view->path = malloc(sizeof(char) * (strlen(path) + 1));
     if (view->path == NULL) {
         free(view);
@@ -194,15 +141,15 @@ void __viewstore_view_free(view_t* view) {
  *
  * @return void
  */
-void viewstore_lock(void) {
-    if (__store == NULL) return;
+void viewstore_lock(viewstore_t* viewstore) {
+    if (viewstore == NULL) return;
 
     _Bool expected = 0;
     _Bool desired = 1;
 
     do {
         expected = 0;
-    } while (!atomic_compare_exchange_strong(&__store->locked, &expected, desired));
+    } while (!atomic_compare_exchange_strong(&viewstore->locked, &expected, desired));
 }
 
 /**
@@ -212,8 +159,8 @@ void viewstore_lock(void) {
  *
  * @return void
  */
-void viewstore_unlock(void) {
-    if (__store == NULL) return;
+void viewstore_unlock(viewstore_t* viewstore) {
+    if (viewstore == NULL) return;
 
-    atomic_store(&__store->locked, 0);
+    atomic_store(&viewstore->locked, 0);
 }

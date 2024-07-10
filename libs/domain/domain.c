@@ -25,63 +25,56 @@ void domain_parser_insert_custom_symbol(domain_parser_t* parser, char ch);
 domain_t* domain_create(const char* value) {
     domain_t* result = NULL;
     domain_t* domain = domain_alloc(value);
-
     if (domain == NULL) goto failed;
 
     if (domain_parse(domain) == -1) goto failed;
 
     domain->pcre_template = pcre_compile(domain->prepared_template, 0, &domain->pcre_error, &domain->pcre_erroffset, NULL);
-
     if (domain->pcre_error != NULL) goto failed;
 
     result = domain;
 
     failed:
 
-    if (result == NULL) {
-        if (domain != NULL) domain_free(domain);
-    }
+    if (result == NULL)
+        domains_free(domain);
 
     return result;
 }
 
-void domain_free(domain_t* domain) {
-    domain_t* current = domain;
+void domains_free(domain_t* domain) {
+    while (domain != NULL) {
+        domain_t* next = domain->next;
 
-    while (current) {
-        domain_t* next = current->next;
+        if (domain->template != NULL)
+            free(domain->template);
 
-        if (current->template) free(current->template);
-        if (current->prepared_template) free(current->prepared_template);
+        if (domain->prepared_template != NULL)
+            free(domain->prepared_template);
 
-        pcre_free(current->pcre_template);
+        if (domain->pcre_template != NULL)
+            pcre_free(domain->pcre_template);
 
-        free(current);
+        free(domain);
 
-        current = next;
+        domain = next;
     }
 }
 
 domain_t* domain_alloc(const char* value) {
     domain_t* result = NULL;
+    domain_t* domain = malloc(sizeof * domain);
+    if (domain == NULL) return NULL;
 
-    domain_t* domain = (domain_t*)malloc(sizeof(domain_t));
-
-    if (domain == NULL) goto failed;
-
-
-    domain->template = (char*)malloc(strlen(value) + 1);
-
+    domain->template = malloc(strlen(value) + 1);
     if (domain->template == NULL) goto failed;
 
     strcpy(domain->template, value);
 
-
     int pcre_length = domain_estimate_length(domain->template);
     if (pcre_length == -1) goto failed;
 
-    domain->prepared_template = (char*)malloc(pcre_length + 1);
-
+    domain->prepared_template = malloc(pcre_length + 1);
     if (domain->prepared_template == NULL) goto failed;
 
     domain->pcre_template = NULL;

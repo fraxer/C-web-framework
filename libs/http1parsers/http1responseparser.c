@@ -8,7 +8,7 @@
 #include "cookieparser.h"
 #include "domain.h"
 #include "log.h"
-#include "config.h"
+#include "appconfig.h"
 #include "http1common.h"
 #include "http1responseparser.h"
 #include "helpers.h"
@@ -257,7 +257,7 @@ int __http1responseparser_parse_payload(http1responseparser_t* parser) {
     parser->pos = parser->bytes_readed;
 
     if (response->payload_.file.fd <= 0) {
-        response->payload_.path = create_tmppath(config()->main.tmp);
+        response->payload_.path = create_tmppath(env()->main.tmp);
         if (response->payload_.path == NULL)
             return HTTP1PARSER_ERROR;
 
@@ -267,7 +267,7 @@ int __http1responseparser_parse_payload(http1responseparser_t* parser) {
     }
 
     const size_t string_len = parser->pos - parser->pos_start;
-    const size_t client_max_body_size = config()->main.client_max_body_size;
+    const size_t client_max_body_size = env()->main.client_max_body_size;
 
     if (parser->content_saved_length + string_len > client_max_body_size)
         return HTTP1PARSER_PAYLOAD_LARGE;
