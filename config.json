@@ -2,6 +2,7 @@
     "main": {
         "workers": 1,
         "threads": 1,
+        "reload": "hard",
         "buffer_size": 16384,
         "client_max_body_size": 110485760,
         "tmp": "/tmp",
@@ -12,7 +13,7 @@
         ]
     },
     "migrations": {
-        "source_directory": "<project directory path>/migrations"
+        "source_directory": "<project directory path>/app/migrations"
     },
     "servers": {
         "s1": {
@@ -30,28 +31,28 @@
             "http": {
                 "routes": {
                     "/": {
-                        "GET": ["<project directory path>/build/exec/handlers/libindexpage.so", "get"]
+                        "GET": ["<project directory path>/build/exec/handlers/index/libindex.so", "get"]
                     },
                     "/wss": {
-                        "GET": ["<project directory path>/build/exec/handlers/libindexpage.so", "websocket"]
+                        "GET": ["<project directory path>/build/exec/handlers/index/libindex.so", "websocket"]
                     },
                     "/file_create_tmpfile": {
-                        "GET": ["<project directory path>/build/exec/handlers/libfilepage.so", "file_create_tmpfile"]
+                        "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_create_tmpfile"]
                     },
                     "/file_get_content": {
-                        "GET": ["<project directory path>/build/exec/handlers/libfilepage.so", "file_get_content"]
+                        "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_get_content"]
                     },
                     "/file_put_storage": {
-                        "GET": ["<project directory path>/build/exec/handlers/libfilepage.so", "file_put_storage"]
+                        "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_put_storage"]
                     },
                     "/file_remove_storage": {
-                        "GET": ["<project directory path>/build/exec/handlers/libfilepage.so", "file_remove_storage"]
+                        "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_remove_storage"]
                     },
                     "/file_upload_and_put_storage": {
-                        "POST": ["<project directory path>/build/exec/handlers/libfilepage.so", "file_upload_and_put_storage"]
+                        "POST": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_upload_and_put_storage"]
                     },
                     "/file_duplicate_to_storage": {
-                        "GET": ["<project directory path>/build/exec/handlers/libfilepage.so", "file_duplicate_to_storage"]
+                        "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_duplicate_to_storage"]
                     }
                 },
                 "redirects": {
@@ -62,10 +63,10 @@
                 }
             },
             "websockets": {
-                "default": ["<project directory path>/build/exec/handlers/libwsindexpage.so", "default_"],
+                "default": ["<project directory path>/build/exec/handlers/ws/libwsindex.so", "default_"],
                 "routes": {
                     "/": {
-                        "GET": ["<project directory path>/build/exec/handlers/libwsindexpage.so", "echo"]
+                        "GET": ["<project directory path>/build/exec/handlers/ws/libwsindex.so", "echo"]
                     }
                 }
             },
@@ -86,7 +87,7 @@
             "http": {
                 "routes": {
                     "/": {
-                        "GET": ["<project directory path>/build/exec/handlers/libindexpage.so", "index"]
+                        "GET": ["<project directory path>/build/exec/handlers/index/libindex.so", "index"]
                     }
                 }
             }
