@@ -6,14 +6,12 @@
 #include "httpclient.h"
 #include "storage.h"
 
-void client_get(http1request_t* request, http1response_t* response) {
-    (void)request;
-
+void client_get(httpctx_t* ctx) {
     const char* url = "http://example.com";
     const int timeout = 3;
     httpclient_t* client = httpclient_init(ROUTE_GET, url, timeout);
     if (client == NULL) {
-        response->data(response, http1response_status_string(500));
+        ctx->response->data(ctx->response, http1response_status_string(500));
         return;
     }
 
@@ -23,39 +21,37 @@ void client_get(http1request_t* request, http1response_t* response) {
 
     http1response_t* res = client->send(client);
     if (!res) {
-        response->status_code = 500;
-        response->data(response, "error");
+        ctx->response->status_code = 500;
+        ctx->response->data(ctx->response, "error");
         client->free(client);
         return;
     }
     if (res->status_code != 200) {
-        response->data(response, http1response_status_string(res->status_code));
+        ctx->response->data(ctx->response, http1response_status_string(res->status_code));
         client->free(client);
         return;
     }
 
     char* document = res->payload(res);
     if (!document) {
-        response->status_code = 500;
-        response->data(response, "response error");
+        ctx->response->status_code = 500;
+        ctx->response->data(ctx->response, "response error");
         client->free(client);
         return;
     }
 
-    response->data(response, document);
+    ctx->response->data(ctx->response, document);
 
     free(document);
     client->free(client);
 }
 
-void client_post_urlencoded(http1request_t* request, http1response_t* response) {
-    (void)request;
-
+void client_post_urlencoded(httpctx_t* ctx) {
     const char* url = "http://example.com/post_urlencoded";
     const int timeout = 3;
     httpclient_t* client = httpclient_init(ROUTE_POST, url, timeout);
     if (client == NULL) {
-        response->data(response, http1response_status_string(500));
+        ctx->response->data(ctx->response, http1response_status_string(500));
         return;
     }
 
@@ -65,39 +61,37 @@ void client_post_urlencoded(http1request_t* request, http1response_t* response) 
 
     http1response_t* res = client->send(client);
     if (!res) {
-        response->status_code = 500;
-        response->data(response, "error");
+        ctx->response->status_code = 500;
+        ctx->response->data(ctx->response, "error");
         client->free(client);
         return;
     }
     if (res->status_code != 200) {
-        response->data(response, http1response_status_string(res->status_code));
+        ctx->response->data(ctx->response, http1response_status_string(res->status_code));
         client->free(client);
         return;
     }
 
     char* document = res->payload(res);
     if (!document) {
-        response->status_code = 500;
-        response->data(response, "response error");
+        ctx->response->status_code = 500;
+        ctx->response->data(ctx->response, "response error");
         client->free(client);
         return;
     }
 
-    response->data(response, document);
+    ctx->response->data(ctx->response, document);
 
     free(document);
     client->free(client);
 }
 
-void client_post_formdata(http1request_t* request, http1response_t* response) {
-    (void)request;
-
+void client_post_formdata(httpctx_t* ctx) {
     const char* url = "http://example.com/post_formdata";
     const int timeout = 3;
     httpclient_t* client = httpclient_init(ROUTE_POST, url, timeout);
     if (client == NULL) {
-        response->data(response, http1response_status_string(500));
+        ctx->response->data(ctx->response, http1response_status_string(500));
         return;
     }
 
@@ -120,39 +114,37 @@ void client_post_formdata(http1request_t* request, http1response_t* response) {
 
     http1response_t* res = client->send(client);
     if (!res) {
-        response->status_code = 500;
-        response->data(response, "error");
+        ctx->response->status_code = 500;
+        ctx->response->data(ctx->response, "error");
         client->free(client);
         return;
     }
     if (res->status_code != 200) {
-        response->data(response, http1response_status_string(res->status_code));
+        ctx->response->data(ctx->response, http1response_status_string(res->status_code));
         client->free(client);
         return;
     }
 
     char* document = res->payload(res);
     if (!document) {
-        response->status_code = 500;
-        response->data(response, "response error");
+        ctx->response->status_code = 500;
+        ctx->response->data(ctx->response, "response error");
         client->free(client);
         return;
     }
 
-    response->data(response, document);
+    ctx->response->data(ctx->response, document);
 
     free(document);
     client->free(client);
 }
 
-void client_post_raw_payload(http1request_t* request, http1response_t* response) {
-    (void)request;
-
+void client_post_raw_payload(httpctx_t* ctx) {
     const char* url = "http://example.com/post";
     const int timeout = 3;
     httpclient_t* client = httpclient_init(ROUTE_POST, url, timeout);
     if (client == NULL) {
-        response->data(response, http1response_status_string(500));
+        ctx->response->data(ctx->response, http1response_status_string(500));
         return;
     }
 
@@ -167,26 +159,26 @@ void client_post_raw_payload(http1request_t* request, http1response_t* response)
 
     http1response_t* res = client->send(client);
     if (!res) {
-        response->status_code = 500;
-        response->data(response, "error");
+        ctx->response->status_code = 500;
+        ctx->response->data(ctx->response, "error");
         client->free(client);
         return;
     }
     if (res->status_code != 200) {
-        response->data(response, http1response_status_string(res->status_code));
+        ctx->response->data(ctx->response, http1response_status_string(res->status_code));
         client->free(client);
         return;
     }
 
     char* document = res->payload(res);
     if (!document) {
-        response->status_code = 500;
-        response->data(response, "response error");
+        ctx->response->status_code = 500;
+        ctx->response->data(ctx->response, "response error");
         client->free(client);
         return;
     }
 
-    response->data(response, document);
+    ctx->response->data(ctx->response, document);
 
     free(document);
     client->free(client);

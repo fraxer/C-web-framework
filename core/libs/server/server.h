@@ -10,6 +10,8 @@
 #include "domain.h"
 #include "openssl.h"
 
+struct middleware_item;
+
 typedef struct index {
     char* value;
     int length;
@@ -18,11 +20,13 @@ typedef struct index {
 typedef struct server_http {
     route_t* route;
     redirect_t* redirect;
+    struct middleware_item* middleware;
 } server_http_t;
 
 typedef struct server_websockets {
     route_t* route;
-    void(*default_handler)(void*, void*);
+    void(*default_handler)(void*);
+    struct middleware_item* middleware;
 } server_websockets_t;
 
 struct broadcast;

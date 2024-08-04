@@ -564,7 +564,6 @@ const char* __http1response_get_mimetype(const char* extension) {
 }
 
 void __http1response_default(http1response_t* response, int status_code) {
-    __http1response_reset(response);
     response->status_code = status_code;
 
     const char* str1 = "<html><head></head><body style=\"text-align:center;margin:20px\"><h1>";
@@ -594,7 +593,6 @@ int __http1response_keepalive_enabled(http1response_t* response) {
 }
 
 void http1response_redirect(http1response_t* response, const char* path, int status_code) {
-    __http1response_reset(response);
     response->status_code = status_code;
 
     if (!response->header_add(response, "Location", path))

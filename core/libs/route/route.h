@@ -35,17 +35,13 @@ typedef struct route {
     pcre* location;
     route_param_t* param;
     struct route* next;
-    void(*handler[7])(void*, void*);
+    void(*handler[7])(void*);
 } route_t;
 
 route_t* route_create(const char*);
-
-int route_set_http_handler(route_t*, const char*, void(*)(void*, void*));
-
-int route_set_websockets_handler(route_t*, const char*, void(*)(void*, void*));
-
+int route_set_http_handler(route_t*, const char*, void(*)(void*));
+int route_set_websockets_handler(route_t*, const char*, void(*)(void*));
 void routes_free(route_t* route);
-
 int route_compare_primitive(route_t*, const char*, size_t);
 
 #endif

@@ -315,7 +315,7 @@ void route_parser_free(route_parser_t* parser) {
     parser->location = NULL;
 }
 
-int route_set_http_handler(route_t* route, const char* method, void(*function)(void*, void*)) {
+int route_set_http_handler(route_t* route, const char* method, void(*function)(void*)) {
     int m = ROUTE_NONE;
 
     if (method[0] == 'G' && method[1] == 'E' && method[2] == 'T') {
@@ -349,7 +349,7 @@ int route_set_http_handler(route_t* route, const char* method, void(*function)(v
     return 1;
 }
 
-int route_set_websockets_handler(route_t* route, const char* method, void(*function)(void*, void*)) {
+int route_set_websockets_handler(route_t* route, const char* method, void(*function)(void*)) {
     int m = ROUTE_NONE;
 
     if (method[0] == 'G' && method[1] == 'E' && method[2] == 'T') {

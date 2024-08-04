@@ -25,6 +25,7 @@
 #include "threadworker.h"
 #include "broadcast.h"
 #include "connection_queue.h"
+#include "middlewarelist.h"
 #ifdef MySQL_FOUND
     #include "mysql.h"
 #endif
@@ -49,12 +50,13 @@ static int __module_loader_storages_load(appconfig_t* config, const jsontok_t* s
 static int __module_loader_mimetype_load(appconfig_t* config, const jsontok_t* mimetypes);
 static int __module_loader_viewstore_load(appconfig_t* config);
 
-static route_t* __module_loader_http_routes_load(routeloader_lib_t** first_lib, const jsontok_t* token_object);
+static int __module_loader_http_routes_load(routeloader_lib_t** first_lib, const jsontok_t* token_object, route_t** route);
 static int __module_loader_set_http_route(routeloader_lib_t** first_lib, routeloader_lib_t** last_lib, route_t* route, const jsontok_t* token_object);
 static void __module_loader_pass_memory_sharedlib(routeloader_lib_t*, const char*);
-static redirect_t* __module_loader_http_redirects_load(const jsontok_t* token_object);
-static void __module_loader_websockets_default_load(void(**fn)(void*, void*), routeloader_lib_t** first_lib, const jsontok_t* token_array);
-static route_t* __module_loader_websockets_routes_load(routeloader_lib_t** first_lib, const jsontok_t* token_object);
+static int __module_loader_http_redirects_load(const jsontok_t* token_object, redirect_t** redirect);
+static int __module_loader_middlewares_load(const jsontok_t* token_object, middleware_item_t** middleware_item);
+static void __module_loader_websockets_default_load(void(**fn)(void*), routeloader_lib_t** first_lib, const jsontok_t* token_array);
+static int __module_loader_websockets_routes_load(routeloader_lib_t** first_lib, const jsontok_t* token_object, route_t** route);
 static int __module_loader_set_websockets_route(routeloader_lib_t** first_lib, routeloader_lib_t** last_lib, route_t* route, const jsontok_t* token_object);
 static openssl_t* __module_loader_tls_load(const jsontok_t* token_object);
 static int __module_loader_check_unique_domainport(server_t* first_server);
@@ -658,8 +660,18 @@ int __module_loader_servers_load(appconfig_t* config, const jsontok_t* token_ser
                     goto failed;
                 }
 
-                server->http.route = __module_loader_http_routes_load(&first_lib, json_object_get(token_value, "routes"));
-                server->http.redirect = __module_loader_http_redirects_load(json_object_get(token_value, "redirects"));
+                if (!__module_loader_http_routes_load(&first_lib, json_object_get(token_value, "routes"), &server->http.route)) {
+                    log_error("__module_loader_servers_load: can't load routes\n");
+                    goto failed;
+                }
+                if (!__module_loader_http_redirects_load(json_object_get(token_value, "redirects"), &server->http.redirect)) {
+                    log_error("__module_loader_servers_load: can't load redirects\n");
+                    goto failed;
+                }
+                if (!__module_loader_middlewares_load(json_object_get(token_value, "middlewares"), &server->http.middleware)) {
+                    log_error("__module_loader_servers_load: can't load middlewares\n");
+                    goto failed;
+                }
             }
             else if (strcmp(key, "websockets") == 0) {
                 finded_fields[WEBSOCKETS] = 1;
@@ -671,7 +683,14 @@ int __module_loader_servers_load(appconfig_t* config, const jsontok_t* token_ser
 
                 __module_loader_websockets_default_load(&server->websockets.default_handler, &first_lib, json_object_get(token_value, "default"));
 
-                server->websockets.route = __module_loader_websockets_routes_load(&first_lib, json_object_get(token_value, "routes"));
+                if (!__module_loader_websockets_routes_load(&first_lib, json_object_get(token_value, "routes"), &server->websockets.route)) {
+                    log_error("__module_loader_servers_load: can't load routes\n");
+                    goto failed;
+                }
+                if (!__module_loader_middlewares_load(json_object_get(token_value, "middlewares"), &server->websockets.middleware)) {
+                    log_error("__module_loader_servers_load: can't load middlewares\n");
+                    goto failed;
+                }
             }
             else if (strcmp(key, "tls") == 0) {
                 finded_fields[OPENSSL] = 1;
@@ -705,7 +724,7 @@ int __module_loader_servers_load(appconfig_t* config, const jsontok_t* token_ser
         }
 
         if (finded_fields[WEBSOCKETS] == 0)
-            server->websockets.default_handler = (void(*)(void*, void*))websockets_default_handler;
+            server->websockets.default_handler = (void(*)(void*))websockets_default_handler;
 
         if (!__module_loader_check_unique_domainport(first_server)) {
             log_error("__module_loader_servers_load: domains with ports must be unique\n");
@@ -981,18 +1000,18 @@ int __module_loader_viewstore_load(appconfig_t* config) {
     return 1;
 }
 
-route_t* __module_loader_http_routes_load(routeloader_lib_t** first_lib, const jsontok_t* token_object) {
-    route_t* result = NULL;
+int __module_loader_http_routes_load(routeloader_lib_t** first_lib, const jsontok_t* token_object, route_t** route) {
+    int result = 0;
     route_t* first_route = NULL;
     route_t* last_route = NULL;
     routeloader_lib_t* last_lib = routeloader_get_last(*first_lib);
 
-    if (token_object == NULL) return NULL;
+    if (token_object == NULL) return 1;
     if (!json_is_object(token_object)) {
         log_error("__module_loader_http_routes_load: http.route must be object\n");
         goto failed;
     }
-    if (json_object_size(token_object) == 0) return NULL;
+    if (json_object_size(token_object) == 0) return 1;
 
     for (jsonit_t it = json_init_it(token_object); !json_end_it(&it); json_next_it(&it)) {
         const char* route_path = json_it_key(&it);
@@ -1001,31 +1020,33 @@ route_t* __module_loader_http_routes_load(routeloader_lib_t** first_lib, const j
             goto failed;
         }
 
-        route_t* route = route_create(route_path);
-        if (route == NULL) {
+        route_t* rt = route_create(route_path);
+        if (rt == NULL) {
             log_error("__module_loader_http_routes_load: failed to create route\n");
             goto failed;
         }
 
         if (first_route == NULL)
-            first_route = route;
+            first_route = rt;
 
         if (last_route != NULL)
-            last_route->next = route;
+            last_route->next = rt;
 
-        last_route = route;
+        last_route = rt;
 
-        if (!__module_loader_set_http_route(first_lib, &last_lib, route, json_it_value(&it))) {
+        if (!__module_loader_set_http_route(first_lib, &last_lib, rt, json_it_value(&it))) {
             log_error("__module_loader_http_routes_load: failed to set http route\n");
             goto failed;
         }
     }
 
-    result = first_route;
+    result = 1;
+
+    *route = first_route;
 
     failed:
 
-    if (result == NULL)
+    if (result == 0)
         routes_free(first_route);
 
     return result;
@@ -1089,7 +1110,7 @@ int __module_loader_set_http_route(routeloader_lib_t** first_lib, routeloader_li
             *last_lib = routeloader_lib;
         }
 
-        void(*function)(void*, void*);
+        void(*function)(void*);
         *(void**)(&function) = routeloader_get_handler(*first_lib, lib_file, lib_handler);
         if (function == NULL) {
             log_error("__module_loader_set_http_route: failed to get handler %s.%s\n", lib_file, lib_handler);
@@ -1115,17 +1136,17 @@ void __module_loader_pass_memory_sharedlib(routeloader_lib_t* first_lib, const c
         function(appconfig());
 }
 
-redirect_t* __module_loader_http_redirects_load(const jsontok_t* token_object) {
-    redirect_t* result = NULL;
+int __module_loader_http_redirects_load(const jsontok_t* token_object, redirect_t** redirect) {
+    int result = 0;
     redirect_t* first_redirect = NULL;
     redirect_t* last_redirect = NULL;
 
-    if (token_object == NULL) return NULL;
+    if (token_object == NULL) return 1;
     if (!json_is_object(token_object)) {
         log_error("__module_loader_http_redirects_load: http.redirects must be object\n");
         goto failed;
     }
-    if (json_object_size(token_object) == 0) return NULL;
+    if (json_object_size(token_object) == 0) return 1;
 
     for (jsonit_t it = json_init_it(token_object); !json_end_it(&it); json_next_it(&it)) {
         jsontok_t* token_value = json_it_value(&it);
@@ -1164,18 +1185,77 @@ redirect_t* __module_loader_http_redirects_load(const jsontok_t* token_object) {
         last_redirect = redirect;
     }
 
-    result = first_redirect;
+    result = 1;
+
+    *redirect = first_redirect;
 
     failed:
 
-    if (result == NULL)
+    if (result == 0)
         redirect_free(first_redirect);
 
     return result;
 }
 
-void __module_loader_websockets_default_load(void(**fn)(void*, void*), routeloader_lib_t** first_lib, const jsontok_t* token_array) {
-    *fn = (void(*)(void*, void*))websockets_default_handler;
+int __module_loader_middlewares_load(const jsontok_t* token_array, middleware_item_t** middleware_item) {
+    int result = 0;
+    middleware_item_t* first_middleware = NULL;
+    middleware_item_t* last_middleware = NULL;
+
+    if (token_array == NULL) return 1;
+    if (!json_is_array(token_array)) {
+        log_error("__module_loader_middlewares_load: http.middlewares must be array\n");
+        goto failed;
+    }
+    if (json_array_size(token_array) == 0) return 1;
+
+    for (jsonit_t it = json_init_it(token_array); !json_end_it(&it); json_next_it(&it)) {
+        jsontok_t* token_value = json_it_value(&it);
+        if (!json_is_string(token_value)) {
+            log_error("__module_loader_middlewares_load: http.middlewares item.value must be string\n");
+            goto failed;
+        }
+        if (token_value->size == 0) {
+            log_error("__module_loader_middlewares_load: http.middlewares item.value is empty\n");
+            goto failed;
+        }
+
+        const char* middleware_name = json_string(token_value);
+        middleware_fn_p fn = middleware_by_name(middleware_name);
+        if (fn == NULL) {
+            log_error("__module_loader_middlewares_load: failed to find middleware %s\n", middleware_name);
+            goto failed;
+        }
+
+        middleware_item_t* middleware_item = middleware_create(fn);
+        if (middleware_item == NULL) {
+            log_error("__module_loader_middlewares_load: failed to create middleware\n");
+            goto failed;
+        }
+
+        if (first_middleware == NULL)
+            first_middleware = middleware_item;
+
+        if (last_middleware != NULL)
+            last_middleware->next = middleware_item;
+
+        last_middleware = middleware_item;
+    }
+
+    result = 1;
+
+    *middleware_item = first_middleware;
+
+    failed:
+
+    if (result == 0)
+        middlewares_free(first_middleware);
+
+    return result;
+}
+
+void __module_loader_websockets_default_load(void(**fn)(void*), routeloader_lib_t** first_lib, const jsontok_t* token_array) {
+    *fn = (void(*)(void*))websockets_default_handler;
 
     if (token_array == NULL) return;
     if (!json_is_array(token_array)) {
@@ -1228,18 +1308,18 @@ void __module_loader_websockets_default_load(void(**fn)(void*, void*), routeload
     *(void**)(&(*fn)) = routeloader_get_handler(*first_lib, lib_file, lib_handler);
 }
 
-route_t* __module_loader_websockets_routes_load(routeloader_lib_t** first_lib, const jsontok_t* token_object) {
-    route_t* result = NULL;
+int __module_loader_websockets_routes_load(routeloader_lib_t** first_lib, const jsontok_t* token_object, route_t** route) {
+    int result = 0;
     route_t* first_route = NULL;
     route_t* last_route = NULL;
     routeloader_lib_t* last_lib = routeloader_get_last(*first_lib);
 
-    if (token_object == NULL) return NULL;
+    if (token_object == NULL) return 1;
     if (!json_is_object(token_object)) {
         log_error("__module_loader_websockets_routes_load: websockets.routes must be object\n");
         goto failed;
     }
-    if (token_object->size == 0) return NULL;
+    if (token_object->size == 0) return 1;
 
     for (jsonit_t it = json_init_it(token_object); !json_end_it(&it); json_next_it(&it)) {
         const char* route_path = json_it_key(&it);
@@ -1248,31 +1328,33 @@ route_t* __module_loader_websockets_routes_load(routeloader_lib_t** first_lib, c
             goto failed;
         }
 
-        route_t* route = route_create(route_path);
-        if (route == NULL) {
+        route_t* rt = route_create(route_path);
+        if (rt == NULL) {
             log_error("__module_loader_websockets_routes_load: failed to create route\n");
             goto failed;
         }
 
         if (first_route == NULL)
-            first_route = route;
+            first_route = rt;
 
         if (last_route != NULL)
-            last_route->next = route;
+            last_route->next = rt;
 
-        last_route = route;
+        last_route = rt;
 
-        if (!__module_loader_set_websockets_route(first_lib, &last_lib, route, json_it_value(&it))) {
+        if (!__module_loader_set_websockets_route(first_lib, &last_lib, rt, json_it_value(&it))) {
             log_error("__module_loader_websockets_routes_load: failed to set websockets route\n");
             goto failed;
         }
     }
 
-    result = first_route;
+    result = 1;
+    
+    *route = first_route;
 
     failed:
 
-    if (result == NULL)
+    if (result == 0)
         routes_free(first_route);
 
     return result;
@@ -1342,7 +1424,7 @@ int __module_loader_set_websockets_route(routeloader_lib_t** first_lib, routeloa
             *last_lib = routeloader_lib;
         }
 
-        void(*function)(void*, void*);
+        void(*function)(void*);
         *(void**)(&function) = routeloader_get_handler(*first_lib, lib_file, lib_handler);
 
         if (function == NULL) {

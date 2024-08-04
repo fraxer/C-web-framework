@@ -2,6 +2,8 @@
 #include <string.h>
 
 #include "websocketscommon.h"
+#include "wscontext.h"
+#include "middleware.h"
 
 websockets_query_t* websockets_query_alloc() {
     return (websockets_query_t*)malloc(sizeof(websockets_query_t));
@@ -53,13 +55,13 @@ void websockets_frame_init(websockets_frame_t* frame) {
     frame->payload_length = 0;
 }
 
-int websockets_queue_handler_add(connection_t* connection, void(*handle)(void *, void *)) {
+int websockets_queue_handler_add(connection_t* connection, void(*handle)(void*)) {
     connection_queue_item_t* item = connection_queue_item_create();
     if (item == NULL) return 0;
 
     item->handle = websockets_queue_handler;
     item->connection = connection;
-    item->data = (connection_queue_item_data_t*)websockets_queue_data_create(connection->request, handle);
+    item->data = (connection_queue_item_data_t*)websockets_queue_data_create(connection, handle);
 
     if (item->data == NULL) {
         item->free(item);
@@ -79,17 +81,34 @@ void websockets_queue_handler(void* arg) {
 
     item->connection->request = data->request;
 
-    data->handler(item->connection->request, item->connection->response);
+    if (run_middlewares(item->connection->server->websockets.middleware, data->ctx))
+        data->handler(data->ctx);
+
     item->connection->queue_pop(item->connection);
 }
 
-connection_queue_websockets_data_t* websockets_queue_data_create(request_t* request, void(*handle)(void *, void *)) {
+connection_queue_websockets_data_t* websockets_queue_data_create(connection_t* connection, void(*handle)(void*)) {
     connection_queue_websockets_data_t* data = malloc(sizeof * data);
     if (data == NULL) return NULL;
 
-    data->base.free = free;
-    data->request = request;
+    wsctx_t* ctx = wsctx_create(connection->request, connection->response);
+    if (ctx == NULL) return NULL;
+
+    data->base.free = websockets_queue_data_free;
+    data->request = connection->request;
+    data->ctx = ctx;
     data->handler = handle;
 
     return data;
+}
+
+void websockets_queue_data_free(void* arg) {
+    if (arg == NULL) return;
+
+    connection_queue_websockets_data_t* data = arg;
+
+    if (data->ctx != NULL)
+        data->ctx->free(data->ctx);
+
+    free(data);
 }
