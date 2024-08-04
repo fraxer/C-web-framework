@@ -6,7 +6,8 @@
 #include "websocketsswitch.h"
 #include "websocketsprotocoldefault.h"
 #include "websocketsprotocolresource.h"
+#include "wscontext.h"
 
-void websockets_default_handler(websocketsrequest_t*, websocketsresponse_t*);
+void websockets_default_handler(wsctx_t* ctx);
 
 #endif

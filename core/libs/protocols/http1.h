@@ -3,5 +3,6 @@
 
 #include "http1request.h"
 #include "http1response.h"
+#include "httpcontext.h"
 
 #endif

@@ -1,10 +1,10 @@
 #include "websockets.h"
 
-void websockets_default_handler(websocketsrequest_t* request, websocketsresponse_t* response) {
-    if (request->type == WEBSOCKETS_TEXT) {
-        response->text(response, "");
+void websockets_default_handler(wsctx_t* ctx) {
+    if (ctx->request->type == WEBSOCKETS_TEXT) {
+        ctx->response->text(ctx->response, "");
         return;
     }
 
-    response->binary(response, "");
+    ctx->response->binary(ctx->response, "");
 }

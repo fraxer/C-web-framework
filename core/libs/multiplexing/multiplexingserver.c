@@ -45,6 +45,7 @@ int mpxserver_run(appconfig_t* appconfig, void(*thread_worker_threads_pause)(app
 }
 
 void __mpxserver_listeners_connection_close(mpxlistener_t* listener) {
+    if (listener == NULL) return;
     if (listener->connection->destroyed) return;
 
     while (listener != NULL) {

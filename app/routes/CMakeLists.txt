@@ -20,5 +20,5 @@ foreach(FILEPATH ${FILEPATHS})
         LIBRARY_OUTPUT_DIRECTORY ${TARGET_OUTPUT_DIR}
     )
 
-    target_link_libraries(${TARGET_NAME} view mail storage misc database json request response protocols broadcast client mybroadcast)
+    target_link_libraries(${TARGET_NAME} view middlewares handler_context mail storage misc database json request response protocols broadcast client mybroadcast)
 endforeach()

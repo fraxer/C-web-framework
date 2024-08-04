@@ -7,6 +7,7 @@
 #include "server.h"
 
 void broadcast_free(struct broadcast* broadcast);
+void middlewares_free(struct middleware_item* middleware_item);
 
 
 server_t* server_create() {
@@ -22,8 +23,10 @@ server_t* server_create() {
     server->index = NULL;
     server->http.route = NULL;
     server->http.redirect = NULL;
+    server->http.middleware = NULL;
     server->websockets.default_handler = NULL;
     server->websockets.route = NULL;
+    server->websockets.middleware = NULL;
     server->openssl = NULL;
     server->broadcast = NULL;
     server->next = NULL;
@@ -52,11 +55,17 @@ void servers_free(server_t* server) {
         if (server->http.redirect) redirect_free(server->http.redirect);
         server->http.redirect = NULL;
 
+        if (server->http.middleware) middlewares_free(server->http.middleware);
+        server->http.middleware = NULL;
+
         if (server->http.route) routes_free(server->http.route);
         server->http.route = NULL;
 
         if (server->websockets.route) routes_free(server->websockets.route);
         server->websockets.route = NULL;
+
+        if (server->websockets.middleware) middlewares_free(server->websockets.middleware);
+        server->websockets.middleware = NULL;
 
         if (server->openssl) openssl_free(server->openssl);
         server->openssl = NULL;

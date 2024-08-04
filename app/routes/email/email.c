@@ -1,7 +1,7 @@
 #include "http1.h"
 #include "mail.h"
 
-void mail_send(__attribute__((unused))http1request_t* request, http1response_t* response) {
+void mail_send(httpctx_t* ctx) {
     mail_payload_t payload = {
         .from = "noreply@cwebframework.tech",
         .from_name = "Alexander Korchagin",
@@ -10,9 +10,9 @@ void mail_send(__attribute__((unused))http1request_t* request, http1response_t* 
         .body = "Just text"
     };
     if (!send_mail(&payload)) {
-        response->data(response, "Error send mail");
+        ctx->response->data(ctx->response, "Error send mail");
         return;
     }
 
-    response->data(response, "done");
+    ctx->response->data(ctx->response, "done");
 }
