@@ -203,9 +203,9 @@ void __http1response_data(http1response_t* response, const char* data) {
 
 void __http1response_datan(http1response_t* response, const char* data, size_t length) {
     const char* connection = __http1response_keepalive_enabled(response) ? "keep-alive" : "close";
-    if (!response->headeru_add(response, "Content-Type", 12, "text/html; charset=utf-8", 24)) return;
-    if (!response->headeru_add(response, "Connection", 10, connection, strlen(connection))) return;
-    if (!response->headeru_add(response, "Cache-Control", 13, "no-store, no-cache", 18)) return;
+    response->headeru_add(response, "Content-Type", 12, "text/html; charset=utf-8", 24);
+    response->headeru_add(response, "Connection", 10, connection, strlen(connection));
+    response->headeru_add(response, "Cache-Control", 13, "no-store, no-cache", 18);
 
     if (!__http1response_prepare_body(response, length)) {
         response->def(response, 500);
@@ -301,8 +301,8 @@ void __http1response_filen(http1response_t* response, const char* path, size_t l
     const char* ext = file_extention(resultpath);
     const char* mimetype = __http1response_get_mimetype(ext);
     const char* connection = __http1response_keepalive_enabled(response) ? "keep-alive" : "close";
-    if (!response->headeru_add(response, "Connection", 10, connection, strlen(connection))) return;
-    if (!response->headeru_add(response, "Content-Type", 12, mimetype, strlen(mimetype))) return;
+    response->headeru_add(response, "Connection", 10, connection, strlen(connection));
+    response->headeru_add(response, "Content-Type", 12, mimetype, strlen(mimetype));
 
     if (!__http1response_prepare_body(response, response->file_.size))
         response->def(response, 500);
@@ -324,8 +324,8 @@ void __http1response_filef(http1response_t* response, const char* storage_name, 
     const char* ext = file_extention(response->file_.name);
     const char* mimetype = __http1response_get_mimetype(ext);
     const char* connection = __http1response_keepalive_enabled(response) ? "keep-alive" : "close";
-    if (!response->headeru_add(response, "Connection", 10, connection, strlen(connection))) return;
-    if (!response->headeru_add(response, "Content-Type", 12, mimetype, strlen(mimetype))) return;
+    response->headeru_add(response, "Connection", 10, connection, strlen(connection));
+    response->headeru_add(response, "Content-Type", 12, mimetype, strlen(mimetype));
 
     if (!__http1response_prepare_body(response, response->file_.size))
         response->def(response, 500);
@@ -676,7 +676,7 @@ void http1response_free_ranges(http1_ranges_t* ranges) {
 }
 
 int __http1response_prepare_body(http1response_t* response, size_t length) {
-    if (!response->headeru_add(response, "Accept-Ranges", 13, "bytes", 5)) return 0;
+    response->headeru_add(response, "Accept-Ranges", 13, "bytes", 5);
 
     if (!response->ranges) {
         if (response->content_encoding == CE_GZIP) {
