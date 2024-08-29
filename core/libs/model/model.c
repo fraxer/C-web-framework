@@ -1,10 +1,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
 
 #include "db.h"
 #include "model.h"
 #include "bufferdata.h"
+
+static int __model_fill(const int row, const int fields_count, mfield_t* first_field, dbresult_t* result);
+static void* __modelview_fill(void*(create_instance)(void), dbresult_t* result);
+static array_t* __modelview_fill_array(void*(create_instance)(void), dbresult_t* result);
 
 int model_get(const char* dbid, void* arg, mfield_t* params, int params_count) {
     if (arg == NULL) return 0;
@@ -62,7 +67,6 @@ int model_get(const char* dbid, void* arg, mfield_t* params, int params_count) {
     bufferdata_complete(&where_params);
 
     dbresult_t result = dbquery(&dbinst,
-        "SET ROLE slave_select;"
         "SELECT "
             "%s "
         "FROM "
@@ -83,32 +87,35 @@ int model_get(const char* dbid, void* arg, mfield_t* params, int params_count) {
         goto failed;
 
     const int row = 0;
-    for (int col = 0; col < dbresult_query_cols(&result); col++) {
-        printf("%d %d %s\n", row, col, result.current->fields[col].value);
+    if (!__model_fill(row, model->fields_count(model), model->first_field(model), &result))
+        goto failed;
 
-        const db_table_cell_t* field = dbresult_cell(&result, row, col);
+    // for (int col = 0; col < dbresult_query_cols(&result); col++) {
+    //     printf("%d %d %s\n", row, col, result.current->fields[col].value);
 
-        for (int i = 0; i < model->fields_count(model); i++) {
-            mfield_t* modelfield = vfield + i;
-            if (modelfield == NULL)
-                goto failed;
+    //     const db_table_cell_t* field = dbresult_cell(&result, row, col);
 
-            if (strcmp(modelfield->name, result.current->fields[col].value) == 0) {
-                if (modelfield->type == MODEL_INT) {
-                    model_set_int(modelfield, mstr_to_int(field->value));
-                }
-                else if (modelfield->type == MODEL_STRING) {
-                    model_set_stringn(modelfield, field->value, field->length);
-                }
-                else {
-                    goto failed;
-                }
+    //     for (int i = 0; i < model->fields_count(model); i++) {
+    //         mfield_t* modelfield = vfield + i;
+    //         if (modelfield == NULL)
+    //             goto failed;
 
-                modelfield->dirty = 0;
-                break;
-            }
-        }
-    }
+    //         if (strcmp(modelfield->name, result.current->fields[col].value) == 0) {
+    //             if (modelfield->type == MODEL_INT) {
+    //                 model_set_int(modelfield, mstr_to_int(field->value));
+    //             }
+    //             else if (modelfield->type == MODEL_STRING) {
+    //                 model_set_stringn(modelfield, field->value, field->length);
+    //             }
+    //             else {
+    //                 goto failed;
+    //             }
+
+    //             modelfield->dirty = 0;
+    //             break;
+    //         }
+    //     }
+    // }
 
     res = 1;
 
@@ -187,7 +194,6 @@ int model_create(const char* dbid, void* arg) {
     bufferdata_complete(&values);
 
     dbresult_t result = dbquery(&dbinst,
-        "SET ROLE slave_insert;"
         "INSERT INTO "
             "%s "
             "("
@@ -299,7 +305,6 @@ int model_update(const char* dbid, void* arg) {
     bufferdata_complete(&where_params);
 
     dbresult_t result = dbquery(&dbinst,
-        "SET ROLE slave_update;"
         "UPDATE "
             "%s "
         "SET "
@@ -392,7 +397,6 @@ int model_delete(const char* dbid, void* arg) {
     bufferdata_complete(&where_params);
 
     dbresult_t result = dbquery(&dbinst,
-        "SET ROLE slave_delete;"
         "DELETE FROM "
             "%s "
         "WHERE "
@@ -413,6 +417,229 @@ int model_delete(const char* dbid, void* arg) {
     dbresult_free(&result);
 
     return res;
+}
+
+void* modelview_one(const char* dbid, void*(create_instance)(void), const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    size_t string_length = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+
+    char* string = malloc(string_length + 1);
+    if (string == NULL) return NULL;
+
+    va_start(args, format);
+    vsnprintf(string, string_length + 1, format, args);
+    va_end(args);
+
+    dbinstance_t dbinst = dbinstance(dbid);
+    if (!dbinst.ok) return NULL;
+
+    dbresult_t result = dbquery(&dbinst, string);
+
+    free(string);
+
+    modelview_t* model = NULL;
+
+    if (!dbresult_ok(&result))
+        goto failed;
+
+    if (dbresult_query_rows(&result) == 0)
+        goto failed;
+
+    model = __modelview_fill(create_instance, &result);
+    if (model == NULL)
+        goto failed;
+
+    failed:
+
+    dbresult_free(&result);
+
+    return model;
+}
+
+array_t* modelview_list(const char* dbid, void*(create_instance)(void), const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    size_t string_length = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+
+    char* string = malloc(string_length + 1);
+    if (string == NULL) return NULL;
+
+    va_start(args, format);
+    vsnprintf(string, string_length + 1, format, args);
+    va_end(args);
+
+    dbinstance_t dbinst = dbinstance(dbid);
+    if (!dbinst.ok) return NULL;
+
+    dbresult_t result = dbquery(&dbinst, string);
+
+    free(string);
+
+    array_t* array = NULL;
+
+    if (!dbresult_ok(&result))
+        goto failed;
+
+    if (dbresult_query_rows(&result) == 0)
+        goto failed;
+
+    array = __modelview_fill_array(create_instance, &result);
+
+    failed:
+
+    dbresult_free(&result);
+
+    return array;
+}
+
+int model_execute(const char* dbid, const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    size_t string_length = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+
+    char* string = malloc(string_length + 1);
+    if (string == NULL) return 0;
+
+    va_start(args, format);
+    vsnprintf(string, string_length + 1, format, args);
+    va_end(args);
+
+    int res = 0;
+
+    dbinstance_t dbinst = dbinstance(dbid);
+    if (!dbinst.ok) return 0;
+
+    dbresult_t result = dbquery(&dbinst, string);
+
+    free(string);
+
+    if (!dbresult_ok(&result))
+        goto failed;
+
+    res = 1;
+
+    failed:
+
+    dbresult_free(&result);
+
+    return res;
+}
+
+jsontok_t* model_to_json(void* arg, jsondoc_t* document) {
+    if (arg == NULL) return NULL;
+
+    model_t* model = arg;
+    int result = 0;
+
+    jsontok_t* object = json_create_object(document);
+    for (int i = 0; i < model->fields_count(model); i++) {
+        mfield_t* field = model->first_field(model) + i;
+
+        switch (field->type) {
+        case MODEL_INT:
+            json_object_set(object, field->name, json_create_int(document, model_int(field)));
+            break;
+        case MODEL_STRING: {
+            char* string = (char*)model_string(field);
+            if (string == NULL)
+                string = "";
+            json_object_set(object, field->name, json_create_string(document, string));
+            break;
+        }
+        default:
+            goto failed;
+            break;
+        }
+    }
+
+    result = 1;
+
+    failed:
+
+    if (result == 0)
+        return NULL;
+
+    return object;
+}
+
+char* model_stringify(void* arg) {
+    if (arg == NULL) return NULL;
+
+    model_t* model = arg;
+
+    jsondoc_t* doc = json_init();
+    if (!doc) return NULL;
+
+    jsontok_t* object = json_create_object(doc);
+    char* data = NULL;
+    for (int i = 0; i < model->fields_count(model); i++) {
+        mfield_t* field = model->first_field(model) + i;
+
+        switch (field->type) {
+        case MODEL_INT:
+            json_object_set(object, field->name, json_create_int(doc, model_int(field)));
+            break;
+        case MODEL_STRING: {
+            char* string = (char*)model_string(field);
+            if (string == NULL)
+                string = "";
+            json_object_set(object, field->name, json_create_string(doc, string));
+            break;
+        }
+        default:
+            goto failed;
+            break;
+        }
+    }
+
+    data = json_stringify_detach(doc);
+
+    failed:
+
+    json_free(doc);
+
+    return data;
+}
+
+char* model_list_stringify(array_t* array) {
+    if (array == NULL) return NULL;
+
+    jsondoc_t* doc = json_init();
+    if (!doc) return NULL;
+
+    jsontok_t* json_array = json_create_array(doc);
+    char* data = NULL;
+
+    for (size_t i = 0; i < array_size(array); i++) {
+        avalue_t* item = &array->elements[i];
+        if (item->type != ARRAY_POINTER) goto failed;
+
+        model_t* model = item->_pointer;
+        if (model == NULL) goto failed;
+
+        json_array_append(json_array, model_to_json(model, doc));
+    }
+
+    data = json_stringify_detach(doc);
+
+    failed:
+
+    json_free(doc);
+
+    return data;
+}
+
+void model_free(void* arg) {
+    model_t* model = arg;
+    if (model == NULL) return;
+
+    // free fields
+
+    free(model);
 }
 
 int model_int(mfield_int_t* field) {
@@ -459,6 +686,10 @@ void model_set_stringn(mfield_string_t* field, const char* value, size_t size) {
     field->value._length = size;
 }
 
+int mparam_int(mfield_int_t* param) {
+    return 0;
+}
+
 const char* mvalue_to_string(mvalue_t* value, const mtype_e type) {
     if (value == NULL) return NULL;
 
@@ -495,4 +726,72 @@ void mvalue_clear(mvalue_t* value) {
         free(value->_string);
 
     value->_string = NULL;
+}
+
+int __model_fill(const int row, const int fields_count, mfield_t* first_field, dbresult_t* result) {
+    for (int col = 0; col < dbresult_query_cols(result); col++) {
+        const db_table_cell_t* field = dbresult_cell(result, row, col);
+
+        for (int i = 0; i < fields_count; i++) {
+            mfield_t* modelfield = first_field + i;
+            if (modelfield == NULL)
+                return 0;
+
+            if (strcmp(modelfield->name, result->current->fields[col].value) == 0) {
+                if (modelfield->type == MODEL_INT) {
+                    model_set_int(modelfield, mstr_to_int(field->value));
+                }
+                else if (modelfield->type == MODEL_STRING) {
+                    model_set_stringn(modelfield, field->value, field->length);
+                }
+                else {
+                    return 0;
+                }
+
+                modelfield->dirty = 0;
+                break;
+            }
+        }
+    }
+
+    return 1;
+}
+
+void* __modelview_fill(void*(create_instance)(void), dbresult_t* result) {
+    if (result == NULL) return NULL;
+
+    modelview_t* model = create_instance();
+    if (model == NULL)
+        return NULL;
+
+    const int row = 0;
+    if (!__model_fill(row, model->fields_count(model), model->first_field(model), result)) {
+        // modelview_free(model);
+        return NULL;
+    }
+
+    return model;
+}
+
+array_t* __modelview_fill_array(void*(create_instance)(void), dbresult_t* result) {
+    if (result == NULL) return 0;
+
+    array_t* array = array_create();
+    if (array == NULL)
+        return NULL;
+
+    for (int row = 0; row < dbresult_query_rows(result); row++) {
+        modelview_t* model = create_instance();
+        if (model == NULL)
+            goto failed;
+
+        if (!__model_fill(row, model->fields_count(model), model->first_field(model), result))
+            goto failed;
+
+        array_push_back(array, array_create_pointer(model, model_free));
+    }
+
+    failed:
+
+    return array;
 }

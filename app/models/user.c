@@ -7,11 +7,10 @@
 static const char* __dbid = "postgresql";
 
 static mfield_t* __first_field(void* arg);
-static int __first_field_count(void* arg);
+static int __fields_count(void* arg);
 static const char* __table(void* arg);
 static const char** __unique_fields(void* arg);
-static int __unique_fields_count(void* arg);
-static char* __stringify(void* arg);
+static int __primary_key_count(void* arg);
 
 user_t* user_instance(void) {
     user_t* user = malloc(sizeof * user);
@@ -20,12 +19,11 @@ user_t* user_instance(void) {
 
     user_t st = {
         .base = {
-            .fields_count = __first_field_count,
-            .primary_key_count = __unique_fields_count,
+            .fields_count = __fields_count,
+            .primary_key_count = __primary_key_count,
             .first_field = __first_field,
             .table = __table,
-            .primary_key = __unique_fields,
-            .stringify = __stringify
+            .primary_key = __unique_fields
         },
         .field = {
             mfield_int(id, 0),
@@ -105,39 +103,7 @@ const char* user_name(user_t* user) {
 }
 
 char* user_stringify(user_t* user) {
-    if (user == NULL)
-        return NULL;
-
-    jsondoc_t* doc = json_init();
-    if (!doc)
-        return NULL;
-
-    jsontok_t* object = json_create_object(doc);
-    char* data = NULL;
-    mfield_t* first_field = user->base.first_field(user);
-    for (int i = 0; i < user->base.fields_count(user); i++) {
-        mfield_t* field = first_field + i;
-
-        switch (field->type) {
-        case MODEL_INT:
-            json_object_set(object, field->name, json_create_int(doc, model_int(field)));
-            break;
-        case MODEL_STRING:
-            json_object_set(object, field->name, json_create_string(doc, model_string(field)));
-            break;
-        default:
-            goto failed;
-            break;
-        }
-    }
-
-    data = json_stringify_detach(doc);
-
-    failed:
-
-    json_free(doc);
-
-    return data;
+    return model_stringify(user);
 }
 
 mfield_t* __first_field(void* arg) {
@@ -148,7 +114,7 @@ mfield_t* __first_field(void* arg) {
     return (void*)&user->field;
 }
 
-int __first_field_count(void* arg) {
+int __fields_count(void* arg) {
     user_t* user = arg;
     if (user == NULL)
         return 0;
@@ -172,18 +138,10 @@ const char** __unique_fields(void* arg) {
     return (const char**)&user->primary_key[0];
 }
 
-int __unique_fields_count(void* arg) {
+int __primary_key_count(void* arg) {
     user_t* user = arg;
     if (user == NULL)
         return 0;
 
     return sizeof(user->primary_key) / sizeof(user->primary_key[0]);
-}
-
-char* __stringify(void* arg) {
-    user_t* user = arg;
-    if (user == NULL)
-        return NULL;
-
-    return NULL;
 }

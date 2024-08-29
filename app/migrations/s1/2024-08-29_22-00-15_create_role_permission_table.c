@@ -8,11 +8,12 @@ const char* db() { return "postgresql"; }
 
 int up(dbinstance_t* dbinst) {
     dbresult_t result = dbquery(dbinst,
-        "CREATE TABLE test_project"
+        "CREATE TABLE public.role_permission"
         "("
-            "id               bigserial        NOT NULL PRIMARY KEY,"
-            "name             varchar(100)     NOT NULL DEFAULT '',"
-            "preview          varchar(100)     NOT NULL DEFAULT ''"
+            "role_id          bigserial    NOT NULL,"
+            "permission_id    bigserial    NOT NULL,"
+
+            "PRIMARY KEY (role_id, permission_id)"
         ")"
     );
 
@@ -28,7 +29,7 @@ int up(dbinstance_t* dbinst) {
 }
 
 int down(dbinstance_t* dbinst) {
-    dbresult_t result = dbquery(dbinst, "DROP TABLE test_project");
+    dbresult_t result = dbquery(dbinst, "DROP TABLE public.role_permission");
 
     if (!dbresult_ok(&result)) {
         printf("%s\n", dbresult_error_message(&result));

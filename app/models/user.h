@@ -1,5 +1,5 @@
-#ifndef __MODELSUSER__
-#define __MODELSUSER__
+#ifndef __MODELUSER__
+#define __MODELUSER__
 
 #include "model.h"
 

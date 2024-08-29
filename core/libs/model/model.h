@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "json.h"
+#include "array.h"
+
 #define mparameter_string(NAME, VALUE) \
     {\
         .type = MODEL_STRING,\
@@ -89,6 +92,7 @@ typedef struct {
         int _int;
         long long _llong;
         double _double;
+        // string_t _string;
     };
     struct {
         size_t _length;
@@ -112,21 +116,25 @@ typedef struct model {
     const char*(*table)(void* arg);
     const char**(*primary_key)(void* arg);
     int(*primary_key_count)(void* arg);
-    char*(*stringify)(void* arg);
 } model_t;
 
 typedef struct modelview {
-    const int field_count;
-
     mfield_t*(*first_field)(void* arg);
-    char*(*stringify)(void* arg);
+    int(*fields_count)(void* arg);
 } modelview_t;
 
 int model_get(const char* dbid, void* arg, mfield_t* params, int params_count);
 int model_create(const char* dbid, void* arg);
 int model_update(const char* dbid, void* arg);
 int model_delete(const char* dbid, void* arg);
+int model_execute(const char* dbid, const char* format, ...);
+jsontok_t* model_to_json(void* arg, jsondoc_t* document);
+char* model_stringify(void* arg);
+char* model_list_stringify(array_t* array);
+void model_free(void* arg);
 
+void* modelview_one(const char* dbid, void*(create_instance)(void), const char* format, ...);
+array_t* modelview_list(const char* dbid, void*(create_instance)(void), const char* format, ...);
 
 int model_int(mfield_int_t* field);
 const char* model_string(mfield_string_t* field);
