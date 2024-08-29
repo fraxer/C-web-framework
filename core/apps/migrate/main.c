@@ -148,11 +148,14 @@ const char* mg_config_read(const char* config_path) {
     lseek(fd, 0, SEEK_SET);
 
     char* result = NULL;
-    char* buffer = malloc(filesize * sizeof *buffer);
+    char* buffer = malloc(filesize + 1);
 
     if (buffer == NULL) goto failed;
 
     if (read(fd, buffer, filesize) <= 0) goto failed;
+
+    size_t s = strlen(buffer);
+
 
     result = buffer;
 
