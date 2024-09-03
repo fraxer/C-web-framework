@@ -32,7 +32,7 @@ void* userview_instance(void) {
 }
 
 userview_t* userview_get(userview_get_params_t* params) {
-    return modelview_one(__dbid, userview_instance,
+    return model_one(__dbid, userview_instance,
         "SELECT "
             "id, "
             "name, "
@@ -48,7 +48,7 @@ userview_t* userview_get(userview_get_params_t* params) {
 }
 
 array_t* userview_list() {
-    return modelview_list(__dbid, userview_instance,
+    return model_list(__dbid, userview_instance,
         "SELECT "
             "id, "
             "name, "
@@ -57,7 +57,7 @@ array_t* userview_list() {
             "\"user\" "
         "ORDER BY "
             "id ASC "
-        "LIMIT 500 OFFSET 0"
+        "LIMIT 1000 OFFSET 0"
     );
 }
 

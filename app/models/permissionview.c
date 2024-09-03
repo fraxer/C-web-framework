@@ -31,7 +31,7 @@ void* permissionview_instance(void) {
 }
 
 permissionview_t* permissionview_get(permissionview_get_params_t* params) {
-    return modelview_one(__dbid, permissionview_instance,
+    return model_one(__dbid, permissionview_instance,
         "SELECT "
             "id, "
             "name "
@@ -46,7 +46,7 @@ permissionview_t* permissionview_get(permissionview_get_params_t* params) {
 }
 
 array_t* permissionview_list(permissionview_list_params_t* params) {
-    return modelview_list(__dbid, permissionview_instance,
+    return model_list(__dbid, permissionview_instance,
         "SELECT "
             "permission.id, "
             "permission.name "

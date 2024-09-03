@@ -6,6 +6,7 @@
 
 #include "json.h"
 #include "array.h"
+#include "str.h"
 
 #define mparameter_string(NAME, VALUE) \
     {\
@@ -13,11 +14,9 @@
         .name = #NAME,\
         .dirty = 0,\
         .value._int = 0,\
-        .value._string = VALUE,\
-        .value._length = strlen(VALUE != NULL ? VALUE : ""),\
+        .value._string = str_create_st(VALUE, strlen(VALUE != NULL ? VALUE : "")),\
         .oldvalue._int = 0,\
-        .oldvalue._length = 0,\
-        .oldvalue._string = NULL\
+        .oldvalue._string = str_create_null()\
     }
 
 #define mparameter_int(NAME, VALUE) \
@@ -26,11 +25,9 @@
         .name = #NAME,\
         .dirty = 0,\
         .value._int = VALUE,\
-        .value._length = 0,\
-        .value._string = NULL,\
+        .value._string = str_create_null(),\
         .oldvalue._int = 0,\
-        .oldvalue._length = 0,\
-        .oldvalue._string = NULL\
+        .oldvalue._string = str_create_null()\
     }
 
 #define mparameter_double(NAME, VALUE) \
@@ -39,11 +36,9 @@
         .name = #NAME,\
         .dirty = 0,\
         .value._double = VALUE,\
-        .value._length = 0,\
-        .value._string = NULL,\
+        .value._string = str_create_null(),\
         .oldvalue._int = 0,\
-        .oldvalue._length = 0,\
-        .oldvalue._string = NULL\
+        .oldvalue._string = str_create_null()\
     }
 
 
@@ -55,11 +50,9 @@
         .name = #NAME,\
         .dirty = 0,\
         .value._int = 0,\
-        .value._string = VALUE,\
-        .value._length = strlen(VALUE != NULL ? VALUE : ""),\
+        .value._string = str_create_st(VALUE, strlen(VALUE != NULL ? VALUE : "")),\
         .oldvalue._int = 0,\
-        .oldvalue._length = 0,\
-        .oldvalue._string = NULL\
+        .oldvalue._string = str_create_null()\
     }
 
 #define mfield_int(NAME, VALUE) \
@@ -68,11 +61,9 @@
         .name = #NAME,\
         .dirty = 0,\
         .value._int = VALUE,\
-        .value._length = 0,\
-        .value._string = NULL,\
+        .value._string = str_create_null(),\
         .oldvalue._int = 0,\
-        .oldvalue._length = 0,\
-        .oldvalue._string = NULL\
+        .oldvalue._string = str_create_null()\
     }
 
 typedef enum {
@@ -92,12 +83,8 @@ typedef struct {
         int _int;
         long long _llong;
         double _double;
-        // string_t _string;
     };
-    struct {
-        size_t _length;
-        char* _string;
-    };
+    str_t _string;
 } mvalue_t;
 
 typedef struct mfield {
@@ -133,8 +120,8 @@ char* model_stringify(void* arg);
 char* model_list_stringify(array_t* array);
 void model_free(void* arg);
 
-void* modelview_one(const char* dbid, void*(create_instance)(void), const char* format, ...);
-array_t* modelview_list(const char* dbid, void*(create_instance)(void), const char* format, ...);
+void* model_one(const char* dbid, void*(create_instance)(void), const char* format, ...);
+array_t* model_list(const char* dbid, void*(create_instance)(void), const char* format, ...);
 
 int model_int(mfield_int_t* field);
 const char* model_string(mfield_string_t* field);

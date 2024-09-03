@@ -3,6 +3,7 @@
 #include "userview.h"
 #include "roleview.h"
 #include "permissionview.h"
+#include "str.h"
 
 char* userview_list_stringify(array_t* users);
 
@@ -132,4 +133,33 @@ char* userview_list_stringify(array_t* users) {
     json_free(doc);
 
     return data;
+}
+
+void usertest(httpctx_t* ctx) {
+
+    // str_t str;
+    // str_init(&str);
+
+    // str_prependc(&str, 'a');
+    // str_appendc(&str, 'b');
+    // str_prependc(&str, 'c');
+    // str_appendc(&str, 'd');
+    // str_insertc(&str, 'e', 2);
+    // str_appendc(&str, 'f');
+    // str_appendc(&str, 'g');
+
+    // str_clear(&str);
+
+
+    const char* s = "";
+    str_t* str = str_create(s, strlen(s));
+
+    str_append(str, "a", 1);
+    str_prepend(str, "b", 1);
+    str_append(str, "cd", 2);
+    str_insert(str, "e", 1, 2);
+
+    str_free(str);
+
+    ctx->response->data(ctx->response, "done");
 }

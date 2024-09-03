@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 
+#include "str.h"
+
 #define JSON_ERROR_BUFFER_SIZE 256
 
 typedef enum {
@@ -60,9 +62,7 @@ typedef struct {
 
 typedef struct {
     int detached;
-    size_t pos;
-    size_t length;
-    char *string;
+    str_t string;
 } jsonstr_t;
 
 /**
