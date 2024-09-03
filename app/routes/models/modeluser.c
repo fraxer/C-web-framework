@@ -3,7 +3,7 @@
 #include "userview.h"
 #include "middleware.h"
 
-#define mparameters(...) (mfield_t*)&(mfield_t[NARG_(__VA_ARGS__,MW_NSEQ()) / 9]){__VA_ARGS__}, NARG_(__VA_ARGS__,MW_NSEQ()) / 9
+#define mparameters(...) (mfield_t*)&(mfield_t[NARG_(__VA_ARGS__,MW_NSEQ()) / 7]){__VA_ARGS__}, NARG_(__VA_ARGS__,MW_NSEQ()) / 7
 
 
 int authenticate_by_name_pass(httpctx_t *ctx) {

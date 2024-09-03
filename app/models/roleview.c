@@ -31,7 +31,7 @@ void* roleview_instance(void) {
 }
 
 roleview_t* roleview_get(roleview_get_params_t* params) {
-    return modelview_one(__dbid, roleview_instance,
+    return model_one(__dbid, roleview_instance,
         "SELECT "
             "id, "
             "name "
@@ -46,7 +46,7 @@ roleview_t* roleview_get(roleview_get_params_t* params) {
 }
 
 array_t* roleview_list(roleview_list_params_t* params) {
-    return modelview_list(__dbid, roleview_instance,
+    return model_list(__dbid, roleview_instance,
         "SELECT "
             "role.id, "
             "role.name "

@@ -36,9 +36,7 @@ jsondoc_t* json_init() {
     document->tokens_count = 0;
     document->tokens = NULL;
 
-    document->stringify.length = 0;
-    document->stringify.pos = 0;
-    document->stringify.string = NULL;
+    str_init(&document->stringify.string);
     document->stringify.detached = 0;
 
     __json_init_parser(document);
@@ -238,12 +236,9 @@ void json_free(jsondoc_t* document) {
     document->tokens_count = 0;
     document->tokens = NULL;
 
-    if (!document->stringify.detached && document->stringify.string)
-        free(document->stringify.string);
+    if (!document->stringify.detached)
+        str_clear(&document->stringify.string);
 
-    document->stringify.length = 0;
-    document->stringify.pos = 0;
-    document->stringify.string = NULL;
     document->stringify.detached = 0;
 
     free(document);
@@ -890,9 +885,7 @@ const char* json_stringify(jsondoc_t* document) {
         __json_free_stringify(&document->stringify);
     }
 
-    document->stringify.string[document->stringify.pos] = 0;
-
-    return document->stringify.string;
+    return str_get(&document->stringify.string);
 }
 
 char* json_stringify_detach(jsondoc_t* document) {
@@ -1412,31 +1405,9 @@ int __json_stringify_token(jsondoc_t* document, jsontok_t* token) {
 }
 
 void __json_free_stringify(jsonstr_t* stringify) {
-    stringify->length = 0;
-    stringify->pos = 0;
-
-    if (stringify->string)
-        free(stringify->string);
-
-    stringify->string = NULL;
+    str_clear(&stringify->string);
 }
 
-// TODO: optimize realloc on 4K buffer
 int __json_stringify_insert(jsondoc_t* document, const char* string, size_t length) {
-    if (document->stringify.string == NULL ||
-        document->stringify.length < length + document->stringify.pos
-    ) {
-        document->stringify.length += length;
-
-        char* data = realloc(document->stringify.string, document->stringify.length + 1);
-        if (data == NULL) return 0;
-
-        document->stringify.string = data;
-    }
-
-    memcpy(&document->stringify.string[document->stringify.pos], string, length);
-
-    document->stringify.pos += length;
-
-    return 1;
+    return str_append(&document->stringify.string, string, length);
 }

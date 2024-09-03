@@ -20,9 +20,8 @@ int model_get(const char* dbid, void* arg, mfield_t* params, int params_count) {
     dbinstance_t dbinst = dbinstance(dbid);
     if (!dbinst.ok) return 0;
 
-    char fields[2048] = {0};
-    bufferdata_t where_params;
-    bufferdata_init(&where_params);
+    str_t fields = str_create_empty();
+    str_t where_params = str_create_empty();
 
     mfield_t* vfield = model->first_field(model);
     for (int i = 0; i < model->fields_count(model); i++) {
@@ -31,40 +30,28 @@ int model_get(const char* dbid, void* arg, mfield_t* params, int params_count) {
             goto failed;
 
         if (i > 0)
-            strcat(fields, ",");
+            str_appendc(&fields, ',');
 
-        strcat(fields, field->name);
+        str_append(&fields, field->name, strlen(field->name));
     }
 
     for (int i = 0; i < params_count; i++) {
         mfield_t* param = params + i;
 
-        if (i > 0) {
-            bufferdata_push(&where_params, ' ');
-            bufferdata_push(&where_params, 'A');
-            bufferdata_push(&where_params, 'N');
-            bufferdata_push(&where_params, 'D');
-            bufferdata_push(&where_params, ' ');
-        }
+        if (i > 0)
+            str_append(&where_params, " AND ", 5);
 
-        for (size_t j = 0; j < strlen(param->name); j++)
-            bufferdata_push(&where_params, param->name[j]);
-
-        bufferdata_push(&where_params, '=');
+        str_append(&where_params, param->name, strlen(param->name));
+        str_appendc(&where_params, '=');
 
         const char* value = mvalue_to_string(&param->value, param->type);
         if (value == NULL) goto failed;
 
-        size_t value_length = strlen(value);
-
-        bufferdata_push(&where_params, '\'');
-        for (size_t j = 0; j < value_length; j++)
-            bufferdata_push(&where_params, value[j]);
-
-        bufferdata_push(&where_params, '\'');
+        str_appendc(&where_params, '\'');
+        // UNDONE: escape sql injection
+        str_append(&where_params, value, strlen(value));
+        str_appendc(&where_params, '\'');
     }
-
-    bufferdata_complete(&where_params);
 
     dbresult_t result = dbquery(&dbinst,
         "SELECT "
@@ -75,9 +62,9 @@ int model_get(const char* dbid, void* arg, mfield_t* params, int params_count) {
             "%s "
         "LIMIT 1 "
         ,
-        fields,
+        str_get(&fields),
         model->table(model),
-        bufferdata_get(&where_params)
+        str_get(&where_params)
     );
 
     if (!dbresult_ok(&result))
@@ -90,38 +77,12 @@ int model_get(const char* dbid, void* arg, mfield_t* params, int params_count) {
     if (!__model_fill(row, model->fields_count(model), model->first_field(model), &result))
         goto failed;
 
-    // for (int col = 0; col < dbresult_query_cols(&result); col++) {
-    //     printf("%d %d %s\n", row, col, result.current->fields[col].value);
-
-    //     const db_table_cell_t* field = dbresult_cell(&result, row, col);
-
-    //     for (int i = 0; i < model->fields_count(model); i++) {
-    //         mfield_t* modelfield = vfield + i;
-    //         if (modelfield == NULL)
-    //             goto failed;
-
-    //         if (strcmp(modelfield->name, result.current->fields[col].value) == 0) {
-    //             if (modelfield->type == MODEL_INT) {
-    //                 model_set_int(modelfield, mstr_to_int(field->value));
-    //             }
-    //             else if (modelfield->type == MODEL_STRING) {
-    //                 model_set_stringn(modelfield, field->value, field->length);
-    //             }
-    //             else {
-    //                 goto failed;
-    //             }
-
-    //             modelfield->dirty = 0;
-    //             break;
-    //         }
-    //     }
-    // }
-
     res = 1;
 
     failed:
 
-    bufferdata_clear(&where_params);
+    str_clear(&fields);
+    str_clear(&where_params);
     dbresult_free(&result);
 
     return res;
@@ -139,10 +100,9 @@ int model_create(const char* dbid, void* arg) {
     dbinstance_t dbinst = dbinstance(dbid);
     if (!dbinst.ok) return 0;
 
-    char fields[2048] = {0};
+    str_t fields = str_create_empty();
+    str_t values = str_create_empty();
     const char** primary_key = model->primary_key(model);
-    bufferdata_t values;
-    bufferdata_init(&values);
 
     mfield_t* vfield = model->first_field(model);
     if (vfield == NULL)
@@ -156,7 +116,7 @@ int model_create(const char* dbid, void* arg) {
                 continue;
 
             if (field->type == MODEL_STRING) {
-                if (field->value._string == NULL || field->value._length == 0)
+                if (str_size(&field->value._string) == 0)
                     empty_primary_key = 1;
             }
             else {
@@ -171,27 +131,21 @@ int model_create(const char* dbid, void* arg) {
             continue;
 
         if (iter_set > 0) {
-            strcat(fields, ",");
-            bufferdata_push(&values, ',');
+            str_appendc(&fields, ',');
+            str_appendc(&values, ',');
         }
 
         const char* value = mvalue_to_string(&field->value, field->type);
         if (value == NULL) goto failed;
 
-        strcat(fields, field->name);
-
-        size_t value_length = strlen(value);
-
-        bufferdata_push(&values, '\'');
-        for (size_t j = 0; j < value_length; j++)
-            bufferdata_push(&values, value[j]);
-
-        bufferdata_push(&values, '\'');
+        str_append(&fields, field->name, strlen(field->name));
+        str_appendc(&values, '\'');
+        // UNDONE: escape sql injection
+        str_append(&values, value, strlen(value));
+        str_appendc(&values, '\'');
 
         iter_set++;
     }
-
-    bufferdata_complete(&values);
 
     dbresult_t result = dbquery(&dbinst,
         "INSERT INTO "
@@ -204,8 +158,8 @@ int model_create(const char* dbid, void* arg) {
                 "%s "
             ")",
         model->table(model),
-        fields,
-        bufferdata_get(&values)
+        str_get(&fields),
+        str_get(&values)
     );
 
     if (!dbresult_ok(&result))
@@ -215,7 +169,8 @@ int model_create(const char* dbid, void* arg) {
 
     failed:
 
-    bufferdata_clear(&values);
+    str_clear(&fields);
+    str_clear(&values);
     dbresult_free(&result);
 
     return res;
@@ -230,19 +185,16 @@ int model_update(const char* dbid, void* arg) {
     dbinstance_t dbinst = dbinstance(dbid);
     if (!dbinst.ok) return 0;
 
-    mfield_t* vfield = model->first_field(model);
-    const char** vunique = model->primary_key(model);
-    bufferdata_t set_params;
-    bufferdata_init(&set_params);
-
-    bufferdata_t where_params;
-    bufferdata_init(&where_params);
+    mfield_t* first_field = model->first_field(model);
+    const char** unique_fields = model->primary_key(model);
+    str_t set_params = str_create_empty();
+    str_t where_params = str_create_empty();
 
     for (int i = 0, iter_set = 0, iter_where = 0; i < model->fields_count(model); i++) {
-        mfield_t* field = vfield + i;
+        mfield_t* field = first_field + i;
 
         for (int j = 0; j < model->primary_key_count(model); j++) {
-            if (strcmp(vunique[j], field->name) != 0)
+            if (strcmp(unique_fields[j], field->name) != 0)
                 continue;
 
             mvalue_t* v = &field->value;
@@ -253,24 +205,14 @@ int model_update(const char* dbid, void* arg) {
             if (fieldvalue == NULL)
                 goto failed;
 
-            if (iter_where > 0) {
-                bufferdata_push(&where_params, ' ');
-                bufferdata_push(&where_params, 'A');
-                bufferdata_push(&where_params, 'N');
-                bufferdata_push(&where_params, 'D');
-                bufferdata_push(&where_params, ' ');
-            }
+            if (iter_where > 0)
+                str_append(&where_params, ' AND ', 5);
 
-            for (size_t k = 0; k < strlen(field->name); k++)
-                bufferdata_push(&where_params, field->name[k]);
-
-            bufferdata_push(&where_params, '=');
-            bufferdata_push(&where_params, '\'');
-
-            for (size_t j = 0; j < v->_length; j++)
-                bufferdata_push(&where_params, fieldvalue[j]);
-
-            bufferdata_push(&where_params, '\'');
+            str_append(&where_params, field->name, strlen(field->name));
+            str_append(&where_params, "='", 2);
+            // UNDONE: escape sql injection
+            str_append(&where_params, fieldvalue, strlen(fieldvalue));
+            str_appendc(&where_params, '\'');
 
             iter_where++;
 
@@ -285,24 +227,16 @@ int model_update(const char* dbid, void* arg) {
             continue;
 
         if (iter_set > 0)
-            bufferdata_push(&set_params, ',');
+            str_appendc(&set_params, ',');
 
-        for (size_t j = 0; j < strlen(field->name); j++)
-            bufferdata_push(&set_params, field->name[j]);
-
-        bufferdata_push(&set_params, '=');
-        bufferdata_push(&set_params, '\'');
-
-        for (size_t j = 0; j < field->value._length; j++)
-            bufferdata_push(&set_params, fieldvalue[j]);
-
-        bufferdata_push(&set_params, '\'');
+        str_append(&set_params, field->name, strlen(field->name));
+        str_append(&set_params, "='", 2);
+        // UNDONE: escape sql injection
+        str_append(&set_params, fieldvalue, strlen(fieldvalue));
+        str_appendc(&set_params, '\'');
 
         iter_set++;
     }
-
-    bufferdata_complete(&set_params);
-    bufferdata_complete(&where_params);
 
     dbresult_t result = dbquery(&dbinst,
         "UPDATE "
@@ -313,8 +247,8 @@ int model_update(const char* dbid, void* arg) {
             "%s "
         ,
         model->table(model),
-        bufferdata_get(&set_params),
-        bufferdata_get(&where_params)
+        str_get(&set_params),
+        str_get(&where_params)
     );
 
     if (!dbresult_ok(&result))
@@ -323,15 +257,15 @@ int model_update(const char* dbid, void* arg) {
     res = 1;
 
     for (int i = 0; i < model->fields_count(model); i++) {
-        mfield_t* field = vfield + i;
+        mfield_t* field = first_field + i;
         field->dirty = 0;
         mvalue_clear(&field->oldvalue);
     }
 
     failed:
 
-    bufferdata_clear(&set_params);
-    bufferdata_clear(&where_params);
+    str_clear(&set_params);
+    str_clear(&where_params);
     dbresult_free(&result);
 
     return res;
@@ -351,8 +285,7 @@ int model_delete(const char* dbid, void* arg) {
 
     mfield_t* vfield = model->first_field(arg);
     const char** vunique = model->primary_key(arg);
-    bufferdata_t where_params;
-    bufferdata_init(&where_params);
+    str_t where_params = str_create_empty();
 
     for (int i = 0, iter_where = 0; i < model->fields_count(model); i++) {
         mfield_t* field = vfield + i;
@@ -369,32 +302,20 @@ int model_delete(const char* dbid, void* arg) {
             if (fieldvalue == NULL)
                 goto failed;
 
-            if (iter_where > 0) {
-                bufferdata_push(&where_params, ' ');
-                bufferdata_push(&where_params, 'A');
-                bufferdata_push(&where_params, 'N');
-                bufferdata_push(&where_params, 'D');
-                bufferdata_push(&where_params, ' ');
-            }
+            if (iter_where > 0)
+                str_append(&where_params, " AND ", 5);
 
-            for (size_t k = 0; k < strlen(field->name); k++)
-                bufferdata_push(&where_params, field->name[k]);
-
-            bufferdata_push(&where_params, '=');
-            bufferdata_push(&where_params, '\'');
-
-            for (size_t j = 0; j < v->_length; j++)
-                bufferdata_push(&where_params, fieldvalue[j]);
-
-            bufferdata_push(&where_params, '\'');
+            str_append(&where_params, field->name, strlen(field->name));
+            str_append(&where_params, "='", 2);
+            // UNDONE: escape sql injection
+            str_append(&where_params, fieldvalue, strlen(fieldvalue));
+            str_appendc(&where_params, '\'');
 
             iter_where++;
 
             break;
         }
     }
-
-    bufferdata_complete(&where_params);
 
     dbresult_t result = dbquery(&dbinst,
         "DELETE FROM "
@@ -403,7 +324,7 @@ int model_delete(const char* dbid, void* arg) {
             "%s "
         ,
         model->table(model),
-        bufferdata_get(&where_params)
+        str_get(&where_params)
     );
 
     if (!dbresult_ok(&result))
@@ -413,13 +334,13 @@ int model_delete(const char* dbid, void* arg) {
 
     failed:
 
-    bufferdata_clear(&where_params);
+    str_clear(&where_params);
     dbresult_free(&result);
 
     return res;
 }
 
-void* modelview_one(const char* dbid, void*(create_instance)(void), const char* format, ...) {
+void* model_one(const char* dbid, void*(create_instance)(void), const char* format, ...) {
     va_list args;
     va_start(args, format);
     size_t string_length = vsnprintf(NULL, 0, format, args);
@@ -458,7 +379,7 @@ void* modelview_one(const char* dbid, void*(create_instance)(void), const char* 
     return model;
 }
 
-array_t* modelview_list(const char* dbid, void*(create_instance)(void), const char* format, ...) {
+array_t* model_list(const char* dbid, void*(create_instance)(void), const char* format, ...) {
     va_list args;
     va_start(args, format);
     size_t string_length = vsnprintf(NULL, 0, format, args);
@@ -653,7 +574,7 @@ const char* model_string(mfield_string_t* field) {
     if (field == NULL) return NULL;
     if (field->type != MODEL_STRING) return NULL;
 
-    return field->value._string;
+    return str_get(&field->value._string);
 }
 
 void model_set_int(mfield_int_t* field, int value) {
@@ -672,18 +593,12 @@ void model_set_stringn(mfield_string_t* field, const char* value, size_t size) {
     if (field->type != MODEL_STRING) return;
 
     if (!field->dirty) {
-        field->oldvalue._string = field->value._string;
-        field->oldvalue._length = field->value._length;
+        str_move(&field->value._string, &field->oldvalue._string);
         field->dirty = 1;
-        field->value._string = NULL;
-        field->value._length = 0;
     }
 
-    if (field->value._string != NULL)
-        free(field->value._string);
-
-    field->value._string = strdup(value);
-    field->value._length = size;
+    str_reset(&field->value._string);
+    str_assign(&field->value._string, value, size);
 }
 
 int mparam_int(mfield_int_t* param) {
@@ -695,11 +610,15 @@ const char* mvalue_to_string(mvalue_t* value, const mtype_e type) {
 
     switch (type) {
     case MODEL_INT: {
-        value->_string = malloc(32);
-        if (value->_string == NULL)
-            return NULL;
+        if (str_size(&value->_string) > 0)
+            break;
 
-        value->_length = snprintf(value->_string, 32, "%d", value->_int);
+        str_init(&value->_string);
+
+        char buffer[32] = {0};
+        const int size = snprintf(buffer, 32, "%d", value->_int);
+
+        str_assign(&value->_string, buffer, size);
         break;
     }
     case MODEL_STRING: {
@@ -709,7 +628,7 @@ const char* mvalue_to_string(mvalue_t* value, const mtype_e type) {
         break;
     }
 
-    return value->_string;
+    return str_get(&value->_string);
 }
 
 int mstr_to_int(const char* value) {
@@ -720,12 +639,8 @@ void mvalue_clear(mvalue_t* value) {
     if (value == NULL) return;
 
     value->_int = 0;
-    value->_length = 0;
 
-    if (value->_string != NULL)
-        free(value->_string);
-
-    value->_string = NULL;
+    str_clear(&value->_string);
 }
 
 int __model_fill(const int row, const int fields_count, mfield_t* first_field, dbresult_t* result) {

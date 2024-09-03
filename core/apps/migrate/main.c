@@ -154,9 +154,6 @@ const char* mg_config_read(const char* config_path) {
 
     if (read(fd, buffer, filesize) <= 0) goto failed;
 
-    size_t s = strlen(buffer);
-
-
     result = buffer;
 
     failed:

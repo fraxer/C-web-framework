@@ -21,7 +21,14 @@ str_t* str_create(const char* string, const size_t size) {
     return data;
 }
 
-str_t str_create_st(const char* string, const size_t size)
+str_t str_create_empty() {
+    str_t data;
+    str_init(&data);
+
+    return data;
+}
+
+str_t str_create_str(const char* string, const size_t size)
 {
     str_t data;
     str_init(&data);
@@ -38,16 +45,14 @@ str_t str_create_null() {
     };
 }
 
-void str_null(str_t* str) {
+void str_init_null(str_t* str) {
     str->buffer = NULL;
     str->size = 0;
     str->capacity = 0;
 }
 
 int str_init(str_t* str) {
-    str->buffer = NULL;
-    str->size = 0;
-    str->capacity = 0;
+    str_init_null(str);
 
     return str_reset(str);
 }
@@ -67,9 +72,7 @@ void str_clear(str_t* str) {
     if (str->buffer != NULL)
         free(str->buffer);
 
-    str->buffer = NULL;
-    str->size = 0;
-    str->capacity = 0;
+    str_init_null(str);
 }
 
 void str_free(str_t* str) {
@@ -106,6 +109,9 @@ int str_appendc(str_t* str, char ch) {
 }
 
 int str_insert(str_t* str, const char* string, size_t size, size_t pos) {
+    if (str == NULL || str->buffer == NULL || string == NULL)
+        return 0;
+
     if (pos > str->size)
         return 0;
 
@@ -146,7 +152,7 @@ int str_move(str_t* srcstr, str_t* dststr) {
     dststr->size = srcstr->size;
     dststr->capacity = srcstr->capacity;
 
-    str_null(srcstr);
+    str_init_null(srcstr);
 
     return 1;
 }
