@@ -193,5 +193,6 @@ void json_it_erase(jsonit_t*);
  */
 const char* json_stringify(jsondoc_t*);
 char* json_stringify_detach(jsondoc_t*);
+int json_copy(jsondoc_t*, jsondoc_t*);
 
 #endif

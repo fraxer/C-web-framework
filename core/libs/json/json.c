@@ -896,6 +896,20 @@ char* json_stringify_detach(jsondoc_t* document) {
     return (char*)json_stringify(document);
 }
 
+int json_copy(jsondoc_t* docfrom, jsondoc_t* docto) {
+    char* data = json_stringify_detach(docfrom);
+    if (data == NULL) return 0;
+
+    if (!json_parse(docto, data)) {
+        free(data);
+        return 0;
+    }
+
+    free(data);
+
+    return docto->ok;
+}
+
 void __json_set_error(jsondoc_t* document, const char* string) {
     if (document == NULL) return;
 
