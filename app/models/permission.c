@@ -27,7 +27,7 @@ permission_t* permission_instance(void) {
         },
         .field = {
             mfield_int(id, 0),
-            mfield_string(name, NULL)
+            mfield_text(name, NULL)
         },
         .table = "permission",
         .primary_key = {
@@ -81,7 +81,7 @@ void permission_set_id(permission_t* permission, int id) {
 }
 
 void permission_set_name(permission_t* permission, const char* name) {
-    model_set_string(&permission->field.name, name);
+    model_set_text(&permission->field.name, name);
 }
 
 int permission_id(permission_t* permission) {
@@ -89,7 +89,7 @@ int permission_id(permission_t* permission) {
 }
 
 const char* permission_name(permission_t* permission) {
-    return model_string(&permission->field.name);
+    return str_get(model_text(&permission->field.name));
 }
 
 mfield_t* __first_field(void* arg) {

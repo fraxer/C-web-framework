@@ -27,7 +27,7 @@ role_t* role_instance(void) {
         },
         .field = {
             mfield_int(id, 0),
-            mfield_string(name, NULL)
+            mfield_text(name, NULL)
         },
         .table = "role",
         .primary_key = {
@@ -81,7 +81,7 @@ void role_set_id(role_t* role, int id) {
 }
 
 void role_set_name(role_t* role, const char* name) {
-    model_set_string(&role->field.name, name);
+    model_set_text(&role->field.name, name);
 }
 
 int role_id(role_t* role) {
@@ -89,7 +89,7 @@ int role_id(role_t* role) {
 }
 
 const char* role_name(role_t* role) {
-    return model_string(&role->field.name);
+    return str_get(model_text(&role->field.name));
 }
 
 mfield_t* __first_field(void* arg) {

@@ -5,13 +5,8 @@
 int __str_expand_buffer(str_t* str, const size_t extra_size);
 
 str_t* str_create(const char* string, const size_t size) {
-    str_t* data = malloc(sizeof * data);
+    str_t* data = str_create_empty();
     if (data == NULL) return NULL;
-
-    if (!str_init(data)) {
-        str_free(data);
-        return NULL;
-    }
 
     if (!str_assign(data, string, size)) {
         str_free(data);
@@ -21,40 +16,23 @@ str_t* str_create(const char* string, const size_t size) {
     return data;
 }
 
-str_t str_create_empty() {
-    str_t data;
-    str_init(&data);
+str_t* str_create_empty(void) {
+    str_t* data = malloc(sizeof * data);
+    if (data == NULL) return NULL;
+
+    str_init(data);
 
     return data;
-}
-
-str_t str_create_str(const char* string, const size_t size)
-{
-    str_t data;
-    str_init(&data);
-    str_assign(&data, string, size);
-
-    return data;
-}
-
-str_t str_create_null() {
-    return (str_t){
-        .buffer = NULL,
-        .size = 0,
-        .capacity = 0
-    };
-}
-
-void str_init_null(str_t* str) {
-    str->buffer = NULL;
-    str->size = 0;
-    str->capacity = 0;
 }
 
 int str_init(str_t* str) {
-    str_init_null(str);
+    if (str == NULL) return 0;
 
-    return str_reset(str);
+    str->buffer = NULL;
+    str->size = 0;
+    str->capacity = 0;
+
+    return 1;
 }
 
 int str_reset(str_t* str) {
@@ -69,13 +47,16 @@ int str_reset(str_t* str) {
 }
 
 void str_clear(str_t* str) {
+    if (str == NULL) return;
     if (str->buffer != NULL)
         free(str->buffer);
 
-    str_init_null(str);
+    str_init(str);
 }
 
 void str_free(str_t* str) {
+    if (str == NULL) return;
+
     str_clear(str);
     free(str);
 }
@@ -85,6 +66,13 @@ size_t str_size(str_t* str) {
 }
 
 int str_insertc(str_t* str, char ch, size_t pos) {
+    if (str == NULL || str->buffer == NULL)
+        return 0;
+
+    if (str->buffer == NULL)
+        if (!str_reset(str))
+            return 0;
+
     if (pos > str->size)
         return 0;
 
@@ -111,6 +99,10 @@ int str_appendc(str_t* str, char ch) {
 int str_insert(str_t* str, const char* string, size_t size, size_t pos) {
     if (str == NULL || str->buffer == NULL || string == NULL)
         return 0;
+
+    if (str->buffer == NULL)
+        if (!str_reset(str))
+            return 0;
 
     if (pos > str->size)
         return 0;
@@ -152,9 +144,7 @@ int str_move(str_t* srcstr, str_t* dststr) {
     dststr->size = srcstr->size;
     dststr->capacity = srcstr->capacity;
 
-    str_init_null(srcstr);
-
-    return 1;
+    return str_init(srcstr);
 }
 
 char* str_get(str_t* str) {

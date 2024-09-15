@@ -48,6 +48,18 @@ jsondoc_t* json_init() {
     return document;
 }
 
+jsondoc_t* json_create(const char* string) {
+    jsondoc_t* document = json_init();
+    if (!document) return NULL;
+
+    if (!json_parse(document, string)) {
+        json_free(document);
+        return NULL;
+    }
+
+    return document;
+}
+
 int json_parse(jsondoc_t* document, const char* string) {
     if (document->toknext > 0) {
         __json_set_error(document, JSON_ALREADY_PARSED);
@@ -207,40 +219,38 @@ int json_parse(jsondoc_t* document, const char* string) {
     return 1;
 }
 
-void json_free(jsondoc_t* document) {
-    if (document == NULL) return;
-
-    jsonparser_t* parser = &document->parser;
-
-    if (document->tokens) {
+void json_clear(jsondoc_t* document) {
+    if (document->tokens != NULL) {
         for (unsigned int i = 0; i < document->tokens_count; i++) {
             jsontok_t* token = document->tokens[i];
             json_token_reset(token);
-
             free(token);
         }
-        free(document->tokens);
     }
 
-    if (parser->string_internal)
+    if (!__json_alloc_tokens(document))
+        __json_set_error(document, JSON_CANT_ALLOC_TOKENS);
+
+    jsonparser_t* parser = &document->parser;
+    if (parser->string_internal != NULL)
         free(parser->string_internal);
 
-    parser->dirty_pos = 0;
-    parser->pos = 0;
-    parser->toksuper = -1;
-    parser->string_len = 0;
-    parser->string = NULL;
-    parser->string_internal = NULL;
+    __json_init_parser(document);
 
+    document->ok = 0;
     document->toknext = 0;
-    document->tokens_count = 0;
-    document->tokens = NULL;
 
     if (!document->stringify.detached)
         str_clear(&document->stringify.string);
 
     document->stringify.detached = 0;
+}
 
+void json_free(jsondoc_t* document) {
+    if (document == NULL) return;
+
+    json_clear(document);
+    free(document->tokens);
     free(document);
 }
 

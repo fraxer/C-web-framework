@@ -4,23 +4,23 @@
 #include "model.h"
 
 typedef struct {
-    mfield_int_t id;
+    mfield_t id;
 } userview_get_params_t;
 
 typedef struct {
-    mfield_int_t id;
+    mfield_t id;
 } userview_list_params_t;
 
 typedef struct {
-    mfield_int_t id;
+    mfield_t id;
 } userview_execute_params_t;
 
 typedef struct {
     modelview_t base;
     struct {
-        mfield_int_t id;
-        mfield_string_t name;
-        mfield_string_t email;
+        mfield_t id;
+        mfield_t name;
+        mfield_t email;
     } field;
 } userview_t;
 

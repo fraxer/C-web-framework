@@ -27,8 +27,8 @@ user_t* user_instance(void) {
         },
         .field = {
             mfield_int(id, 0),
-            mfield_string(email, NULL),
-            mfield_string(name, NULL)
+            mfield_text(email, NULL),
+            mfield_text(name, NULL)
         },
         .table = "\"user\"",
         .primary_key = {
@@ -87,11 +87,11 @@ void user_set_id(user_t* user, int id) {
 }
 
 void user_set_name(user_t* user, const char* name) {
-    model_set_string(&user->field.name, name);
+    model_set_text(&user->field.name, name);
 }
 
 void user_set_email(user_t* user, const char* email) {
-    model_set_string(&user->field.email, email);
+    model_set_text(&user->field.email, email);
 }
 
 int user_id(user_t* user) {
@@ -99,7 +99,7 @@ int user_id(user_t* user) {
 }
 
 const char* user_name(user_t* user) {
-    return model_string(&user->field.name);
+    return str_get(model_text(&user->field.name));
 }
 
 char* user_stringify(user_t* user) {

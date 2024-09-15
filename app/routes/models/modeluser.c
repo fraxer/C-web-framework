@@ -90,7 +90,7 @@ void userget(httpctx_t* ctx) {
         return;
     }
 
-    // ctx->response->data(ctx->response, model_string(&user.field.name));
+    // ctx->response->data(ctx->response, model_text(&user.field.name));
     // or
     // ctx->response->data(ctx->response, user_name(user));
     // or

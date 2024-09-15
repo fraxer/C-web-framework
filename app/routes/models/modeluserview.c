@@ -29,7 +29,6 @@ void userviewget(httpctx_t* ctx) {
     //     const int _user_id = str_to_expdouble(quser_id);
     // }
 
-
     const int userid = atoi(quser_id);
 
     userview_t* user = userview_get(&(userview_get_params_t){

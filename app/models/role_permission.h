@@ -6,15 +6,15 @@
 typedef struct {
     model_t base;
     struct {
-        mfield_int_t role_id;
-        mfield_int_t permission_id;
+        mfield_t role_id;
+        mfield_t permission_id;
     } field;
     char table[64];
     char* primary_key[2]; // remove or update by id (primary or unique key)
 } role_permission_t;
 
 typedef struct {
-    mfield_string_t user_id;
+    mfield_t user_id;
 } role_permission_get_params_t;
 
 role_permission_t* role_permission_instance(void);

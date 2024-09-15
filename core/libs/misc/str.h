@@ -12,10 +12,7 @@ typedef struct {
 } str_t;
 
 str_t* str_create(const char* string, const size_t size);
-str_t str_create_empty();
-str_t str_create_str(const char* string, const size_t size);
-str_t str_create_null();
-void str_init_null(str_t* str);
+str_t* str_create_empty(void);
 int str_init(str_t* str);
 int str_reset(str_t* str);
 void str_clear(str_t* str);
