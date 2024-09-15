@@ -9,63 +9,87 @@
 #include "array.h"
 #include "str.h"
 
-#define mparameter_string(NAME, VALUE) \
+typedef struct tm tm_t;
+
+tm_t* tm_create(tm_t* time);
+
+#define mnfields(TYPE, NAME, VALUE) \
+    .type = TYPE,\
+    .name = #NAME,\
+    .dirty = 0,\
+    .value._short = VALUE,\
+    .value._string = NULL,\
+    .oldvalue._short = 0,\
+    .oldvalue._string = NULL,
+
+#define mdfields(TYPE, NAME, VALUE) \
+    .type = TYPE,\
+    .name = #NAME,\
+    .dirty = 0,\
+    .value._tm = tm_create(VALUE),\
+    .value._string = NULL,\
+    .oldvalue._tm = {0,0,0,0,0,0,0,0,0,0,0},\
+    .oldvalue._string = NULL,
+
+#define msfields(TYPE, NAME, VALUE) \
+    .type = TYPE,\
+    .name = #NAME,\
+    .dirty = 0,\
+    .value._short = 0,\
+    .value._string = str_create(VALUE, strlen(VALUE != NULL ? VALUE : "")),\
+    .oldvalue._short = 0,\
+    .oldvalue._string = NULL,
+
+#define mparameter_bool(NAME, VALUE) { mnfields(MODEL_BOOL, NAME, VALUE) }
+#define mparameter_smallint(NAME, VALUE) { mnfields(MODEL_SMALLINT, NAME, VALUE) }
+#define mparameter_int(NAME, VALUE) { mnfields(MODEL_INT, NAME, VALUE) }
+#define mparameter_bigint(NAME, VALUE) { mnfields(MODEL_BIGINT, NAME, VALUE) }
+#define mparameter_float(NAME, VALUE) { mnfields(MODEL_FLOAT, NAME, VALUE) }
+#define mparameter_double(NAME, VALUE) { mnfields(MODEL_DOUBLE, NAME, VALUE) }
+#define mparameter_decimal(NAME, VALUE) { mnfields(MODEL_DECIMAL, NAME, VALUE) }
+#define mparameter_money(NAME, VALUE) { mnfields(MODEL_MONEY, NAME, VALUE) }
+#define mparameter_date(NAME, VALUE) { mdfields(MODEL_DATE, NAME, VALUE) }
+#define mparameter_time(NAME, VALUE) { mdfields(MODEL_TIME, NAME, VALUE) }
+#define mparameter_timetz(NAME, VALUE) { mdfields(MODEL_TIMETZ, NAME, VALUE) }
+#define mparameter_timestamp(NAME, VALUE) { mdfields(MODEL_TIMESTAMP, NAME, VALUE) }
+#define mparameter_timestamptz(NAME, VALUE) { mdfields(MODEL_TIMESTAMPTZ, NAME, VALUE) }
+#define mparameter_json(NAME, VALUE) \
     {\
-        .type = MODEL_TEXT,\
+        .type = MODEL_JSON,\
         .name = #NAME,\
         .dirty = 0,\
-        .value._int = 0,\
-        .value._string = str_create_str(VALUE, strlen(VALUE != NULL ? VALUE : "")),\
-        .oldvalue._int = 0,\
-        .oldvalue._string = str_create_null()\
+        .value._jsondoc = json_create(VALUE),\
+        .value._string = NULL,\
+        .oldvalue._jsondoc = NULL,\
+        .oldvalue._string = NULL,\
     }
 
-#define mparameter_int(NAME, VALUE) \
-    {\
-        .type = MODEL_INT,\
-        .name = #NAME,\
-        .dirty = 0,\
-        .value._int = VALUE,\
-        .value._string = str_create_null(),\
-        .oldvalue._int = 0,\
-        .oldvalue._string = str_create_null()\
-    }
+#define mparameter_binary(NAME, VALUE) { msfields(MODEL_BINARY, NAME, VALUE) }
+#define mparameter_varchar(NAME, VALUE) { msfields(MODEL_VARCHAR, NAME, VALUE) }
+#define mparameter_char(NAME, VALUE) { msfields(MODEL_CHAR, NAME, VALUE) }
+#define mparameter_text(NAME, VALUE) { msfields(MODEL_TEXT, NAME, VALUE) }
+#define mparameter_enum(NAME, VALUE) { msfields(MODEL_ENUM, NAME, VALUE) }
 
-#define mparameter_double(NAME, VALUE) \
-    {\
-        .type = MODEL_DOUBLE,\
-        .name = #NAME,\
-        .dirty = 0,\
-        .value._double = VALUE,\
-        .value._string = str_create_null(),\
-        .oldvalue._int = 0,\
-        .oldvalue._string = str_create_null()\
-    }
+#define mfield_bool(NAME, VALUE) .NAME = mparameter_bool(NAME, VALUE)
+#define mfield_smallint(NAME, VALUE) .NAME = mparameter_smallint(NAME, VALUE)
+#define mfield_int(NAME, VALUE) .NAME = mparameter_int(NAME, VALUE)
+#define mfield_bigint(NAME, VALUE) .NAME = mparameter_bigint(NAME, VALUE)
+#define mfield_float(NAME, VALUE) .NAME = mparameter_float(NAME, VALUE)
+#define mfield_double(NAME, VALUE) .NAME = mparameter_double(NAME, VALUE)
+#define mfield_decimal(NAME, VALUE) .NAME = mparameter_decimal(NAME, VALUE)
+#define mfield_money(NAME, VALUE) .NAME = mparameter_money(NAME, VALUE)
+#define mfield_date(NAME, VALUE) .NAME = mparameter_date(NAME, VALUE)
+#define mfield_time(NAME, VALUE) .NAME = mparameter_time(NAME, VALUE)
+#define mfield_timetz(NAME, VALUE) .NAME = mparameter_timetz(NAME, VALUE)
+#define mfield_timestamp(NAME, VALUE) .NAME = mparameter_timestamp(NAME, VALUE)
+#define mfield_timestamptz(NAME, VALUE) .NAME = mparameter_timestamptz(NAME, VALUE)
+#define mfield_json(NAME, VALUE) .NAME = mparameter_json(NAME, VALUE)
+#define mfield_binary(NAME, VALUE) .NAME = mparameter_binary(NAME, VALUE)
+#define mfield_varchar(NAME, VALUE) .NAME = mparameter_varchar(NAME, VALUE)
+#define mfield_char(NAME, VALUE) .NAME = mparameter_char(NAME, VALUE)
+#define mfield_text(NAME, VALUE) .NAME = mparameter_text(NAME, VALUE)
+#define mfield_enum(NAME, VALUE) .NAME = mparameter_enum(NAME, VALUE)
 
-
-
-
-#define mfield_string(NAME, VALUE) \
-    .NAME = {\
-        .type = MODEL_TEXT,\
-        .name = #NAME,\
-        .dirty = 0,\
-        .value._int = 0,\
-        .value._string = str_create_str(VALUE, strlen(VALUE != NULL ? VALUE : "")),\
-        .oldvalue._int = 0,\
-        .oldvalue._string = str_create_null()\
-    }
-
-#define mfield_int(NAME, VALUE) \
-    .NAME = {\
-        .type = MODEL_INT,\
-        .name = #NAME,\
-        .dirty = 0,\
-        .value._int = VALUE,\
-        .value._string = str_create_null(),\
-        .oldvalue._int = 0,\
-        .oldvalue._string = str_create_null()\
-    }
 
 typedef enum {
     MODEL_BOOL = 0,
@@ -91,23 +115,20 @@ typedef enum {
     MODEL_CHAR,
     MODEL_TEXT,
     MODEL_ENUM,
-    MODEL_NULL,
 } mtype_e;
 
 typedef struct {
     union {
-        unsigned int _null : 1;
         short _short;
         int _int;
         long long _bigint;
         float _float;
         double _double;
         long double _ldouble;
-        struct tm _tm;
+        tm_t* _tm;
         jsondoc_t* _jsondoc;
     };
-    str_t _string;
-    size_t _string_max_size;
+    str_t* _string;
 } mvalue_t;
 
 typedef struct mfield {
@@ -116,8 +137,7 @@ typedef struct mfield {
     char name[64];
     mvalue_t value;
     mvalue_t oldvalue;
-} mfield_t, mfield_int_t, mfield_string_t, mfield_double_t,
-  mfield_bool_t, mfield_date_t, mfield_time_t, mfield_json_t, mfield_null_t;
+} mfield_t;
 
 typedef struct model {
     mfield_t*(*first_field)(void* arg);
@@ -148,30 +168,29 @@ void model_free(void* arg);
 
 
 
-short model_bool(mfield_int_t* field);
-short model_smallint(mfield_int_t* field);
-int model_int(mfield_int_t* field);
-long long int model_bigint(mfield_int_t* field);
-float model_float(mfield_int_t* field);
-double model_double(mfield_double_t* field);
-long double model_decimal(mfield_int_t* field);
-double model_money(mfield_int_t* field);
+short model_bool(mfield_t* field);
+short model_smallint(mfield_t* field);
+int model_int(mfield_t* field);
+long long int model_bigint(mfield_t* field);
+float model_float(mfield_t* field);
+double model_double(mfield_t* field);
+long double model_decimal(mfield_t* field);
+double model_money(mfield_t* field);
 
-struct tm* model_timestamp(mfield_int_t* field);
-struct tm* model_timestamptz(mfield_int_t* field);
-struct tm* model_date(mfield_int_t* field);
-struct tm* model_time(mfield_int_t* field);
-struct tm* model_timetz(mfield_int_t* field);
+tm_t* model_timestamp(mfield_t* field);
+tm_t* model_timestamptz(mfield_t* field);
+tm_t* model_date(mfield_t* field);
+tm_t* model_time(mfield_t* field);
+tm_t* model_timetz(mfield_t* field);
 
-jsondoc_t* model_json(mfield_int_t* field);
+jsondoc_t* model_json(mfield_t* field);
 
-str_t* model_binary(mfield_int_t* field);
-str_t* model_varchar(mfield_int_t* field);
-str_t* model_char(mfield_int_t* field);
-str_t* model_text(mfield_int_t* field);
-str_t* model_enum(mfield_int_t* field);
+str_t* model_binary(mfield_t* field);
+str_t* model_varchar(mfield_t* field);
+str_t* model_char(mfield_t* field);
+str_t* model_text(mfield_t* field);
+str_t* model_enum(mfield_t* field);
 
-const char* model_string(mfield_string_t* field);
 
 
 
@@ -185,19 +204,19 @@ int model_set_double(mfield_t* field, double value);
 int model_set_decimal(mfield_t* field, long double value);
 int model_set_money(mfield_t* field, double value);
 
-int model_set_timestamp(mfield_t* field, struct tm* value);
-int model_set_timestamptz(mfield_t* field, struct tm* value);
-int model_set_date(mfield_t* field, struct tm* value);
-int model_set_time(mfield_t* field, struct tm* value);
-int model_set_timetz(mfield_t* field, struct tm* value);
+int model_set_timestamp(mfield_t* field, tm_t* value);
+int model_set_timestamptz(mfield_t* field, tm_t* value);
+int model_set_date(mfield_t* field, tm_t* value);
+int model_set_time(mfield_t* field, tm_t* value);
+int model_set_timetz(mfield_t* field, tm_t* value);
 
 int model_set_json(mfield_t* field, jsondoc_t* value);
 
-int model_set_binary(mfield_t* field, str_t* value);
-int model_set_varchar(mfield_t* field, str_t* value);
-int model_set_char(mfield_t* field, str_t* value);
-int model_set_text(mfield_t* field, str_t* value);
-int model_set_enum(mfield_t* field, str_t* value);
+int model_set_binary(mfield_t* field, const char* value, const size_t size);
+int model_set_varchar(mfield_t* field, const char* value);
+int model_set_char(mfield_t* field, const char* value);
+int model_set_text(mfield_t* field, const char* value);
+int model_set_enum(mfield_t* field, const char* value);
 
 
 
@@ -228,32 +247,21 @@ int model_set_enum_from_str(mfield_t* field, const char* value, size_t size);
 
 
 
-// short int model_str_to_bool(mfield_t* field);
-// short int model_str_to_smallint(mfield_t* field);
-// int model_str_to_int(const char* value);
-// long long int model_str_to_bigint(mfield_t* field);
-// float model_str_to_float(mfield_t* field);
-// double model_str_to_double(mfield_t* field);
-// long double model_str_to_decimal(mfield_t* field);
-// long double model_str_to_money(mfield_t* field);
+str_t* model_bool_to_str(mfield_t* field);
+str_t* model_smallint_to_str(mfield_t* field);
+str_t* model_int_to_str(mfield_t* field);
+str_t* model_bigint_to_str(mfield_t* field);
+str_t* model_float_to_str(mfield_t* field);
+str_t* model_double_to_str(mfield_t* field);
+str_t* model_decimal_to_str(mfield_t* field);
+str_t* model_money_to_str(mfield_t* field);
 
-// struct tm* model_str_to_timestamp(mfield_t* field);
-// struct tm* model_str_to_timestamptz(mfield_t* field);
-// struct tm* model_str_to_date(mfield_t* field);
-// struct tm* model_str_to_time(mfield_t* field);
-// struct tm* model_str_to_timetz(mfield_t* field);
+str_t* model_timestamp_to_str(mfield_t* field);
+str_t* model_timestamptz_to_str(mfield_t* field);
+str_t* model_date_to_str(mfield_t* field);
+str_t* model_time_to_str(mfield_t* field);
+str_t* model_timetz_to_str(mfield_t* field);
 
-// jsondoc_t* model_str_to_json(mfield_t* field);
-
-// str_t* model_str_to_binary(mfield_t* field);
-// str_t* model_str_to_varchar(mfield_t* field);
-// str_t* model_str_to_char(mfield_t* field);
-// str_t* model_str_to_text(mfield_t* field);
-// str_t* model_str_to_enum(mfield_t* field);
-
-
-
-const char* mvalue_to_string(mvalue_t* field, const mtype_e type);
-void mvalue_clear(mvalue_t* value);
+str_t* model_json_to_str(mfield_t* field);
 
 #endif

@@ -21,7 +21,7 @@ void* roleview_instance(void) {
         },
         .field = {
             mfield_int(id, 0),
-            mfield_string(name, NULL),
+            mfield_text(name, NULL),
         }
     };
 

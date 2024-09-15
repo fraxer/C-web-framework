@@ -91,6 +91,7 @@ typedef struct {
  * Create JSON document over an array of tokens
  */
 jsondoc_t* json_init();
+jsondoc_t* json_create(const char*);
 
 /**
  * Run JSON parser.
@@ -102,6 +103,7 @@ int json_parse(jsondoc_t*, const char*);
 /**
  * Free internal memory
  */
+void json_clear(jsondoc_t*);
 void json_free(jsondoc_t*);
 void json_token_reset(jsontok_t*);
 
