@@ -105,7 +105,7 @@ int __fields_count(void* arg) {
     if (permission == NULL)
         return 0;
 
-    return sizeof(permission->field) / sizeof(permission->field.id);
+    return sizeof(permission->field) / sizeof(mfield_t);
 }
 
 const char* __table(void* arg) {

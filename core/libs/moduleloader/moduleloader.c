@@ -38,7 +38,7 @@
 
 #include "moduleloader.h"
 
-static atomic_bool __module_loader_wait_signal = ATOMIC_VAR_INIT(false);
+static atomic_bool __module_loader_wait_signal = ATOMIC_VAR_INIT(0);
 
 static int __module_loader_load_json_config(const char* path, jsondoc_t** document);
 static int __module_loader_init_modules(appconfig_t* config, jsondoc_t* document);

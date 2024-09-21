@@ -886,7 +886,7 @@ const char* json_stringify(jsondoc_t* document) {
 
     jsontok_t* token = document->tokens[0];
 
-    __json_free_stringify(&document->stringify);
+    str_reset(&document->stringify.string);
 
     if (token->type != JSON_OBJECT && token->type != JSON_ARRAY)
         return NULL;

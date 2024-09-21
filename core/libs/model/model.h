@@ -8,6 +8,8 @@
 #include "json.h"
 #include "array.h"
 #include "str.h"
+#include "enums.h"
+#include "macros.h"
 
 typedef struct tm tm_t;
 
@@ -20,7 +22,7 @@ tm_t* tm_create(tm_t* time);
     .value._short = VALUE,\
     .value._string = NULL,\
     .oldvalue._short = 0,\
-    .oldvalue._string = NULL,
+    .oldvalue._string = NULL
 
 #define mdfields(TYPE, NAME, VALUE) \
     .type = TYPE,\
@@ -28,8 +30,8 @@ tm_t* tm_create(tm_t* time);
     .dirty = 0,\
     .value._tm = tm_create(VALUE),\
     .value._string = NULL,\
-    .oldvalue._tm = {0,0,0,0,0,0,0,0,0,0,0},\
-    .oldvalue._string = NULL,
+    .oldvalue._tm = NULL,\
+    .oldvalue._string = NULL
 
 #define msfields(TYPE, NAME, VALUE) \
     .type = TYPE,\
@@ -38,22 +40,22 @@ tm_t* tm_create(tm_t* time);
     .value._short = 0,\
     .value._string = str_create(VALUE, strlen(VALUE != NULL ? VALUE : "")),\
     .oldvalue._short = 0,\
-    .oldvalue._string = NULL,
+    .oldvalue._string = NULL
 
-#define mparameter_bool(NAME, VALUE) { mnfields(MODEL_BOOL, NAME, VALUE) }
-#define mparameter_smallint(NAME, VALUE) { mnfields(MODEL_SMALLINT, NAME, VALUE) }
-#define mparameter_int(NAME, VALUE) { mnfields(MODEL_INT, NAME, VALUE) }
-#define mparameter_bigint(NAME, VALUE) { mnfields(MODEL_BIGINT, NAME, VALUE) }
-#define mparameter_float(NAME, VALUE) { mnfields(MODEL_FLOAT, NAME, VALUE) }
-#define mparameter_double(NAME, VALUE) { mnfields(MODEL_DOUBLE, NAME, VALUE) }
-#define mparameter_decimal(NAME, VALUE) { mnfields(MODEL_DECIMAL, NAME, VALUE) }
-#define mparameter_money(NAME, VALUE) { mnfields(MODEL_MONEY, NAME, VALUE) }
-#define mparameter_date(NAME, VALUE) { mdfields(MODEL_DATE, NAME, VALUE) }
-#define mparameter_time(NAME, VALUE) { mdfields(MODEL_TIME, NAME, VALUE) }
-#define mparameter_timetz(NAME, VALUE) { mdfields(MODEL_TIMETZ, NAME, VALUE) }
-#define mparameter_timestamp(NAME, VALUE) { mdfields(MODEL_TIMESTAMP, NAME, VALUE) }
-#define mparameter_timestamptz(NAME, VALUE) { mdfields(MODEL_TIMESTAMPTZ, NAME, VALUE) }
-#define mparameter_json(NAME, VALUE) \
+#define mparam_bool(NAME, VALUE) { mnfields(MODEL_BOOL, NAME, VALUE) }
+#define mparam_smallint(NAME, VALUE) { mnfields(MODEL_SMALLINT, NAME, VALUE) }
+#define mparam_int(NAME, VALUE) { mnfields(MODEL_INT, NAME, VALUE) }
+#define mparam_bigint(NAME, VALUE) { mnfields(MODEL_BIGINT, NAME, VALUE) }
+#define mparam_float(NAME, VALUE) { mnfields(MODEL_FLOAT, NAME, VALUE) }
+#define mparam_double(NAME, VALUE) { mnfields(MODEL_DOUBLE, NAME, VALUE) }
+#define mparam_decimal(NAME, VALUE) { mnfields(MODEL_DECIMAL, NAME, VALUE) }
+#define mparam_money(NAME, VALUE) { mnfields(MODEL_MONEY, NAME, VALUE) }
+#define mparam_date(NAME, VALUE) { mdfields(MODEL_DATE, NAME, VALUE) }
+#define mparam_time(NAME, VALUE) { mdfields(MODEL_TIME, NAME, VALUE) }
+#define mparam_timetz(NAME, VALUE) { mdfields(MODEL_TIMETZ, NAME, VALUE) }
+#define mparam_timestamp(NAME, VALUE) { mdfields(MODEL_TIMESTAMP, NAME, VALUE) }
+#define mparam_timestamptz(NAME, VALUE) { mdfields(MODEL_TIMESTAMPTZ, NAME, VALUE) }
+#define mparam_json(NAME, VALUE) \
     {\
         .type = MODEL_JSON,\
         .name = #NAME,\
@@ -61,35 +63,50 @@ tm_t* tm_create(tm_t* time);
         .value._jsondoc = json_create(VALUE),\
         .value._string = NULL,\
         .oldvalue._jsondoc = NULL,\
-        .oldvalue._string = NULL,\
+        .oldvalue._string = NULL\
     }
 
-#define mparameter_binary(NAME, VALUE) { msfields(MODEL_BINARY, NAME, VALUE) }
-#define mparameter_varchar(NAME, VALUE) { msfields(MODEL_VARCHAR, NAME, VALUE) }
-#define mparameter_char(NAME, VALUE) { msfields(MODEL_CHAR, NAME, VALUE) }
-#define mparameter_text(NAME, VALUE) { msfields(MODEL_TEXT, NAME, VALUE) }
-#define mparameter_enum(NAME, VALUE) { msfields(MODEL_ENUM, NAME, VALUE) }
+#define mparam_binary(NAME, VALUE) { msfields(MODEL_BINARY, NAME, VALUE) }
+#define mparam_varchar(NAME, VALUE) { msfields(MODEL_VARCHAR, NAME, VALUE) }
+#define mparam_char(NAME, VALUE) { msfields(MODEL_CHAR, NAME, VALUE) }
+#define mparam_text(NAME, VALUE) { msfields(MODEL_TEXT, NAME, VALUE) }
+#define mparam_enum(NAME, VALUE, ...) \
+    {\
+        .type = MODEL_ENUM,\
+        .name = #NAME,\
+        .dirty = 0,\
+        .value._enum = enums_create(args_str(__VA_ARGS__)),\
+        .value._string = str_create(VALUE, strlen(VALUE != NULL ? VALUE : "")),\
+        .oldvalue._enum = NULL,\
+        .oldvalue._string = NULL\
+    }
 
-#define mfield_bool(NAME, VALUE) .NAME = mparameter_bool(NAME, VALUE)
-#define mfield_smallint(NAME, VALUE) .NAME = mparameter_smallint(NAME, VALUE)
-#define mfield_int(NAME, VALUE) .NAME = mparameter_int(NAME, VALUE)
-#define mfield_bigint(NAME, VALUE) .NAME = mparameter_bigint(NAME, VALUE)
-#define mfield_float(NAME, VALUE) .NAME = mparameter_float(NAME, VALUE)
-#define mfield_double(NAME, VALUE) .NAME = mparameter_double(NAME, VALUE)
-#define mfield_decimal(NAME, VALUE) .NAME = mparameter_decimal(NAME, VALUE)
-#define mfield_money(NAME, VALUE) .NAME = mparameter_money(NAME, VALUE)
-#define mfield_date(NAME, VALUE) .NAME = mparameter_date(NAME, VALUE)
-#define mfield_time(NAME, VALUE) .NAME = mparameter_time(NAME, VALUE)
-#define mfield_timetz(NAME, VALUE) .NAME = mparameter_timetz(NAME, VALUE)
-#define mfield_timestamp(NAME, VALUE) .NAME = mparameter_timestamp(NAME, VALUE)
-#define mfield_timestamptz(NAME, VALUE) .NAME = mparameter_timestamptz(NAME, VALUE)
-#define mfield_json(NAME, VALUE) .NAME = mparameter_json(NAME, VALUE)
-#define mfield_binary(NAME, VALUE) .NAME = mparameter_binary(NAME, VALUE)
-#define mfield_varchar(NAME, VALUE) .NAME = mparameter_varchar(NAME, VALUE)
-#define mfield_char(NAME, VALUE) .NAME = mparameter_char(NAME, VALUE)
-#define mfield_text(NAME, VALUE) .NAME = mparameter_text(NAME, VALUE)
-#define mfield_enum(NAME, VALUE) .NAME = mparameter_enum(NAME, VALUE)
+#define mfield_bool(NAME, VALUE) .NAME = mparam_bool(NAME, VALUE)
+#define mfield_smallint(NAME, VALUE) .NAME = mparam_smallint(NAME, VALUE)
+#define mfield_int(NAME, VALUE) .NAME = mparam_int(NAME, VALUE)
+#define mfield_bigint(NAME, VALUE) .NAME = mparam_bigint(NAME, VALUE)
+#define mfield_float(NAME, VALUE) .NAME = mparam_float(NAME, VALUE)
+#define mfield_double(NAME, VALUE) .NAME = mparam_double(NAME, VALUE)
+#define mfield_decimal(NAME, VALUE) .NAME = mparam_decimal(NAME, VALUE)
+#define mfield_money(NAME, VALUE) .NAME = mparam_money(NAME, VALUE)
+#define mfield_date(NAME, VALUE) .NAME = mparam_date(NAME, VALUE)
+#define mfield_time(NAME, VALUE) .NAME = mparam_time(NAME, VALUE)
+#define mfield_timetz(NAME, VALUE) .NAME = mparam_timetz(NAME, VALUE)
+#define mfield_timestamp(NAME, VALUE) .NAME = mparam_timestamp(NAME, VALUE)
+#define mfield_timestamptz(NAME, VALUE) .NAME = mparam_timestamptz(NAME, VALUE)
+#define mfield_json(NAME, VALUE) .NAME = mparam_json(NAME, VALUE)
+#define mfield_binary(NAME, VALUE) .NAME = mparam_binary(NAME, VALUE)
+#define mfield_varchar(NAME, VALUE) .NAME = mparam_varchar(NAME, VALUE)
+#define mfield_char(NAME, VALUE) .NAME = mparam_char(NAME, VALUE)
+#define mfield_text(NAME, VALUE) .NAME = mparam_text(NAME, VALUE)
+#define mfield_enum(NAME, VALUE, ...) .NAME = mparam_enum(NAME, VALUE, __VA_ARGS__)
 
+#define mfield_props_count 7
+#define mparams(...) (mfield_t*)&(mfield_t[NARG_(__VA_ARGS__,MW_NSEQ()) / mfield_props_count]){__VA_ARGS__}, NARG_(__VA_ARGS__,MW_NSEQ()) / mfield_props_count
+#define mparams_create(VAR, ...) mfield_t VAR[NARG_(__VA_ARGS__,MW_NSEQ()) / mfield_props_count] = {__VA_ARGS__}
+#define mparams_pass(ST) ST[0], sizeof(*ST) / sizeof(mfield_t)
+#define mparams_clear(ST) model_params_clear(ST, sizeof(*ST))
+#define mparams_free(ST) model_params_free(ST, sizeof(*ST))
 
 typedef enum {
     MODEL_BOOL = 0,
@@ -127,6 +144,7 @@ typedef struct {
         long double _ldouble;
         tm_t* _tm;
         jsondoc_t* _jsondoc;
+        enums_t* _enum;
     };
     str_t* _string;
 } mvalue_t;
@@ -263,5 +281,10 @@ str_t* model_time_to_str(mfield_t* field);
 str_t* model_timetz_to_str(mfield_t* field);
 
 str_t* model_json_to_str(mfield_t* field);
+
+
+
+void model_params_clear(void* params, const size_t size);
+void model_params_free(void* params, const size_t size);
 
 #endif

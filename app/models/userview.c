@@ -85,5 +85,5 @@ int __fields_count(void* arg) {
     userview_t* user = arg;
     if (user == NULL) return 0;
 
-    return sizeof(user->field) / sizeof(user->field.id);
+    return sizeof(user->field) / sizeof(mfield_t);
 }

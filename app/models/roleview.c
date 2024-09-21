@@ -79,5 +79,5 @@ int __fields_count(void* arg) {
     roleview_t* role = arg;
     if (role == NULL) return 0;
 
-    return sizeof(role->field) / sizeof(role->field.id);
+    return sizeof(role->field) / sizeof(mfield_t);
 }
