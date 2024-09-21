@@ -8,6 +8,8 @@ str_t* str_create(const char* string, const size_t size) {
     str_t* data = str_create_empty();
     if (data == NULL) return NULL;
 
+    if (string == NULL) return data;
+
     if (!str_assign(data, string, size)) {
         str_free(data);
         return NULL;
@@ -21,6 +23,11 @@ str_t* str_create_empty(void) {
     if (data == NULL) return NULL;
 
     str_init(data);
+
+    if (!str_reset(data)) {
+        str_free(data);
+        return NULL;
+    }
 
     return data;
 }
@@ -69,9 +76,9 @@ int str_insertc(str_t* str, char ch, size_t pos) {
     if (str == NULL || str->buffer == NULL)
         return 0;
 
-    if (str->buffer == NULL)
-        if (!str_reset(str))
-            return 0;
+    // if (str->buffer == NULL)
+    //     if (!str_reset(str))
+    //         return 0;
 
     if (pos > str->size)
         return 0;
@@ -100,9 +107,9 @@ int str_insert(str_t* str, const char* string, size_t size, size_t pos) {
     if (str == NULL || str->buffer == NULL || string == NULL)
         return 0;
 
-    if (str->buffer == NULL)
-        if (!str_reset(str))
-            return 0;
+    // if (str->buffer == NULL)
+    //     if (!str_reset(str))
+    //         return 0;
 
     if (pos > str->size)
         return 0;

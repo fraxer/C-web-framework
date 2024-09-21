@@ -106,7 +106,7 @@ int __fields_count(void* arg) {
     if (role_permission == NULL)
         return 0;
 
-    return sizeof(role_permission->field) / sizeof(role_permission->field.role_id);
+    return sizeof(role_permission->field) / sizeof(mfield_t);
 }
 
 const char* __table(void* arg) {

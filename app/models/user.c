@@ -28,7 +28,9 @@ user_t* user_instance(void) {
         .field = {
             mfield_int(id, 0),
             mfield_text(email, NULL),
-            mfield_text(name, NULL)
+            mfield_text(name, NULL),
+            mfield_enum(enm, NULL, "V1", "V2", "V3"),
+            mfield_timestamp(dt, NULL)
         },
         .table = "\"user\"",
         .primary_key = {
@@ -42,24 +44,13 @@ user_t* user_instance(void) {
     return user;
 }
 
-void user_free(void* arg) {
-    user_t* user = arg;
-    if (user == NULL)
-        return;
-
-    // model_free(&user->field.id);
-    // model_free(&user->field.name);
-
-    free(user);
-}
-
 user_t* user_get(mfield_t* params, int params_count) {
     user_t* user = user_instance();
     if (user == NULL)
         return NULL;
 
     if (!model_get(__dbid, user, params, params_count)) {
-        user_free(user);
+        model_free(user);
         return NULL;
     }
 
@@ -94,16 +85,20 @@ void user_set_email(user_t* user, const char* email) {
     model_set_text(&user->field.email, email);
 }
 
+void user_set_enum(user_t* user, const char* value) {
+    model_set_enum(&user->field.enm, value);
+}
+
+void user_set_ts(user_t* user, const char* value) {
+    model_set_timestamp_from_str(&user->field.dt, value);
+}
+
 int user_id(user_t* user) {
     return model_int(&user->field.id);
 }
 
 const char* user_name(user_t* user) {
     return str_get(model_text(&user->field.name));
-}
-
-char* user_stringify(user_t* user) {
-    return model_stringify(user);
 }
 
 mfield_t* __first_field(void* arg) {
@@ -119,7 +114,7 @@ int __fields_count(void* arg) {
     if (user == NULL)
         return 0;
 
-    return sizeof(user->field) / sizeof(user->field.id);
+    return sizeof(user->field) / sizeof(mfield_t);
 }
 
 const char* __table(void* arg) {

@@ -14,14 +14,21 @@ static int __model_fill(const int row, const int fields_count, mfield_t* first_f
 static void* __modelview_fill(void*(create_instance)(void), dbresult_t* result);
 static array_t* __modelview_fill_array(void*(create_instance)(void), dbresult_t* result);
 static int __model_set_binary(mfield_t* field, const char* value, const size_t size);
+static int __model_set_date(mfield_t* field, tm_t* value);
 static str_t* __model_field_to_string(mfield_t* field);
 static jsontok_t* __model_json_create_object(void* arg, jsondoc_t* doc);
+static mfield_t __model_tmpfield_create(mfield_t* source_field);
+static int __primary_field_changed(mfield_t* field);
+static int __model_field_is_primary_and_empty(model_t* model, mfield_t* field);
 
 tm_t* tm_create(tm_t* time) {
     tm_t* tm = malloc(sizeof * tm);
     if (tm == NULL) return NULL;
 
-    memcpy(tm, time, sizeof * tm);
+    if (time == NULL)
+        memset(tm, 0, sizeof * tm);
+    else
+        memcpy(tm, time, sizeof * tm);
 
     return tm;
 }
@@ -41,9 +48,8 @@ int model_get(const char *dbid, void *arg, mfield_t *params, int params_count) {
     str_t* where_params = str_create_empty();
     if (where_params == NULL) goto failed;
 
-    mfield_t* vfield = model->first_field(model);
     for (int i = 0; i < model->fields_count(model); i++) {
-        mfield_t* field = vfield + i;
+        mfield_t* field = model->first_field(model) + i;
         if (field == NULL)
             goto failed;
 
@@ -104,7 +110,7 @@ int model_get(const char *dbid, void *arg, mfield_t *params, int params_count) {
     dbresult_free(&result);
 
     return res;
-    }
+}
 
 int model_create(const char* dbid, void* arg) {
     if (dbid == NULL) return 0;
@@ -124,32 +130,13 @@ int model_create(const char* dbid, void* arg) {
     str_t* values = str_create_empty();
     if (values == NULL) goto failed;
 
-    const char** primary_key = model->primary_key(model);
-
     mfield_t* vfield = model->first_field(model);
     if (vfield == NULL)
         goto failed;
 
     for (int i = 0, iter_set = 0; i < model->fields_count(model); i++) {
         mfield_t* field = vfield + i;
-        int empty_primary_key = 0;
-        for (int j = 0; j < model->primary_key_count(model); j++) {
-            if (strcmp(primary_key[j], field->name) != 0)
-                continue;
-
-            if (field->type == MODEL_TEXT) {
-                if (str_size(field->value._string) == 0)
-                    empty_primary_key = 1;
-            }
-            else {
-                if (field->value._int == 0)
-                    empty_primary_key = 1;
-            }
-
-            break;
-        }
-
-        if (empty_primary_key)
+        if (__model_field_is_primary_and_empty(model, field))
             continue;
 
         if (iter_set > 0) {
@@ -222,12 +209,13 @@ int model_update(const char* dbid, void* arg) {
             if (strcmp(unique_fields[j], field->name) != 0)
                 continue;
 
-            // UNDONE: v
-            // mvalue_t* v = &field->value;
-            // if (field->dirty)
-            //     v = &field->oldvalue;
+            mfield_t tmpfield = __model_tmpfield_create(field);
+            if (field->dirty) {
+                tmpfield.value = field->oldvalue;
+                tmpfield.oldvalue = field->value;
+            }
 
-            str_t* fieldstr = __model_field_to_string(field);
+            str_t* fieldstr = __model_field_to_string(&tmpfield);
             if (fieldstr == NULL)
                 goto failed;
 
@@ -320,11 +308,6 @@ int model_delete(const char* dbid, void* arg) {
         for (int j = 0; j < model->primary_key_count(model); j++) {
             if (strcmp(vunique[j], field->name) != 0)
                 continue;
-
-            // UNDONE: v
-            // mvalue_t* v = &field->value;
-            // if (field->dirty)
-            //     v = &field->oldvalue;
 
             str_t* fieldstr = __model_field_to_string(field);
             if (fieldstr == NULL)
@@ -533,9 +516,8 @@ void model_free(void* arg) {
     model_t* model = arg;
     if (model == NULL) return;
 
-    mfield_t* field = model->first_field(model);
     for (int i = 0; i < model->fields_count(model); i++) {
-        field = field + i;
+        mfield_t* field = model->first_field(model) + i;
         __model_value_free(&field->value, field->type);
         __model_value_free(&field->oldvalue, field->type);
     }
@@ -680,6 +662,11 @@ int model_set_bool(mfield_t* field, short value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_BOOL) return 0;
 
+    if (!field->dirty) {
+        field->oldvalue._short = field->value._short;
+        field->dirty = 1;
+    }
+
     field->value._short = value;
 
     str_clear(field->value._string);
@@ -690,6 +677,11 @@ int model_set_bool(mfield_t* field, short value) {
 int model_set_smallint(mfield_t* field, short value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_SMALLINT) return 0;
+
+    if (!field->dirty) {
+        field->oldvalue._short = field->value._short;
+        field->dirty = 1;
+    }
 
     field->value._short = value;
 
@@ -702,6 +694,11 @@ int model_set_int(mfield_t* field, int value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_INT) return 0;
 
+    if (!field->dirty) {
+        field->oldvalue._int = field->value._int;
+        field->dirty = 1;
+    }
+
     field->value._int = value;
 
     str_clear(field->value._string);
@@ -712,6 +709,11 @@ int model_set_int(mfield_t* field, int value) {
 int model_set_bigint(mfield_t* field, long long int value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_BIGINT) return 0;
+
+    if (!field->dirty) {
+        field->oldvalue._bigint = field->value._bigint;
+        field->dirty = 1;
+    }
 
     field->value._bigint = value;
 
@@ -724,6 +726,11 @@ int model_set_float(mfield_t* field, float value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_FLOAT) return 0;
 
+    if (!field->dirty) {
+        field->oldvalue._float = field->value._float;
+        field->dirty = 1;
+    }
+
     field->value._float = value;
 
     str_clear(field->value._string);
@@ -734,6 +741,11 @@ int model_set_float(mfield_t* field, float value) {
 int model_set_double(mfield_t* field, double value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_DOUBLE) return 0;
+
+    if (!field->dirty) {
+        field->oldvalue._double = field->value._double;
+        field->dirty = 1;
+    }
 
     field->value._double = value;
 
@@ -746,6 +758,11 @@ int model_set_decimal(mfield_t* field, long double value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_DECIMAL) return 0;
 
+    if (!field->dirty) {
+        field->oldvalue._ldouble = field->value._ldouble;
+        field->dirty = 1;
+    }
+
     field->value._ldouble = value;
 
     str_clear(field->value._string);
@@ -756,6 +773,11 @@ int model_set_decimal(mfield_t* field, long double value) {
 int model_set_money(mfield_t* field, double value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_MONEY) return 0;
+
+    if (!field->dirty) {
+        field->oldvalue._double = field->value._double;
+        field->dirty = 1;
+    }
 
     field->value._double = value;
 
@@ -768,60 +790,48 @@ int model_set_timestamp(mfield_t* field, tm_t* value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_TIMESTAMP) return 0;
 
-    memcpy(field->value._tm, value, sizeof(tm_t));
-
-    str_clear(field->value._string);
-
-    return 1;
+    return __model_set_date(field, value);
 }
 
 int model_set_timestamptz(mfield_t* field, tm_t* value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_TIMESTAMPTZ) return 0;
 
-    memcpy(field->value._tm, value, sizeof(tm_t));
-
-    str_clear(field->value._string);
-
-    return 1;
+    return __model_set_date(field, value);
 }
 
 int model_set_date(mfield_t* field, tm_t* value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_DATE) return 0;
 
-    memcpy(field->value._tm, value, sizeof(tm_t));
-
-    str_clear(field->value._string);
-
-    return 1;
+    return __model_set_date(field, value);
 }
 
 int model_set_time(mfield_t* field, tm_t* value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_TIME) return 0;
 
-    memcpy(field->value._tm, value, sizeof(tm_t));
-
-    str_clear(field->value._string);
-
-    return 1;
+    return __model_set_date(field, value);
 }
 
 int model_set_timetz(mfield_t* field, tm_t* value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_TIMETZ) return 0;
 
-    memcpy(field->value._tm, value, sizeof(tm_t));
-
-    str_clear(field->value._string);
-
-    return 1;
+    return __model_set_date(field, value);
 }
 
 int model_set_json(mfield_t* field, jsondoc_t* value) {
     if (field == NULL) return 0;
     if (field->type != MODEL_JSON) return 0;
+
+    if (!field->dirty) {
+        field->oldvalue._jsondoc = field->value._jsondoc;
+        field->value._jsondoc = NULL;
+        field->dirty = 1;
+    }
+
+    json_free(field->value._jsondoc);
 
     jsondoc_t* document = json_init();
     if (document == NULL) return 0;
@@ -839,43 +849,23 @@ int model_set_json(mfield_t* field, jsondoc_t* value) {
 }
 
 int model_set_binary(mfield_t* field, const char* value, const size_t size) {
-    if (field == NULL) return 0;
-    if (value == NULL) return 0;
-    if (field->type != MODEL_BINARY) return 0;
-
-    return __model_set_binary(field, value, size);
+    return model_set_binary_from_str(field, value, size);
 }
 
 int model_set_varchar(mfield_t* field, const char* value) {
-    if (field == NULL) return 0;
-    if (value == NULL) return 0;
-    if (field->type != MODEL_VARCHAR) return 0;
-
-    return __model_set_binary(field, value, strlen(value));
+    return model_set_varchar_from_str(field, value, strlen(value));
 }
 
 int model_set_char(mfield_t* field, const char* value) {
-    if (field == NULL) return 0;
-    if (value == NULL) return 0;
-    if (field->type != MODEL_CHAR) return 0;
-
-    return __model_set_binary(field, value, strlen(value));
+    return model_set_char_from_str(field, value, strlen(value));
 }
 
 int model_set_text(mfield_t* field, const char* value) {
-    if (field == NULL) return 0;
-    if (value == NULL) return 0;
-    if (field->type != MODEL_TEXT) return 0;
-
-    return __model_set_binary(field, value, strlen(value));
+    return model_set_text_from_str(field, value, strlen(value));
 }
 
 int model_set_enum(mfield_t* field, const char* value) {
-    if (field == NULL) return 0;
-    if (value == NULL) return 0;
-    if (field->type != MODEL_ENUM) return 0;
-
-    return __model_set_binary(field, value, strlen(value));
+    return model_set_enum_from_str(field, value, strlen(value));
 }
 
 int __model_set_binary(mfield_t* field, const char* value, const size_t size) {
@@ -897,6 +887,26 @@ int __model_set_binary(mfield_t* field, const char* value, const size_t size) {
         return 0;
 
     return str_assign(field->value._string, value, size);
+}
+
+int __model_set_date(mfield_t* field, tm_t* value) {
+    if (field == NULL) return 0;
+    if (value == NULL) return 0;
+
+    if (!field->dirty) {
+        field->oldvalue._tm = field->value._tm;
+        field->value._tm = NULL;
+        field->dirty = 1;
+    }
+
+    if (field->value._tm != NULL)
+        free(field->value._tm);
+
+    field->value._tm = tm_create(value);
+
+    str_clear(field->value._string);
+
+    return 1;
 }
 
 str_t* __model_field_to_string(mfield_t* field) {
@@ -1008,6 +1018,10 @@ void __model_value_free(mvalue_t* value, mtype_e type) {
 
     case MODEL_JSON:
         json_free(value->_jsondoc);
+        break;
+
+    case MODEL_ENUM:
+        enums_free(value->_enum);
         break;
 
     default:
@@ -1203,10 +1217,10 @@ int model_set_timestamp_from_str(mfield_t* field, const char* value) {
 
     memset(field->value._tm, 0, sizeof(tm_t));
 
-    if (strptime(value, "%Y-%m-%d %H:%M:%S", field->value._tm) == NULL)
+    if (strlen(value) > 0 && strptime(value, "%Y-%m-%d %H:%M:%S", field->value._tm) == NULL)
         return 0;
 
-    return 1;
+    return model_set_timestamp(field, field->value._tm);
 }
 
 int model_set_timestamptz_from_str(mfield_t* field, const char* value) {
@@ -1215,10 +1229,10 @@ int model_set_timestamptz_from_str(mfield_t* field, const char* value) {
 
     memset(field->value._tm, 0, sizeof(tm_t));
 
-    if (strptime(value, "%Y-%m-%d %H:%M:%S%z", field->value._tm) == NULL)
+    if (strlen(value) > 0 && strptime(value, "%Y-%m-%d %H:%M:%S%z", field->value._tm) == NULL)
         return 0;
 
-    return 1;
+    return model_set_timestamptz(field, field->value._tm);
 }
 
 int model_set_date_from_str(mfield_t* field, const char* value) {
@@ -1227,10 +1241,10 @@ int model_set_date_from_str(mfield_t* field, const char* value) {
 
     memset(field->value._tm, 0, sizeof(tm_t));
 
-    if (strptime(value, "%Y-%m-%d %H:%M:%S", field->value._tm) == NULL)
+    if (strlen(value) > 0 && strptime(value, "%Y-%m-%d %H:%M:%S", field->value._tm) == NULL)
         return 0;
 
-    return 1;
+    return model_set_date(field, field->value._tm);
 }
 
 int model_set_time_from_str(mfield_t* field, const char* value) {
@@ -1239,10 +1253,10 @@ int model_set_time_from_str(mfield_t* field, const char* value) {
 
     memset(field->value._tm, 0, sizeof(tm_t));
 
-    if (strptime(value, "%H:%M:%S", field->value._tm) == NULL)
+    if (strlen(value) > 0 && strptime(value, "%H:%M:%S", field->value._tm) == NULL)
         return 0;
 
-    return 1;
+    return model_set_time(field, field->value._tm);
 }
 
 int model_set_timetz_from_str(mfield_t* field, const char* value) {
@@ -1251,10 +1265,10 @@ int model_set_timetz_from_str(mfield_t* field, const char* value) {
 
     memset(field->value._tm, 0, sizeof(tm_t));
 
-    if (strptime(value, "%H:%M:%S%z", field->value._tm) == NULL)
+    if (strlen(value) > 0 && strptime(value, "%H:%M:%S%z", field->value._tm) == NULL)
         return 0;
 
-    return 1;
+    return model_set_timetz(field, field->value._tm);
 }
 
 int model_set_json_from_str(mfield_t* field, const char* value) {
@@ -1301,14 +1315,20 @@ int model_set_enum_from_str(mfield_t* field, const char* value, size_t size) {
     if (field == NULL) return 0;
     if (field->type != MODEL_ENUM) return 0;
 
-    return __model_set_binary(field, value, size);
+    if (size == 0)
+        return __model_set_binary(field, value, size);
+
+    for (short i = 0; i < field->value._enum->count; i++)
+        if (strcmp(field->value._enum->values[i], value) == 0)
+            return __model_set_binary(field, value, size);
+
+    return 0;
 }
 
 str_t* model_bool_to_str(mfield_t* field) {
     if (field == NULL) return NULL;
     if (field->type != MODEL_BOOL) return NULL;
 
-    // UNDONE размер str
     char str[2] = {0};
     ssize_t size = snprintf(str, sizeof(str), "%d", model_bool(field));
     if (size < 0) return NULL;
@@ -1325,7 +1345,6 @@ str_t* model_smallint_to_str(mfield_t* field) {
     if (field == NULL) return NULL;
     if (field->type != MODEL_SMALLINT) return NULL;
 
-    // UNDONE размер str -+
     char str[7] = {0};
     ssize_t size = snprintf(str, sizeof(str), "%d", model_smallint(field));
     if (size < 0) return NULL;
@@ -1342,7 +1361,6 @@ str_t* model_int_to_str(mfield_t* field) {
     if (field == NULL) return NULL;
     if (field->type != MODEL_INT) return NULL;
 
-    // UNDONE размер str -+
     char str[12] = {0};
     ssize_t size = snprintf(str, sizeof(str), "%d", model_int(field));
     if (size < 0) return NULL;
@@ -1359,7 +1377,6 @@ str_t* model_bigint_to_str(mfield_t* field) {
     if (field == NULL) return NULL;
     if (field->type != MODEL_BIGINT) return NULL;
 
-    // UNDONE размер str -+
     char str[21] = {0};
     ssize_t size = snprintf(str, sizeof(str), "%lld", model_bigint(field));
     if (size < 0) return NULL;
@@ -1376,8 +1393,7 @@ str_t* model_float_to_str(mfield_t* field) {
     if (field == NULL) return NULL;
     if (field->type != MODEL_FLOAT) return NULL;
 
-    // UNDONE размер str -+
-    char str[21] = {0};
+    char str[64] = {0};
     ssize_t size = snprintf(str, sizeof(str), "%.6f", model_float(field));
     if (size < 0) return NULL;
 
@@ -1393,8 +1409,7 @@ str_t* model_double_to_str(mfield_t* field) {
     if (field == NULL) return NULL;
     if (field->type != MODEL_DOUBLE) return NULL;
 
-    // UNDONE размер str -+
-    char str[128] = {0};
+    char str[375] = {0};
     ssize_t size = snprintf(str, sizeof(str), "%.12f", model_double(field));
     if (size < 0) return NULL;
 
@@ -1410,8 +1425,7 @@ str_t* model_decimal_to_str(mfield_t* field) {
     if (field == NULL) return NULL;
     if (field->type != MODEL_DECIMAL) return NULL;
 
-    // UNDONE размер str -+
-    char str[256] = {0};
+    char str[512] = {0};
     ssize_t size = snprintf(str, sizeof(str), "%.12Lf", model_decimal(field));
     if (size < 0) return NULL;
 
@@ -1427,8 +1441,7 @@ str_t* model_money_to_str(mfield_t* field) {
     if (field == NULL) return NULL;
     if (field->type != MODEL_MONEY) return NULL;
 
-    // UNDONE размер str -+
-    char str[128] = {0};
+    char str[375] = {0};
     ssize_t size = snprintf(str, sizeof(str), "%.12f", model_double(field));
     if (size < 0) return NULL;
 
@@ -1542,6 +1555,22 @@ str_t* model_json_to_str(mfield_t* field) {
     return field->value._string;
 }
 
+void model_params_clear(void* params, const size_t size) {
+    const size_t count_fields = size / sizeof(mfield_t);
+
+    mfield_t* fields = params;
+    for (size_t i = 0; i < count_fields; i++) {
+        mfield_t* field = fields + i;
+        __model_value_free(&field->value, field->type);
+        __model_value_free(&field->oldvalue, field->type);
+    }
+}
+
+void model_params_free(void* params, const size_t size) {
+    model_params_clear(params, size);
+    free(params);
+}
+
 jsontok_t* __model_json_create_object(void* arg, jsondoc_t* doc) {
     if (arg == NULL) return NULL;
     if (doc == NULL) return NULL;
@@ -1630,4 +1659,74 @@ jsontok_t* __model_json_create_object(void* arg, jsondoc_t* doc) {
         return NULL;
 
     return object;
+}
+
+mfield_t __model_tmpfield_create(mfield_t* source_field) {
+    mfield_t tmpfield = {
+        .type = source_field->type,
+        .dirty = source_field->dirty,
+        .name = {0},
+        .value = source_field->value,
+        .oldvalue = source_field->oldvalue
+    };
+
+    strcpy(tmpfield.name, source_field->name);
+
+    return tmpfield;
+}
+
+int __primary_field_changed(mfield_t* field) {
+    switch (field->type)
+    {
+    case MODEL_BOOL:
+    case MODEL_SMALLINT:
+    case MODEL_INT:
+    case MODEL_BIGINT:
+    case MODEL_FLOAT:
+    case MODEL_DOUBLE:
+    case MODEL_DECIMAL:
+    case MODEL_MONEY:
+        if (field->value._short == 0)
+            return 0;
+        break;
+    case MODEL_DATE:
+    case MODEL_TIME:
+    case MODEL_TIMETZ:
+    case MODEL_TIMESTAMP:
+    case MODEL_TIMESTAMPTZ:
+        if (field->value._tm != NULL && mktime(field->value._tm) == 0)
+            return 0;
+        break;
+    case MODEL_JSON: {
+        str_t* str = model_json_to_str(field);
+        if (str != NULL && str_size(str) == 0)
+            return 0;
+        break;
+    }
+    case MODEL_BINARY:
+    case MODEL_VARCHAR:
+    case MODEL_CHAR:
+    case MODEL_TEXT:
+    case MODEL_ENUM:
+        if (field->value._string != NULL && str_size(field->value._string) == 0)
+            return 0;
+        break;
+    }
+
+    return 1;
+}
+
+int __model_field_is_primary_and_empty(model_t* model, mfield_t* field) {
+    const char** primary_key = model->primary_key(model);
+    for (int i = 0; i < model->primary_key_count(model); i++) {
+        if (strcmp(primary_key[i], field->name) != 0)
+            continue;
+
+        if (!__primary_field_changed(field))
+            return 1;
+
+        break;
+    }
+    
+    return 0;
 }
