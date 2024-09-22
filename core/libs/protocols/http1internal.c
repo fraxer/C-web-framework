@@ -322,10 +322,9 @@ int http1_write_body(connection_t* connection, char* buffer, size_t payload_size
     ssize_t writed = -1;
 
     if (response->transfer_encoding == TE_CHUNKED) {
-        if (response->content_encoding == CE_GZIP) {
-            const size_t source_size = size;
-            const int end = payload_size <= source_size;
+        const int end = payload_size <= size;
 
+        if (response->content_encoding == CE_GZIP) {
             gzip_t* const gzip = &connection->gzip;
             char compress_buffer[GZIP_BUFFER];
 
@@ -334,12 +333,13 @@ int http1_write_body(connection_t* connection, char* buffer, size_t payload_size
                 return -1;
             }
 
+            const int gzip_end = (GZIP_BUFFER > payload_size && end) || end;
             do {
-                const size_t compress_writed = gzip_deflate(gzip, compress_buffer, GZIP_BUFFER, end);
+                const size_t compress_writed = gzip_deflate(gzip, compress_buffer, GZIP_BUFFER, gzip_end);
                 if (gzip_deflate_has_error(gzip))
                     return -1;
 
-                writed = http1_write_chunked(connection, compress_buffer, compress_writed, end);
+                writed = http1_write_chunked(connection, compress_buffer, compress_writed, gzip_is_end(gzip));
                 if (writed < 0)
                     return writed;
 
@@ -350,9 +350,9 @@ int http1_write_body(connection_t* connection, char* buffer, size_t payload_size
             if (end && !gzip_deflate_free(gzip))
                 return -1;
 
-            writed = source_size;
+            writed = size;
         } else {
-            writed = http1_write_chunked(connection, buffer, size, payload_size <= size);
+            writed = http1_write_chunked(connection, buffer, size, end);
         }
     }
     else {
