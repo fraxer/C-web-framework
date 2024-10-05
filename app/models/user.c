@@ -14,8 +14,7 @@ static int __primary_key_count(void* arg);
 
 user_t* user_instance(void) {
     user_t* user = malloc(sizeof * user);
-    if (user == NULL)
-        return NULL;
+    if (user == NULL) return NULL;
 
     user_t st = {
         .base = {
@@ -99,6 +98,10 @@ int user_id(user_t* user) {
 
 const char* user_name(user_t* user) {
     return str_get(model_text(&user->field.name));
+}
+
+const char* user_email(user_t* user) {
+    return str_get(model_text(&user->field.email));
 }
 
 mfield_t* __first_field(void* arg) {

@@ -18,8 +18,7 @@ static int __model_set_date(mfield_t* field, tm_t* value);
 static str_t* __model_field_to_string(mfield_t* field);
 static jsontok_t* __model_json_create_object(void* arg, jsondoc_t* doc);
 static mfield_t __model_tmpfield_create(mfield_t* source_field);
-static int __primary_field_changed(mfield_t* field);
-static int __model_field_is_primary_and_empty(model_t* model, mfield_t* field);
+static int __model_field_is_primary_and_not_dirty(model_t* model, mfield_t* field);
 
 tm_t* tm_create(tm_t* time) {
     tm_t* tm = malloc(sizeof * tm);
@@ -136,7 +135,7 @@ int model_create(const char* dbid, void* arg) {
 
     for (int i = 0, iter_set = 0; i < model->fields_count(model); i++) {
         mfield_t* field = vfield + i;
-        if (__model_field_is_primary_and_empty(model, field))
+        if (__model_field_is_primary_and_not_dirty(model, field))
             continue;
 
         if (iter_set > 0) {
@@ -1675,54 +1674,13 @@ mfield_t __model_tmpfield_create(mfield_t* source_field) {
     return tmpfield;
 }
 
-int __primary_field_changed(mfield_t* field) {
-    switch (field->type)
-    {
-    case MODEL_BOOL:
-    case MODEL_SMALLINT:
-    case MODEL_INT:
-    case MODEL_BIGINT:
-    case MODEL_FLOAT:
-    case MODEL_DOUBLE:
-    case MODEL_DECIMAL:
-    case MODEL_MONEY:
-        if (field->value._short == 0)
-            return 0;
-        break;
-    case MODEL_DATE:
-    case MODEL_TIME:
-    case MODEL_TIMETZ:
-    case MODEL_TIMESTAMP:
-    case MODEL_TIMESTAMPTZ:
-        if (field->value._tm != NULL && mktime(field->value._tm) == 0)
-            return 0;
-        break;
-    case MODEL_JSON: {
-        str_t* str = model_json_to_str(field);
-        if (str != NULL && str_size(str) == 0)
-            return 0;
-        break;
-    }
-    case MODEL_BINARY:
-    case MODEL_VARCHAR:
-    case MODEL_CHAR:
-    case MODEL_TEXT:
-    case MODEL_ENUM:
-        if (field->value._string != NULL && str_size(field->value._string) == 0)
-            return 0;
-        break;
-    }
-
-    return 1;
-}
-
-int __model_field_is_primary_and_empty(model_t* model, mfield_t* field) {
+int __model_field_is_primary_and_not_dirty(model_t* model, mfield_t* field) {
     const char** primary_key = model->primary_key(model);
     for (int i = 0; i < model->primary_key_count(model); i++) {
         if (strcmp(primary_key[i], field->name) != 0)
             continue;
 
-        if (!__primary_field_changed(field))
+        if (!field->dirty)
             return 1;
 
         break;
