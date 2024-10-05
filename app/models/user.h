@@ -38,5 +38,6 @@ void user_set_ts(user_t* user, const char* value);
 
 int user_id(user_t* user);
 const char* user_name(user_t* user);
+const char* user_email(user_t* user);
 
 #endif
