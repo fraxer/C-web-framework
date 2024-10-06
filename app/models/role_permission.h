@@ -18,7 +18,6 @@ typedef struct {
 } role_permission_get_params_t;
 
 role_permission_t* role_permission_instance(void);
-void role_permission_free(void* arg);
 
 role_permission_t* role_permission_get(mfield_t* params, int params_count);
 int role_permission_create(role_permission_t* role_permission);

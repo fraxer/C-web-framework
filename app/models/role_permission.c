@@ -41,24 +41,13 @@ role_permission_t* role_permission_instance(void) {
     return role_permission;
 }
 
-void role_permission_free(void* arg) {
-    role_permission_t* role_permission = arg;
-    if (role_permission == NULL)
-        return;
-
-    // model_free(&role_permission->field.id);
-    // model_free(&role_permission->field.name);
-
-    free(role_permission);
-}
-
 role_permission_t* role_permission_get(mfield_t* params, int params_count) {
     role_permission_t* role_permission = role_permission_instance();
     if (role_permission == NULL)
         return NULL;
 
     if (!model_get(__dbid, role_permission, params, params_count)) {
-        role_permission_free(role_permission);
+        model_free(role_permission);
         return NULL;
     }
 

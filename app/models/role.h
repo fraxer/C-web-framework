@@ -19,7 +19,6 @@ typedef struct {
 
 
 role_t* role_instance(void);
-void role_free(void* arg);
 
 role_t* role_get(mfield_t* params, int params_count);
 int role_create(role_t* role);

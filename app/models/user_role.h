@@ -18,7 +18,6 @@ typedef struct {
 } user_role_get_params_t;
 
 user_role_t* user_role_instance(void);
-void user_role_free(void* arg);
 
 user_role_t* user_role_get(mfield_t* params, int params_count);
 int user_role_create(user_role_t* user_role);
