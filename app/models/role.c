@@ -40,24 +40,13 @@ role_t* role_instance(void) {
     return role;
 }
 
-void role_free(void* arg) {
-    role_t* role = arg;
-    if (role == NULL)
-        return;
-
-    // model_free(&role->field.id);
-    // model_free(&role->field.name);
-
-    free(role);
-}
-
 role_t* role_get(mfield_t* params, int params_count) {
     role_t* role = role_instance();
     if (role == NULL)
         return NULL;
 
     if (!model_get(__dbid, role, params, params_count)) {
-        role_free(role);
+        model_free(role);
         return NULL;
     }
 

@@ -18,7 +18,6 @@ typedef struct {
 } permission_get_params_t;
 
 permission_t* permission_instance(void);
-void permission_free(void* arg);
 
 permission_t* permission_get(mfield_t* params, int params_count);
 int permission_create(permission_t* permission);

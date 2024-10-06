@@ -40,24 +40,13 @@ permission_t* permission_instance(void) {
     return permission;
 }
 
-void permission_free(void* arg) {
-    permission_t* permission = arg;
-    if (permission == NULL)
-        return;
-
-    // model_free(&permission->field.id);
-    // model_free(&permission->field.name);
-
-    free(permission);
-}
-
 permission_t* permission_get(mfield_t* params, int params_count) {
     permission_t* permission = permission_instance();
     if (permission == NULL)
         return NULL;
 
     if (!model_get(__dbid, permission, params, params_count)) {
-        permission_free(permission);
+        model_free(permission);
         return NULL;
     }
 

@@ -41,24 +41,13 @@ user_role_t* user_role_instance(void) {
     return user_role;
 }
 
-void user_role_free(void* arg) {
-    user_role_t* user_role = arg;
-    if (user_role == NULL)
-        return;
-
-    // model_free(&user_role->field.id);
-    // model_free(&user_role->field.name);
-
-    free(user_role);
-}
-
 user_role_t* user_role_get(mfield_t* params, int params_count) {
     user_role_t* user_role = user_role_instance();
     if (user_role == NULL)
         return NULL;
 
     if (!model_get(__dbid, user_role, params, params_count)) {
-        user_role_free(user_role);
+        model_free(user_role);
         return NULL;
     }
 
