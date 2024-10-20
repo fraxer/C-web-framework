@@ -12,7 +12,7 @@ static const char* __table(void* arg);
 static const char** __unique_fields(void* arg);
 static int __primary_key_count(void* arg);
 
-user_t* user_instance(void) {
+void* user_instance(void) {
     user_t* user = malloc(sizeof * user);
     if (user == NULL) return NULL;
 
@@ -43,17 +43,8 @@ user_t* user_instance(void) {
     return user;
 }
 
-user_t* user_get(mfield_t* params, int params_count) {
-    user_t* user = user_instance();
-    if (user == NULL)
-        return NULL;
-
-    if (!model_get(__dbid, user, params, params_count)) {
-        model_free(user);
-        return NULL;
-    }
-
-    return user;
+user_t* user_get(array_t* params) {
+    return model_get(__dbid, user_instance, params);
 }
 
 int user_create(user_t* user) {

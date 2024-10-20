@@ -29,13 +29,12 @@ void userviewget(httpctx_t* ctx) {
     //     const int _user_id = str_to_expdouble(quser_id);
     // }
 
-    const int userid = atoi(quser_id);
+    mparams_create_array(params,
+        mparam_int(id, atoi(quser_id))
+    )
 
-    userview_get_params_t params_get = {
-        mfield_int(id, userid)
-    };
-    userview_t* user = userview_get(&params_get);
-    mparams_clear(&params_get);
+    userview_t* user = userview_get(params);
+    array_free(params);
 
     if (user == NULL) {
         ctx->response->status_code = 500;
@@ -92,9 +91,11 @@ char* userview_list_stringify(array_t* users) {
         userview_t* user = (&users->elements[i])->_pointer;
         if (user == NULL) return NULL;
 
-        array_t* user_roles = roleview_list(&(roleview_list_params_t){
-            mfield_int(user_id, model_int(&user->field.id))
-        });
+        mparams_create_array(user_roles_params,
+            mparam_int(user_id, model_int(&user->field.id))
+        )
+        array_t* user_roles = roleview_list(user_roles_params);
+        array_free(user_roles_params);
 
         jsontok_t* json_object_user = model_to_json(user, doc);
 
@@ -104,9 +105,11 @@ char* userview_list_stringify(array_t* users) {
                 roleview_t* role = (&user_roles->elements[j])->_pointer;
                 if (role == NULL) return NULL;
 
-                array_t* role_permissions = permissionview_list(&(permissionview_list_params_t){
-                    mfield_int(role_id, model_int(&role->field.id))
-                });
+                mparams_create_array(role_permissions_params,
+                    mparam_int(role_id, model_int(&role->field.id))
+                )
+                array_t* role_permissions = permissionview_list(role_permissions_params);
+                array_free(role_permissions_params);
 
                 jsontok_t* json_object_role = model_to_json(role, doc);
 

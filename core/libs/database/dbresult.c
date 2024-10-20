@@ -7,9 +7,19 @@
 db_table_cell_t* __dbresult_field(dbresult_t* result, const char* field);
 
 
-dbresultquery_t* dbresult_query_create(int rows, int cols) {
-    dbresultquery_t* query = (dbresultquery_t*)malloc(sizeof *query);
+dbresult_t* dbresult_create(void) {
+    dbresult_t* result = malloc(sizeof * result);
+    if (result == NULL) return NULL;
 
+    result->ok = 0;
+    result->query = NULL;
+    result->current = NULL;
+
+    return result;
+}
+
+dbresultquery_t* dbresult_query_create(int rows, int cols) {
+    dbresultquery_t* query = malloc(sizeof * query);
     if (query == NULL) return NULL;
 
     query->rows = rows;
@@ -21,14 +31,19 @@ dbresultquery_t* dbresult_query_create(int rows, int cols) {
     query->next = NULL;
 
     if (query->fields == NULL || query->table == NULL) {
-        if (query->fields) free(query->fields);
-        if (query->table) free(query->table);
-        free(query);
-
-        query = NULL;
+        dbresult_query_free(query);
+        return NULL;
     }
 
     return query;
+}
+
+void dbresult_query_free(dbresultquery_t* query) {
+    if (query == NULL) return;
+
+    if (query->fields) free(query->fields);
+    if (query->table) free(query->table);
+    free(query);
 }
 
 int dbresult_cell_create(db_table_cell_t* cell, const char* string, size_t length) {
@@ -46,7 +61,7 @@ int dbresult_cell_create(db_table_cell_t* cell, const char* string, size_t lengt
     return 0;
 }
 
-void dbresult_query_table_insert(dbresultquery_t* query, const char* string, size_t length, int row, int col) {
+void dbresult_query_value_insert(dbresultquery_t* query, const char* string, size_t length, int row, int col) {
     dbresult_cell_create(&query->table[row * query->cols + col], string, length);
 }
 
@@ -62,49 +77,27 @@ int dbresult_ok(dbresult_t* result) {
     return result->ok;
 }
 
-const char* dbresult_error_message(dbresult_t* result) {
-    if (result == NULL) return "Db result empty";
-
-    return result->error_message;
-}
-
 void dbresult_free(dbresult_t* result) {
-    if (!result) return;
+    if (result == NULL) return;
 
     dbresultquery_t* query = result->query;
-
     while (query) {
         dbresultquery_t* next = query->next;
-        db_table_cell_t* fields = query->fields;
-        db_table_cell_t* table = query->table;
 
+        if (query->fields)
+            for (int i = 0; i < query->cols; i++)
+                db_cell_free(&query->fields[i]);
 
-        if (fields) {
-            for (int i = 0; i < query->cols; i++) {
-                db_cell_free(&fields[i]);
-            }
+        if (query->table)
+            for (int i = 0; i < query->rows * query->cols; i++)
+                db_cell_free(&query->table[i]);
 
-            free(fields);
-            query->fields = NULL;
-        }
-
-
-        if (table) {
-            for (int i = 0; i < query->rows * query->cols; i++) {
-                db_cell_free(&table[i]);
-            }
-
-            free(table);
-            query->table = NULL;
-        }
-
-        free(query);
+        dbresult_query_free(query);
 
         query = next;
     }
 
-    result->query = NULL;
-    result->current = NULL;
+    free(result);
 }
 
 int dbresult_row_next(dbresult_t* result) {

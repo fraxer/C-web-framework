@@ -30,7 +30,7 @@ void* roleview_instance(void) {
     return role;
 }
 
-roleview_t* roleview_get(roleview_get_params_t* params) {
+roleview_t* roleview_get(array_t* params) {
     return model_one(__dbid, roleview_instance,
         "SELECT "
             "id, "
@@ -38,14 +38,14 @@ roleview_t* roleview_get(roleview_get_params_t* params) {
         "FROM "
             "role "
         "WHERE "
-            "id = %d "
+            "id = :id "
         "LIMIT 1"
         ,
-        model_int(&params->id)
+        params
     );
 }
 
-array_t* roleview_list(roleview_list_params_t* params) {
+array_t* roleview_list(array_t* params) {
     return model_list(__dbid, roleview_instance,
         "SELECT "
             "role.id, "
@@ -59,12 +59,12 @@ array_t* roleview_list(roleview_list_params_t* params) {
             "role.id = user_role.role_id "
 
         "WHERE "
-            "user_role.user_id = %d "
+            "user_role.user_id = :user_id "
 
         "ORDER BY "
             "role.id ASC "
         ,
-        model_int(&params->user_id)
+        params
     );
 }
 

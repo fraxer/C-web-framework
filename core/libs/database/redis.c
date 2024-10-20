@@ -1,43 +1,53 @@
+#define _GNU_SOURCE
+#include <unistd.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
 #include <stdio.h>
 
 #include "log.h"
+#include "array.h"
+#include "str.h"
+#include "model.h"
 #include "dbresult.h"
 #include "redis.h"
 
-dbhosts_t* redis_hosts_create();
-void redis_connection_free(dbconnection_t*);
-void redis_send_query(dbresult_t*, dbconnection_t*, const char*);
+static redishost_t* __host_create(void);
+static void __host_free(void* arg);
+static void* __connection_create(void* host);
+static void __connection_free(void* connection);
+static dbresult_t* __query(void* connection, const char* sql);
 int redis_send_command(redisContext*, const char*);
 int redis_auth(redisContext*, const char*, const char*);
 int redis_selectdb(redisContext*, const int);
-redisContext* redis_connect(dbhosts_t*);
+static redisContext* __connect(void* host);
+static int __is_active(void* connection);
+static int __reconnect(void* host, void* connection);
+static str_t* __escape_identifier(void* connection, str_t* str);
+static str_t* __escape_string(void* connection, str_t* str);
+static char* __compile_insert(void* connection, const char* table, array_t* params);
+static char* __compile_select(void* connection, const char* table, array_t* columns, array_t* where);
+static char* __compile_update(void* connection, const char* table, array_t* set, array_t* where);
+static char* __compile_delete(void* connection, const char* table, array_t* where);
 
-dbhosts_t* redis_hosts_create(void) {
-    dbhosts_t* hosts = malloc(sizeof * hosts);
-    if (hosts == NULL) return NULL;
 
-    hosts->host = NULL;
-    hosts->current_host = NULL;
-    hosts->connection_create = redis_connection_create;
-    hosts->connection_create_manual = NULL;
-    hosts->table_exist_sql = NULL;
-    hosts->table_migration_create_sql = NULL;
-
-    return hosts;
-}
-
-redishost_t* redis_host_create(void) {
+redishost_t* __host_create(void) {
     redishost_t* host = malloc(sizeof * host);
     if (host == NULL) return NULL;
 
-    host->base.free = redis_host_free;
-    host->base.migration = 0;
+    host->base.free = __host_free;
     host->base.port = 0;
     host->base.ip = NULL;
-    host->base.next = NULL;
+    host->base.id = NULL;
+    host->base.connection_create = __connection_create;
+    host->base.connections = array_create();
+    host->base.connections_locked = 0;
+    host->base.grammar.compile_table_exist = NULL;
+    host->base.grammar.compile_table_migration_create = NULL;
+    host->base.grammar.compile_insert = __compile_insert;
+    host->base.grammar.compile_select = __compile_select;
+    host->base.grammar.compile_update = __compile_update;
+    host->base.grammar.compile_delete = __compile_delete;
     host->dbindex = 0;
     host->user = NULL;
     host->password = NULL;
@@ -45,81 +55,66 @@ redishost_t* redis_host_create(void) {
     return host;
 }
 
-void redis_host_free(void* arg) {
+void __host_free(void* arg) {
     if (arg == NULL) return;
 
     redishost_t* host = arg;
 
+    if (host->base.id) free(host->base.id);
     if (host->base.ip) free(host->base.ip);
     if (host->user) free(host->user);
     if (host->password) free(host->password);
-    host->base.port = 0;
-    host->dbindex = 0;
-    host->base.next = NULL;
 
+    array_free(host->base.connections);
     free(host);
 }
 
-void redis_free(db_t* db) {
-    db_destroy(db);
-}
-
-dbconnection_t* redis_connection_create(dbhosts_t* hosts) {
-    redisconnection_t* connection = (redisconnection_t*)malloc(sizeof(redisconnection_t));
-
+void* __connection_create(void* host) {
+    redisconnection_t* connection = malloc(sizeof * connection);
     if (connection == NULL) return NULL;
 
-    connection->base.locked = 0;
-    connection->base.next = NULL;
-    connection->base.free = redis_connection_free;
-    connection->base.send_query = redis_send_query;
+    connection->base.thread_id = gettid();
+    connection->base.free = __connection_free;
+    connection->base.query = __query;
+    connection->base.escape_identifier = __escape_identifier;
+    connection->base.escape_string = __escape_string;
+    connection->base.is_active = __is_active;
+    connection->base.reconnect = __reconnect;
+    connection->connection = __connect(host);
 
-    void* host_address = hosts->current_host;
-
-    while (1) {
-        connection->connection = redis_connect(hosts);
-
-        if (connection->connection != NULL) break;
-
-        log_error("Redis error: connection error\n");
-
-        if (host_address == hosts->current_host) {
-            redis_connection_free((dbconnection_t*)connection);
-            return NULL;
-        }
-
-        redisFree(connection->connection);
+    if (connection->connection == NULL) {
+        connection->base.free(connection);
+        connection = NULL;
     }
 
-    return (dbconnection_t*)connection;
+    return connection;
 }
 
-void redis_connection_free(dbconnection_t* connection) {
+void __connection_free(void* connection) {
     if (connection == NULL) return;
 
-    redisconnection_t* conn = (redisconnection_t*)connection;
+    redisconnection_t* conn = connection;
 
     redisFree(conn->connection);
     free(conn);
 }
 
-void redis_send_query(dbresult_t* result, dbconnection_t* connection, const char* string) {
-    redisconnection_t* redisconnection = (redisconnection_t*)connection;
+dbresult_t* __query(void* connection, const char* sql) {
+    redisconnection_t* redisconnection = connection;
 
-    redisReply* reply = redisCommand(redisconnection->connection, string);
+    dbresult_t* result = dbresult_create();
+    if (result == NULL) return NULL;
+
+    redisReply* reply = redisCommand(redisconnection->connection, sql);
 
     if (reply == NULL || redisconnection->connection->err != 0) {
         log_error("Redis error: %s\n", redisconnection->connection->errstr);
-        result->error_message = "Redis error: connection error";
-        freeReplyObject(reply);
-        return;
+        goto failed;
     }
 
     if (reply->type == REDIS_REPLY_ERROR) {
         log_error("Redis error: %s\n", reply->str);
-        result->error_message = "Redis error: query error";
-        freeReplyObject(reply);
-        return;
+        goto failed;
     }
 
     int rows = reply->type == REDIS_REPLY_ARRAY ? reply->elements : 1;
@@ -128,9 +123,8 @@ void redis_send_query(dbresult_t* result, dbconnection_t* connection, const char
     dbresultquery_t* query = dbresult_query_create(rows, cols);
 
     if (query == NULL) {
-        result->error_message = "Out of memory";
-        freeReplyObject(reply);
-        return;
+        log_error("Out of memory\n");
+        goto failed;
     }
 
     result->query = query;
@@ -147,43 +141,40 @@ void redis_send_query(dbresult_t* result, dbconnection_t* connection, const char
             value = reply->element[row]->str;
         }
 
-        dbresult_query_table_insert(query, value, length, row, col);
+        dbresult_query_value_insert(query, value, length, row, col);
     }
 
     result->ok = 1;
 
+    failed:
+
     freeReplyObject(reply);
 
-    return;
+    return result;
 }
 
 int redis_send_command(redisContext* connection, const char* string) {
-    int result = -1;
-
     redisReply* reply = redisCommand(connection, string);
-
-    if (reply == NULL) return result;
+    if (reply == NULL) return 0;
 
     if (reply->type == REDIS_REPLY_ERROR)
         log_error("Redis error: %s\n", reply->str);
-    else
-        result = 0;
 
     freeReplyObject(reply);
 
-    return 0;
+    return 1;
 }
 
 int redis_auth(redisContext* connection, const char* user, const char* password) {
-    size_t string_length = 256;
+    const size_t string_length = 256;
     char string[string_length];
 
-    size_t user_length = strlen(user);
-    size_t password_length = strlen(password);
+    const size_t user_length = strlen(user);
+    const size_t password_length = strlen(password);
 
     if (string_length <= user_length + password_length + 6) {
         log_error("Redis error: user or password is too large");
-        return -1;
+        return 0;
     }
 
     const char* arg1 = user;
@@ -194,7 +185,7 @@ int redis_auth(redisContext* connection, const char* user, const char* password)
         arg2 = user;
     }
 
-    if (password_length == 0) return 0;
+    if (password_length == 0) return 1;
 
     sprintf(&string[0], "AUTH %s %s", arg1, arg2);
 
@@ -208,31 +199,92 @@ int redis_selectdb(redisContext* connection, const int index) {
     return redis_send_command(connection, &string[0]);
 }
 
-redisContext* redis_connect(dbhosts_t* hosts) {
-    redishost_t* host = (redishost_t*)hosts->current_host;
-    redisContext* connection = redisConnect(host->base.ip, host->base.port);
+redisContext* __connect(void* arg) {
+    redishost_t* host = arg;
 
+    redisContext* connection = redisConnect(host->base.ip, host->base.port);
     if (connection == NULL || connection->err != 0) {
         log_error("Redis error: %s\n", connection->errstr);
-        if (connection) redisFree(connection);
-        return NULL;
-    }
-
-    if (redis_auth(connection, host->user, host->password) == -1) {
         redisFree(connection);
         return NULL;
     }
 
-    if (redis_selectdb(connection, host->dbindex) == -1) {
+    if (!redis_auth(connection, host->user, host->password)) {
+        log_error("Redis error: %s\n", connection->errstr);
+        redisFree(connection);
+        return NULL;
+    }
+
+    if (!redis_selectdb(connection, host->dbindex)) {
+        log_error("Redis error: %s\n", connection->errstr);
         redisFree(connection);
         return NULL;
     }
 
     redisEnableKeepAlive(connection);
 
-    db_next_host(hosts);
-
     return connection;
+}
+
+int __is_active(void* connection) {
+    redisconnection_t* conn = connection;
+    if (conn == NULL) return 0;
+
+    redisReply* reply = redisCommand(conn->connection, "PING");
+    if (reply == NULL) {
+        printf("Redis error: connection lost\n");
+        return 0;
+    }
+
+    int is_alive = 0;
+    if (reply->type == REDIS_REPLY_STRING && strcmp(reply->str, "PONG") == 0)
+        is_alive = 1;
+    else if (reply->type == REDIS_REPLY_STATUS && strcmp(reply->str, "PONG") == 0)
+        is_alive = 1;
+
+    freeReplyObject(reply);
+
+    return is_alive;
+}
+
+int __reconnect(void* host, void* connection) {
+    redisconnection_t* conn = connection;
+
+    if (__is_active(conn->connection)) {
+        redisFree(conn->connection);
+
+        conn->connection = __connect(host);
+
+        if (!__is_active(conn->connection)) {
+            redisFree(conn->connection);
+            conn->connection = NULL;
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+str_t* __escape_identifier(void* connection, str_t* str) {
+    return __escape_string(connection, str);
+}
+
+str_t* __escape_string(void* connection, str_t* str) {
+    (void)connection;
+    str_t* quoted_str = str_create_empty();
+    if (quoted_str == NULL) return NULL;
+
+    str_appendc(quoted_str, '"');
+    for (size_t i = 0; i < str_size(str); i++) {
+        char ch = str_get(str)[i];
+        if (ch == '"' || ch == '\\' || ch == '\'')
+            str_appendc(quoted_str, '\\');
+
+        str_appendc(quoted_str, ch);
+    }
+    str_appendc(quoted_str, '"');
+
+    return quoted_str;
 }
 
 db_t* redis_load(const char* database_id, const jsontok_t* token_array) {
@@ -240,22 +292,15 @@ db_t* redis_load(const char* database_id, const jsontok_t* token_array) {
     db_t* database = db_create(database_id);
     if (database == NULL) return NULL;
 
-    database->hosts = redis_hosts_create();
-    if (database->hosts == NULL) {
-        log_error("redis_load: can't create hosts\n");
-        goto failed;
-    }
-
-    enum fields { PORT = 0, IP, DBINDEX, USER, PASSWORD, FIELDS_COUNT };
-    enum required_fields { R_PORT = 0, R_IP, R_DBINDEX, R_FIELDS_COUNT };
-    char* field_names[FIELDS_COUNT] = {"port", "ip", "dbindex", "user", "password"};
-    dbhost_t* host_last = NULL;
+    enum fields { HOST_ID = 0, PORT, IP, DBINDEX, USER, PASSWORD, FIELDS_COUNT };
+    enum required_fields { R_HOST_ID = 0, R_PORT, R_IP, R_DBINDEX, R_FIELDS_COUNT };
+    char* field_names[FIELDS_COUNT] = {"host_id", "port", "ip", "dbindex", "user", "password"};
 
     for (jsonit_t it_array = json_init_it(token_array); !json_end_it(&it_array); json_next_it(&it_array)) {
         jsontok_t* token_object = json_it_value(&it_array);
         int lresult = 0;
         int finded_fields[FIELDS_COUNT] = {0};
-        redishost_t* host = redis_host_create();
+        redishost_t* host = __host_create();
         if (host == NULL) {
             log_error("redis_load: can't create host\n");
             goto failed;
@@ -265,7 +310,29 @@ db_t* redis_load(const char* database_id, const jsontok_t* token_array) {
             const char* key = json_it_key(&it_object);
             jsontok_t* token_value = json_it_value(&it_object);
 
-            if (strcmp(key, "port") == 0) {
+            if (strcmp(key, "host_id") == 0) {
+                if (finded_fields[HOST_ID]) {
+                    log_error("redis_load: field %s must be unique\n", key);
+                    goto host_failed;
+                }
+                if (!json_is_string(token_value)) {
+                    log_error("redis_load: field %s must be string\n", key);
+                    goto host_failed;
+                }
+
+                finded_fields[HOST_ID] = 1;
+
+                if (host->base.id != NULL) free(host->base.id);
+
+                host->base.id = malloc(token_value->size + 1);
+                if (host->base.id == NULL) {
+                    log_error("redis_load: alloc memory for %s failed\n", key);
+                    goto host_failed;
+                }
+
+                strcpy(host->base.id, json_string(token_value));
+            }
+            else if (strcmp(key, "port") == 0) {
                 if (finded_fields[PORT]) {
                     log_error("redis_load: field %s must be unique\n", key);
                     goto host_failed;
@@ -369,14 +436,7 @@ db_t* redis_load(const char* database_id, const jsontok_t* token_array) {
             }
         }
 
-        if (database->hosts->host == NULL) {
-            database->hosts->host = (dbhost_t*)host;
-            database->hosts->current_host = (dbhost_t*)host;
-        }
-        if (host_last != NULL)
-            host_last->next = (dbhost_t*)host;
-
-        host_last = (dbhost_t*)host;
+        array_push_back(database->hosts, array_create_pointer(host, array_nocopy, host->base.free));
 
         if (finded_fields[USER] == 0) {
             if (host->user == NULL)
@@ -412,7 +472,7 @@ db_t* redis_load(const char* database_id, const jsontok_t* token_array) {
         host_failed:
 
         if (lresult == 0) {
-            redis_host_free(host);
+            host->base.free(host);
             goto failed;
         }
     }
@@ -422,7 +482,37 @@ db_t* redis_load(const char* database_id, const jsontok_t* token_array) {
     failed:
 
     if (result == NULL)
-        db_destroy(database);
+        db_free(database);
 
     return result;
+}
+
+char* __compile_insert(void* connection, const char* table, array_t* params) {
+    (void)connection;
+    (void)table;
+    (void)params;
+    return NULL;
+}
+
+char* __compile_select(void* connection, const char* table, array_t* columns, array_t* where) {
+    (void)connection;
+    (void)table;
+    (void)columns;
+    (void)where;
+    return NULL;
+}
+
+char* __compile_update(void* connection, const char* table, array_t* set, array_t* where) {
+    (void)connection;
+    (void)table;
+    (void)set;
+    (void)where;
+    return NULL;
+}
+
+char* __compile_delete(void* connection, const char* table, array_t* where) {
+    (void)connection;
+    (void)table;
+    (void)where;
+    return NULL;
 }

@@ -30,5 +30,6 @@ int str_move(str_t* srcstr, str_t* dststr);
 
 char* str_get(str_t* str);
 char* str_copy(str_t* str);
+int str_modify_add_symbols_before(str_t* str, char add_symbol, char before_symbol);
 
 #endif

@@ -16,14 +16,9 @@ typedef struct {
     char* primary_key[2]; // remove or update by id (primary or unique key)
 } user_t;
 
-typedef struct {
-    mfield_t id;
-} user_get_params_t;
+void* user_instance(void);
 
-
-user_t* user_instance(void);
-
-user_t* user_get(mfield_t* params, int params_count);
+user_t* user_get(array_t* params);
 int user_create(user_t* user);
 int user_update(user_t* user);
 int user_delete(user_t* user);

@@ -13,13 +13,9 @@ typedef struct {
     char* primary_key[2]; // remove or update by id (primary or unique key)
 } role_permission_t;
 
-typedef struct {
-    mfield_t user_id;
-} role_permission_get_params_t;
+void* role_permission_instance(void);
 
-role_permission_t* role_permission_instance(void);
-
-role_permission_t* role_permission_get(mfield_t* params, int params_count);
+role_permission_t* role_permission_get(array_t* params);
 int role_permission_create(role_permission_t* role_permission);
 int role_permission_update(role_permission_t* role_permission);
 int role_permission_delete(role_permission_t* role_permission);

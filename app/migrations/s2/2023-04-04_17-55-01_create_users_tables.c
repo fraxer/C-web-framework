@@ -1,34 +1,31 @@
 #include <stdlib.h>
-#include <stdio.h>
 
 #include "dbquery.h"
 #include "dbresult.h"
 
-// const char* server() { return "s1"; }
-const char* db() { return "postresql"; }
-
 int up(dbinstance_t* dbinst) {
-    dbresult_t result = dbquery(dbinst, "CREATE TABLE users");
+    dbresult_t* result = dbqueryf(dbinst, 
+        "CREATE TABLE user"
+        "("
+            "id    int          NOT NULL PRIMARY KEY,"
+            "email varchar(100) NOT NULL DEFAULT '',"
+            "name  varchar(100) NOT NULL DEFAULT ''"
+        ")"
+    );
 
-    if (!dbresult_ok(&result)) {
-        printf("%s\n", dbresult_error_message(&result));
-        dbresult_free(&result);
-        return -1;
-    }
+    int res = dbresult_ok(result);
 
-    dbresult_free(&result);
-    return 0;
+    dbresult_free(result);
+
+    return res;
 }
 
 int down(dbinstance_t* dbinst) {
-    dbresult_t result = dbquery(dbinst, "DROP TABLE users");
+    dbresult_t* result = dbqueryf(dbinst, "DROP TABLE users");
 
-    if (!dbresult_ok(&result)) {
-        printf("%s\n", dbresult_error_message(&result));
-        dbresult_free(&result);
-        return -1;
-    }
+    int res = dbresult_ok(result);
 
-    dbresult_free(&result);
-    return 0;
+    dbresult_free(result);
+
+    return res;
 }

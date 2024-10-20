@@ -4,10 +4,8 @@
 #include "dbquery.h"
 #include "dbresult.h"
 
-const char* db() { return "postgresql"; }
-
 int up(dbinstance_t* dbinst) {
-    dbresult_t result = dbquery(dbinst,
+    dbresult_t* result = dbqueryf(dbinst,
         "CREATE TABLE public.role_permission"
         "("
             "role_id          bigserial    NOT NULL,"
@@ -17,27 +15,19 @@ int up(dbinstance_t* dbinst) {
         ")"
     );
 
-    if (!dbresult_ok(&result)) {
-        printf("%s\n", dbresult_error_message(&result));
-        dbresult_free(&result);
-        return -1;
-    }
+    int res = dbresult_ok(result);
 
-    dbresult_free(&result);
+    dbresult_free(result);
 
-    return 0;
+    return res;
 }
 
 int down(dbinstance_t* dbinst) {
-    dbresult_t result = dbquery(dbinst, "DROP TABLE public.role_permission");
+    dbresult_t* result = dbqueryf(dbinst, "DROP TABLE public.role_permission");
 
-    if (!dbresult_ok(&result)) {
-        printf("%s\n", dbresult_error_message(&result));
-        dbresult_free(&result);
-        return -1;
-    }
+    int res = dbresult_ok(result);
 
-    dbresult_free(&result);
+    dbresult_free(result);
 
-    return 0;
+    return res;
 }

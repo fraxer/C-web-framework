@@ -12,7 +12,7 @@ static const char* __table(void* arg);
 static const char** __unique_fields(void* arg);
 static int __primary_key_count(void* arg);
 
-role_permission_t* role_permission_instance(void) {
+void* role_permission_instance(void) {
     role_permission_t* role_permission = malloc(sizeof * role_permission);
     if (role_permission == NULL)
         return NULL;
@@ -41,17 +41,8 @@ role_permission_t* role_permission_instance(void) {
     return role_permission;
 }
 
-role_permission_t* role_permission_get(mfield_t* params, int params_count) {
-    role_permission_t* role_permission = role_permission_instance();
-    if (role_permission == NULL)
-        return NULL;
-
-    if (!model_get(__dbid, role_permission, params, params_count)) {
-        model_free(role_permission);
-        return NULL;
-    }
-
-    return role_permission;
+role_permission_t* role_permission_get(array_t* params) {
+    return model_get(__dbid, role_permission_instance, params);
 }
 
 int role_permission_create(role_permission_t* role_permission) {

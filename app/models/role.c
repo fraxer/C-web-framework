@@ -12,7 +12,7 @@ static const char* __table(void* arg);
 static const char** __unique_fields(void* arg);
 static int __primary_key_count(void* arg);
 
-role_t* role_instance(void) {
+void* role_instance(void) {
     role_t* role = malloc(sizeof * role);
     if (role == NULL)
         return NULL;
@@ -40,17 +40,8 @@ role_t* role_instance(void) {
     return role;
 }
 
-role_t* role_get(mfield_t* params, int params_count) {
-    role_t* role = role_instance();
-    if (role == NULL)
-        return NULL;
-
-    if (!model_get(__dbid, role, params, params_count)) {
-        model_free(role);
-        return NULL;
-    }
-
-    return role;
+role_t* role_get(array_t* params) {
+    return model_get(__dbid, role_instance, params);
 }
 
 int role_create(role_t* role) {
