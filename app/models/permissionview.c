@@ -30,7 +30,7 @@ void* permissionview_instance(void) {
     return permission;
 }
 
-permissionview_t* permissionview_get(permissionview_get_params_t* params) {
+permissionview_t* permissionview_get(array_t* params) {
     return model_one(__dbid, permissionview_instance,
         "SELECT "
             "id, "
@@ -38,14 +38,14 @@ permissionview_t* permissionview_get(permissionview_get_params_t* params) {
         "FROM "
             "permission "
         "WHERE "
-            "id = %d "
+            "id = :id "
         "LIMIT 1"
         ,
-        model_int(&params->id)
+        params
     );
 }
 
-array_t* permissionview_list(permissionview_list_params_t* params) {
+array_t* permissionview_list(array_t* params) {
     return model_list(__dbid, permissionview_instance,
         "SELECT "
             "permission.id, "
@@ -59,12 +59,12 @@ array_t* permissionview_list(permissionview_list_params_t* params) {
             "permission.id = role_permission.permission_id "
 
         "WHERE "
-            "role_permission.role_id = %d "
+            "role_permission.role_id = :role_id "
 
         "ORDER BY "
             "permission.id ASC "
         ,
-        model_int(&params->role_id)
+        params
     );
 }
 

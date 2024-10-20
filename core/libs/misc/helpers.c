@@ -130,6 +130,20 @@ int cmpsubstr_lower(const char* a, const char* b) {
     return cmpsize == b_length;
 }
 
+int starts_with_substr(const char* string, const char* substring) {
+    size_t start_length = strlen(string);
+    size_t substring_length = strlen(substring);
+
+    if (substring_length > start_length)
+        return 0;
+
+    for (size_t i = 0; i < substring_length; i++)
+        if (string[i] != substring[i])
+            return 0;
+
+    return 1;
+}
+
 int timezone_offset() {
     const time_t epoch_plus_11h = 60 * 60 * 11;
     const int local_time = localtime(&epoch_plus_11h)->tm_hour;

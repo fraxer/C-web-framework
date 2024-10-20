@@ -7,6 +7,7 @@
 #include "db.h"
 #include "storage.h"
 #include "view.h"
+#include "model.h"
 
 void get(httpctx_t* ctx) {
     ctx->response->cookie_add(ctx->response, (cookie_t){
@@ -73,47 +74,48 @@ void websocket(httpctx_t* ctx) {
 }
 
 void mysql(httpctx_t* ctx) {
-    dbinstance_t dbinst = dbinstance("mysql");
+    dbinstance_t* dbinst = dbinstance("mysql");
 
-    if (!dbinst.ok) {
+    if (dbinst == NULL) {
         ctx->response->data(ctx->response, "db not found");
         return;
     }
 
-    dbresult_t result = dbquery(&dbinst, "select * from check_site ;select * from migration;");
+    dbresult_t* result = dbqueryf(dbinst, "select * from check_site ;select * from migration;", NULL);
+    dbinstance_free(dbinst);
 
-    if (!dbresult_ok(&result)) {
-        ctx->response->data(ctx->response, dbresult_error_message(&result));
-        dbresult_free(&result);
+    if (!dbresult_ok(result)) {
+        ctx->response->data(ctx->response, "query error");
+        dbresult_free(result);
         return;
     }
 
     // do {
-    //     const db_table_cell_t* field = dbresult_field(&result, "domain");
+    //     const db_table_cell_t* field = dbresult_field(result, "domain");
 
     //     // printf("%s\n", field->value);
     // }
-    // while (dbresult_row_next(&result));
+    // while (dbresult_row_next(result));
 
-    // dbresult_row_first(&result);
-    // dbresult_col_first(&result);
+    // dbresult_row_first(result);
+    // dbresult_col_first(result);
 
-    // // printf("%d\n", dbresult_query_rows(&result));
-    // // printf("%d\n", dbresult_query_cols(&result));
+    // // printf("%d\n", dbresult_query_rows(result));
+    // // printf("%d\n", dbresult_query_cols(result));
     // // printf("\n");
 
-    // dbresult_query_first(&result);
+    // dbresult_query_first(result);
 
     // do {
-    //     for (int col = 0; col < dbresult_query_cols(&result); col++) {
+    //     for (int col = 0; col < dbresult_query_cols(result); col++) {
     //         // printf("%s | ", result.current->fields[col]->value);
     //     }
     //     // printf("\n");
 
-    //     for (int row = 0; row < dbresult_query_rows(&result); row++) {
-    //         for (int col = 0; col < dbresult_query_cols(&result); col++) {
+    //     for (int row = 0; row < dbresult_query_rows(result); row++) {
+    //         for (int col = 0; col < dbresult_query_cols(result); col++) {
     //             // printf("%d %d %p\n", row, col, result.current->fields[col]);
-    //             const db_table_cell_t* field = dbresult_cell(&result, row, col);
+    //             const db_table_cell_t* field = dbresult_cell(result, row, col);
 
     //             // printf("%s (%p) | ", field->value, field);
     //         }
@@ -121,26 +123,26 @@ void mysql(httpctx_t* ctx) {
     //     }
     //     // printf("\n");
 
-    //     dbresult_row_first(&result);
-    //     dbresult_col_first(&result);
-    // } while (dbresult_query_next(&result));
+    //     dbresult_row_first(result);
+    //     dbresult_col_first(result);
+    // } while (dbresult_query_next(result));
 
-    // dbresult_query_first(&result);
-    // dbresult_row_first(&result);
-    // dbresult_col_first(&result);
+    // dbresult_query_first(result);
+    // dbresult_row_first(result);
+    // dbresult_col_first(result);
 
-    db_table_cell_t* field = dbresult_field(&result, "domain");
+    db_table_cell_t* field = dbresult_field(result, "domain");
 
     char str[1024];
     
     if (field && field->value)
         strcpy(str, field->value);
 
-    dbresult_query_next(&result);
-    dbresult_row_first(&result);
-    dbresult_col_first(&result);
+    dbresult_query_next(result);
+    dbresult_row_first(result);
+    dbresult_col_first(result);
 
-    field = dbresult_cell(&result, 2, 0);
+    field = dbresult_cell(result, 2, 0);
 
     if (field && field->value) {
         strcat(str, " | ");
@@ -149,7 +151,134 @@ void mysql(httpctx_t* ctx) {
 
     ctx->response->data(ctx->response, str);
 
-    dbresult_free(&result);
+    dbresult_free(result);
+}
+
+void pg(httpctx_t* ctx) {
+    dbinstance_t* dbinst = dbinstance("postgresql");
+    if (dbinst == NULL) {
+        ctx->response->data(ctx->response, "db not found");
+        return;
+    }
+
+    // mparams_create_array(arr,
+    //     // mparam_int(id, 1235),
+    //     mparam_text(name, "John' Doe 2"),
+    //     mparam_text(email, "john@example2.com")
+    // )
+    // dbinsert(dbinst, "public.user", arr);
+    // array_free(arr);
+
+
+    // mparams_create_array(set_arr,
+    //     mparam_text(name, "John Doeeee")
+    // )
+    // mparams_create_array(where_arr,
+    //     mparam_int(id, 1234)
+    // )
+    // dbupdate(dbinst, "public.user", set_arr, where_arr);
+    // array_free(set_arr);
+    // array_free(where_arr);
+
+
+    // mparams_create_array(where_arr,
+    //     mparam_int(id, 24),
+    //     mparam_text(name, "John' Doe 2")
+    // )
+    // dbdelete(dbinst, "public.user", where_arr);
+    // array_free(where_arr);
+
+
+
+    // array_t* column_arr = array_create();
+    // array_push_back(column_arr, array_create_string("*"));
+    // // array_push_back(column_arr, array_create_string("email"));
+    // // array_push_back_complex(column_arr, (char*){"name", "email"}, 2);
+    // // array_push_back_complex(column_arr, array_batch_strings("name", "email"));
+
+    // mparams_create_array(where_arr,
+    //     mparam_int(id, 1234)
+    // )
+    // dbselect(dbinst, "public.user", column_arr, where_arr);
+    // array_free(column_arr);
+    // array_free(where_arr);
+
+
+
+
+    array_t* id_arr = array_create_ints(4, 9, 23, 1235, 13377);
+    array_t* email_arr = array_create_strings(
+        "john@ex\"\'\"ample2.com",
+        "john@ex'ample.com",
+        "john@ex.com",
+        "john@example2.com",
+        "pass"
+    );
+
+    array_t* fields_arr = array_create_strings("id", "name", "email");
+
+    mparams_create_array(arr,
+        mparam_array(fields, fields_arr),
+        mparam_text(scheme, "public"),
+        mparam_text(table, "user"),
+        mparam_array(id, id_arr),
+        mparam_text(name, "John' Doe 2"),
+        mparam_array(emails, email_arr)
+    )
+
+    dbresult_t* result = dbquery(dbinst, "select @list__fields from @scheme.@table where id in (:list__id) AND email in (:list__emails)", arr);
+    array_free(arr);
+    array_free(email_arr);
+    array_free(id_arr);
+    array_free(fields_arr);
+
+    dbinstance_free(dbinst);
+
+    if (!dbresult_ok(result)) {
+        ctx->response->data(ctx->response, "query error");
+        dbresult_free(result);
+        return;
+    }
+
+    for (int row = 0; row < dbresult_query_rows(result); row++) {
+        for (int col = 0; col < dbresult_query_cols(result); col++) {
+            // printf("%d %d %p\n", row, col, result->current->fields[col]);
+            const db_table_cell_t* field = dbresult_cell(result, row, col);
+
+            printf("%s | ", field->value);
+        }
+        printf("\n");
+    }
+
+    ctx->response->data(ctx->response, "done");
+
+    dbresult_free(result);
+}
+
+void redis(httpctx_t* ctx) {
+    dbinstance_t* dbinst = dbinstance("redis.r1");
+    if (dbinst == NULL) {
+        ctx->response->data(ctx->response, "db not found");
+        return;
+    }
+
+    // dbresult_t* result = dbqueryf(dbinst, "SET testkey123 123456");
+    dbresult_t* result = dbqueryf(dbinst, "GET testkey123");
+
+    dbinstance_free(dbinst);
+
+    if (!dbresult_ok(result)) {
+        ctx->response->data(ctx->response, "error");
+        goto failed;
+    }
+
+    const db_table_cell_t* field = dbresult_field(result, NULL);
+
+    ctx->response->data(ctx->response, field->value);
+
+    failed:
+
+    dbresult_free(result);
 }
 
 void payload(httpctx_t* ctx) {

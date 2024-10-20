@@ -3,7 +3,9 @@
 
 #include "appconfig.h"
 
+int module_loader_load_json_config(const char* path, jsondoc_t** document);
 int module_loader_init(appconfig_t* config);
+int module_loader_config_load(appconfig_t* config, jsondoc_t* document);
 int module_loader_config_correct(const char* path);
 void module_loader_threads_pause(appconfig_t* config);
 void module_loader_create_config_and_init(void);

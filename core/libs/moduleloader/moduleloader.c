@@ -40,9 +40,7 @@
 
 static atomic_bool __module_loader_wait_signal = ATOMIC_VAR_INIT(0);
 
-static int __module_loader_load_json_config(const char* path, jsondoc_t** document);
 static int __module_loader_init_modules(appconfig_t* config, jsondoc_t* document);
-static int __module_loader_config_load(appconfig_t* config, jsondoc_t* document);
 static int __module_loader_servers_load(appconfig_t* config, const jsontok_t* servers);
 static domain_t* __module_loader_domains_load(const jsontok_t* token_array);
 static int __module_loader_databases_load(appconfig_t* config, const jsontok_t* databases);
@@ -73,7 +71,7 @@ int module_loader_init(appconfig_t* config) {
     appconfig_set_after_run_threads_cb(module_loader_signal_unlock);
 
     jsondoc_t* document = NULL;
-    if (!__module_loader_load_json_config(config->path, &document))
+    if (!module_loader_load_json_config(config->path, &document))
         goto failed;
     if (!__module_loader_init_modules(config, document))
         goto failed;
@@ -91,11 +89,11 @@ int module_loader_config_correct(const char* path) {
     int result = 0;
     appconfig_t* config = NULL;
     jsondoc_t* document = NULL;
-    if (!__module_loader_load_json_config(path, &document))
+    if (!module_loader_load_json_config(path, &document))
         goto failed;
 
     config = appconfig_create(path);
-    if (!__module_loader_config_load(config, document))
+    if (!module_loader_config_load(config, document))
         goto failed;
 
     result = 1;
@@ -109,12 +107,12 @@ int module_loader_config_correct(const char* path) {
     return result;
 }
 
-int __module_loader_load_json_config(const char* path, jsondoc_t** document) {
+int module_loader_load_json_config(const char* path, jsondoc_t** document) {
     if (path == NULL) return 0;
 
     file_t file = file_open(path, O_RDONLY);
     if (!file.ok) {
-        log_error("__module_loader_load_json_config: file_open error\n");
+        log_error("module_loader_load_json_config: file_open error\n");
         return 0;
     }
 
@@ -123,7 +121,7 @@ int __module_loader_load_json_config(const char* path, jsondoc_t** document) {
     file.close(&file);
    
     if (data == NULL) {
-        log_error("__module_loader_load_json_config: file_read error\n");
+        log_error("module_loader_load_json_config: file_read error\n");
         return 0;
     }
 
@@ -131,19 +129,19 @@ int __module_loader_load_json_config(const char* path, jsondoc_t** document) {
 
     *document = json_init();
     if (*document == NULL) {
-        log_error("__module_loader_load_json_config: json_init error\n");
+        log_error("module_loader_load_json_config: json_init error\n");
         goto failed;
     }
     if (!json_parse(*document, data)) {
-        log_error("__module_loader_load_json_config: json_parse error\n");
+        log_error("module_loader_load_json_config: json_parse error\n");
         goto failed;
     }
     if (!(*document)->ok) {
-        log_error("__module_loader_load_json_config: json document invalid\n");
+        log_error("module_loader_load_json_config: json document invalid\n");
         goto failed;
     }
     if (!json_is_object(json_root(*document))) {
-        log_error("__module_loader_load_json_config: json document must be object\n");
+        log_error("module_loader_load_json_config: json document must be object\n");
         goto failed;
     }
 
@@ -163,7 +161,7 @@ int __module_loader_init_modules(appconfig_t* config, jsondoc_t* document) {
         log_error("__module_loader_init_modules: connection_queue_init error\n");
         goto failed;
     }
-    if (!__module_loader_config_load(config, document))
+    if (!module_loader_config_load(config, document))
         goto failed;
     if (!__module_loader_thread_workers_load())
         goto failed;
@@ -180,7 +178,7 @@ int __module_loader_init_modules(appconfig_t* config, jsondoc_t* document) {
     return result;
 }
 
-int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
+int module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
     env_t* env = &config->env;
     const jsontok_t* root = json_root(document);
 
@@ -188,7 +186,7 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
     if (token_migrations == NULL) {
         env->migrations.source_directory = malloc(sizeof(char) * 1);
         if (env->migrations.source_directory == NULL) {
-            log_error("__module_loader_config_load: memory alloc error\n");
+            log_error("module_loader_config_load: memory alloc error\n");
             return 0;
         }
 
@@ -196,7 +194,7 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
     }
     else {
         if (!json_is_object(token_migrations)) {
-            log_error("__module_loader_config_load: migrations must be object\n");
+            log_error("module_loader_config_load: migrations must be object\n");
             return 0;
         }
 
@@ -204,7 +202,7 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
         if (token_source_directory == NULL) {
             env->migrations.source_directory = malloc(sizeof(char) * 1);
             if (env->migrations.source_directory == NULL) {
-                log_error("__module_loader_config_load: memory alloc error\n");
+                log_error("module_loader_config_load: memory alloc error\n");
                 return 0;
             }
 
@@ -212,13 +210,13 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
         }
         else {
             if (!json_is_string(token_source_directory)) {
-                log_error("__module_loader_config_load: source_directory must be string\n");
+                log_error("module_loader_config_load: source_directory must be string\n");
                 return 0;
             }
 
             env->migrations.source_directory = malloc(sizeof(char) * (token_source_directory->size + 1));
             if (env->migrations.source_directory == NULL) {
-                log_error("__module_loader_config_load: memory alloc error\n");
+                log_error("module_loader_config_load: memory alloc error\n");
                 return 0;
             }
 
@@ -229,22 +227,22 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
 
     const jsontok_t* token_main = json_object_get(root, "main");
     if (token_main == NULL) {
-        log_error("__module_loader_config_load: main not found\n");
+        log_error("module_loader_config_load: main not found\n");
         return 0;
     }
     if (!json_is_object(token_main)) {
-        log_error("__module_loader_config_load: main must be object\n");
+        log_error("module_loader_config_load: main must be object\n");
         return 0;
     }
 
 
     const jsontok_t* token_reload = json_object_get(token_main, "reload");
     if (token_reload == NULL) {
-        log_error("__module_loader_config_load: reload not found\n");
+        log_error("module_loader_config_load: reload not found\n");
         return 0;
     }
     if (!json_is_string(token_reload)) {
-        log_error("__module_loader_config_load: reload must be string\n");
+        log_error("module_loader_config_load: reload must be string\n");
         return 0;
     }
     if (strcmp(json_string(token_reload), "hard") == 0) {
@@ -254,22 +252,22 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
         env->main.reload = APPCONFIG_RELOAD_SOFT;
     }
     else {
-        log_error("__module_loader_config_load: reload must be contain soft or hard\n");
+        log_error("module_loader_config_load: reload must be contain soft or hard\n");
         return 0;
     }
 
 
     const jsontok_t* token_workers = json_object_get(token_main, "workers");
     if (token_workers == NULL) {
-        log_error("__module_loader_config_load: workers not found\n");
+        log_error("module_loader_config_load: workers not found\n");
         return 0;
     }
     if (!json_is_int(token_workers)) {
-        log_error("__module_loader_config_load: workers must be int\n");
+        log_error("module_loader_config_load: workers must be int\n");
         return 0;
     }
     if (json_int(token_workers) < 1) {
-        log_error("__module_loader_config_load: workers must be >= 1\n");
+        log_error("module_loader_config_load: workers must be >= 1\n");
         return 0;
     }
     env->main.workers = json_int(token_workers);
@@ -277,15 +275,15 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
 
     const jsontok_t* token_threads = json_object_get(token_main, "threads");
     if (token_threads == NULL) {
-        log_error("__module_loader_config_load: threads not found\n");
+        log_error("module_loader_config_load: threads not found\n");
         return 0;
     }
     if (!json_is_int(token_threads)) {
-        log_error("__module_loader_config_load: threads must be int\n");
+        log_error("module_loader_config_load: threads must be int\n");
         return 0;
     }
     if (json_int(token_threads) < 1) {
-        log_error("__module_loader_config_load: threads must be >= 1\n");
+        log_error("module_loader_config_load: threads must be >= 1\n");
         return 0;
     }
     env->main.threads = json_int(token_threads);
@@ -293,15 +291,15 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
 
     const jsontok_t* token_buffer_size = json_object_get(token_main, "buffer_size");
     if (token_buffer_size == NULL) {
-        log_error("__module_loader_config_load: buffer_size not found\n");
+        log_error("module_loader_config_load: buffer_size not found\n");
         return 0;
     }
     if (!json_is_int(token_buffer_size)) {
-        log_error("__module_loader_config_load: buffer_size must be int\n");
+        log_error("module_loader_config_load: buffer_size must be int\n");
         return 0;
     }
     if (json_int(token_buffer_size) < 1) {
-        log_error("__module_loader_config_load: buffer_size must be >= 1\n");
+        log_error("module_loader_config_load: buffer_size must be >= 1\n");
         return 0;
     }
     env->main.buffer_size = json_int(token_buffer_size);
@@ -309,15 +307,15 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
 
     const jsontok_t* token_client_max_body_size = json_object_get(token_main, "client_max_body_size");
     if (token_client_max_body_size == NULL) {
-        log_error("__module_loader_config_load: client_max_body_size not found\n");
+        log_error("module_loader_config_load: client_max_body_size not found\n");
         return 0;
     }
     if (!json_is_int(token_client_max_body_size)) {
-        log_error("__module_loader_config_load: client_max_body_size must be int\n");
+        log_error("module_loader_config_load: client_max_body_size must be int\n");
         return 0;
     }
     if (json_int(token_client_max_body_size) < 1) {
-        log_error("__module_loader_config_load: client_max_body_size must be >= 1\n");
+        log_error("module_loader_config_load: client_max_body_size must be >= 1\n");
         return 0;
     }
     env->main.client_max_body_size = json_int(token_client_max_body_size);
@@ -325,33 +323,33 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
 
     const jsontok_t* token_tmp = json_object_get(token_main, "tmp");
     if (token_tmp == NULL) {
-        log_error("__module_loader_config_load: tmp not found\n");
+        log_error("module_loader_config_load: tmp not found\n");
         return 0;
     }
     if (!json_is_string(token_tmp)) {
-        log_error("__module_loader_config_load: tmp must be string\n");
+        log_error("module_loader_config_load: tmp must be string\n");
         return 0;
     }
     env->main.tmp = malloc(sizeof(char) * (token_tmp->size + 1));
     if (env->main.tmp == NULL) {
-        log_error("__module_loader_config_load: memory alloc error for tmp\n");
+        log_error("module_loader_config_load: memory alloc error for tmp\n");
         return 0;
     }
     strcpy(env->main.tmp, json_string(token_tmp));
     const size_t tmp_length = token_tmp->size;
     if (env->main.tmp[tmp_length - 1] == '/') {
-        log_error("__module_loader_config_load: remove last slash from main.tmp\n");
+        log_error("module_loader_config_load: remove last slash from main.tmp\n");
         return 0;
     }
 
 
     const jsontok_t* token_gzip = json_object_get(token_main, "gzip");
     if (token_gzip == NULL) {
-        log_error("__module_loader_config_load: gzip not found\n");
+        log_error("module_loader_config_load: gzip not found\n");
         return 0;
     }
     if (!json_is_array(token_gzip)) {
-        log_error("__module_loader_config_load: gzip must be array\n");
+        log_error("module_loader_config_load: gzip must be array\n");
         return 0;
     }
 
@@ -359,23 +357,23 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
     for (jsonit_t it = json_init_it(token_gzip); !json_end_it(&it); it = json_next_it(&it)) {
         const jsontok_t* token_mimetype = json_it_value(&it);
         if (!json_is_string(token_mimetype)) {
-            log_error("__module_loader_config_load: gzip must be array of strings\n");
+            log_error("module_loader_config_load: gzip must be array of strings\n");
             return 0;
         }
         if (token_mimetype->size == 0) {
-            log_error("__module_loader_config_load: gzip item must be not empty\n");
+            log_error("module_loader_config_load: gzip item must be not empty\n");
             return 0;
         }
 
         env_gzip_str_t* str = malloc(sizeof * str);
         if (str == NULL) {
-            log_error("__module_loader_config_load: memory alloc error for gzip item\n");
+            log_error("module_loader_config_load: memory alloc error for gzip item\n");
             return 0;
         }
         str->next = NULL;
         str->mimetype = malloc(sizeof(char) * (token_mimetype->size + 1));
         if (str->mimetype == NULL) {
-            log_error("__module_loader_config_load: memory alloc error for gzip item value\n");
+            log_error("module_loader_config_load: memory alloc error for gzip item value\n");
             free(str);
             return 0;
         }
@@ -407,7 +405,7 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
     if (token_mail == NULL) {
         env->mail.dkim_private = malloc(sizeof(char) * 1);
         if (env->mail.dkim_private == NULL) {
-            log_error("__module_loader_config_load: memory alloc error mail.dkim_private\n");
+            log_error("module_loader_config_load: memory alloc error mail.dkim_private\n");
             return 0;
         }
         strcpy(env->mail.dkim_private, "");
@@ -415,7 +413,7 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
 
         env->mail.dkim_selector = malloc(sizeof(char) * 1);
         if (env->mail.dkim_selector == NULL) {
-            log_error("__module_loader_config_load: memory alloc error mail.dkim_selector\n");
+            log_error("module_loader_config_load: memory alloc error mail.dkim_selector\n");
             return 0;
         }
         strcpy(env->mail.dkim_selector, "");
@@ -423,7 +421,7 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
 
         env->mail.host = malloc(sizeof(char) * 1);
         if (env->mail.host == NULL) {
-            log_error("__module_loader_config_load: memory alloc error mail.host\n");
+            log_error("module_loader_config_load: memory alloc error mail.host\n");
             return 0;
         }
         strcpy(env->mail.host, "");
@@ -433,24 +431,24 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
         if (token_dkim_private == NULL) {
             env->mail.dkim_private = malloc(sizeof(char) * 1);
             if (env->mail.dkim_private == NULL) {
-                log_error("__module_loader_config_load: memory alloc error mail.dkim_private\n");
+                log_error("module_loader_config_load: memory alloc error mail.dkim_private\n");
                 return 0;
             }
             strcpy(env->mail.dkim_private, "");
         }
         else {
             if (!json_is_string(token_dkim_private)) {
-                log_error("__module_loader_config_load: mail.dkim_private must be string\n");
+                log_error("module_loader_config_load: mail.dkim_private must be string\n");
                 return 0;
             }
             if (token_dkim_private->size == 0) {
-                log_error("__module_loader_config_load: mail.dkim_private must be not empty\n");
+                log_error("module_loader_config_load: mail.dkim_private must be not empty\n");
                 return 0;
             }
 
             file_t file = file_open(json_string(token_dkim_private), O_RDONLY);
             if (!file.ok) {
-                log_error("__module_loader_config_load: open mail.dkim_private error\n");
+                log_error("module_loader_config_load: open mail.dkim_private error\n");
                 return 0;
             }
 
@@ -458,7 +456,7 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
             file.close(&file);
 
             if (env->mail.dkim_private == NULL) {
-                log_error("__module_loader_config_load: read mail.dkim_private error\n");
+                log_error("module_loader_config_load: read mail.dkim_private error\n");
                 return 0;
             }
         }
@@ -467,24 +465,24 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
         if (token_dkim_selector == NULL) {
             env->mail.dkim_selector = malloc(sizeof(char) * 1);
             if (env->mail.dkim_selector == NULL) {
-                log_error("__module_loader_config_load: memory alloc error mail.dkim_selector\n");
+                log_error("module_loader_config_load: memory alloc error mail.dkim_selector\n");
                 return 0;
             }
             strcpy(env->mail.dkim_selector, "");
         }
         else {
             if (!json_is_string(token_dkim_selector)) {
-                log_error("__module_loader_config_load: mail.dkim_selector must be string\n");
+                log_error("module_loader_config_load: mail.dkim_selector must be string\n");
                 return 0;
             }
             if (token_dkim_selector->size == 0) {
-                log_error("__module_loader_config_load: mail.dkim_selector must be not empty\n");
+                log_error("module_loader_config_load: mail.dkim_selector must be not empty\n");
                 return 0;
             }
 
             env->mail.dkim_selector = malloc(sizeof(char) * (token_dkim_selector->size + 1));
             if (env->mail.dkim_selector == NULL) {
-                log_error("__module_loader_config_load: memory alloc error mail.dkim_selector\n");
+                log_error("module_loader_config_load: memory alloc error mail.dkim_selector\n");
                 return 0;
             }
             strcpy(env->mail.dkim_selector, json_string(token_dkim_selector));
@@ -494,24 +492,24 @@ int __module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
         if (token_host == NULL) {
             env->mail.host = malloc(sizeof(char) * 1);
             if (env->mail.host == NULL) {
-                log_error("__module_loader_config_load: memory alloc error mail.host\n");
+                log_error("module_loader_config_load: memory alloc error mail.host\n");
                 return 0;
             }
             strcpy(env->mail.host, "");
         }
         else {
             if (!json_is_string(token_host)) {
-                log_error("__module_loader_config_load: mail.host must be string\n");
+                log_error("module_loader_config_load: mail.host must be string\n");
                 return 0;
             }
             if (token_host->size == 0) {
-                log_error("__module_loader_config_load: mail.host must be not empty\n");
+                log_error("module_loader_config_load: mail.host must be not empty\n");
                 return 0;
             }
 
             env->mail.host = malloc(sizeof(char) * (token_host->size + 1));
             if (env->mail.host == NULL) {
-                log_error("__module_loader_config_load: memory alloc error mail.host\n");
+                log_error("module_loader_config_load: memory alloc error mail.host\n");
                 return 0;
             }
             strcpy(env->mail.host, json_string(token_host));
@@ -799,8 +797,13 @@ int __module_loader_databases_load(appconfig_t* config, const jsontok_t* token_d
         return 0;
     }
 
+    config->databases = array_create();
+    if (config->databases == NULL) {
+        log_error("__module_loader_databases_load: can't create databases array\n");
+        return 0;
+    }
+
     int result = 0;
-    db_t* last_database = NULL;
     for (jsonit_t it = json_init_it(token_databases); !json_end_it(&it); json_next_it(&it)) {
         jsontok_t* token_array = json_it_value(&it);
         if (!json_is_array(token_array)) {
@@ -831,25 +834,16 @@ int __module_loader_databases_load(appconfig_t* config, const jsontok_t* token_d
         #endif
 
         if (database == NULL) {
-            log_error("__module_loader_databases_load: database driver not found\n");
-            goto failed;
+            log_error("__module_loader_databases_load: database driver <%s> not found\n", driver);
+            continue;
         }
 
-        if (config->databases == NULL)
-            config->databases = database;
-
-        if (last_database != NULL)
-            last_database->next = database;
-
-        last_database = database;
+        array_push_back(config->databases, array_create_pointer(database, array_nocopy, db_free));
     }
 
     result = 1;
 
     failed:
-
-    if (result == 0)
-        db_destroy(config->databases);
 
     return result;
 }
@@ -904,8 +898,10 @@ int __module_loader_storages_load(appconfig_t* config, const jsontok_t* token_st
 
     failed:
 
-    if (result == 0)
+    if (result == 0) {
         storages_free(config->storages);
+        config->storages = NULL;
+    }
 
     return result;
 }

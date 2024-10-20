@@ -1,13 +1,10 @@
 #include <stdlib.h>
-#include <stdio.h>
 
 #include "dbquery.h"
 #include "dbresult.h"
 
-const char* db() { return "postgresql"; }
-
 int up(dbinstance_t* dbinst) {
-    dbresult_t result = dbquery(dbinst,
+    dbresult_t* result = dbqueryf(dbinst,
         "CREATE TABLE public.user"
         "("
             "id    bigserial    NOT NULL PRIMARY KEY,"
@@ -16,27 +13,21 @@ int up(dbinstance_t* dbinst) {
         ")"
     );
 
-    if (!dbresult_ok(&result)) {
-        printf("%s\n", dbresult_error_message(&result));
-        dbresult_free(&result);
-        return -1;
-    }
+    
 
-    dbresult_free(&result);
+    int res = dbresult_ok(result);
 
-    return 0;
+    dbresult_free(result);
+
+    return res;
 }
 
 int down(dbinstance_t* dbinst) {
-    dbresult_t result = dbquery(dbinst, "DROP TABLE public.user");
+    dbresult_t* result = dbqueryf(dbinst, "DROP TABLE public.user");
 
-    if (!dbresult_ok(&result)) {
-        printf("%s\n", dbresult_error_message(&result));
-        dbresult_free(&result);
-        return -1;
-    }
+    int res = dbresult_ok(result);
 
-    dbresult_free(&result);
+    dbresult_free(result);
 
-    return 0;
+    return res;
 }

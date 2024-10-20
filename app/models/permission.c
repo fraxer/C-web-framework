@@ -12,7 +12,7 @@ static const char* __table(void* arg);
 static const char** __unique_fields(void* arg);
 static int __primary_key_count(void* arg);
 
-permission_t* permission_instance(void) {
+void* permission_instance(void) {
     permission_t* permission = malloc(sizeof * permission);
     if (permission == NULL)
         return NULL;
@@ -40,17 +40,8 @@ permission_t* permission_instance(void) {
     return permission;
 }
 
-permission_t* permission_get(mfield_t* params, int params_count) {
-    permission_t* permission = permission_instance();
-    if (permission == NULL)
-        return NULL;
-
-    if (!model_get(__dbid, permission, params, params_count)) {
-        model_free(permission);
-        return NULL;
-    }
-
-    return permission;
+permission_t* permission_get(array_t* params) {
+    return model_get(__dbid, permission_instance, params);
 }
 
 int permission_create(permission_t* permission) {

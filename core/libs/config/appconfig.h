@@ -1,6 +1,7 @@
 #ifndef __APPCONFIG__
 #define __APPCONFIG__
 
+#include "array.h"
 #include "server.h"
 #include "storage.h"
 #include "database.h"
@@ -53,7 +54,7 @@ typedef struct appconfig {
     env_t env;
     char* path;
     mimetype_t* mimetype;
-    db_t* databases;
+    array_t* databases;
     storage_t* storages;
     viewstore_t* viewstore;
     server_chain_t* server_chain;

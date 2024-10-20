@@ -31,8 +31,8 @@ void* userview_instance(void) {
     return user;
 }
 
-userview_t* userview_get(userview_get_params_t* params) {
-    return model_one(__dbid, userview_instance,
+userview_t* userview_get(array_t* params) {
+    return model_one(__dbid, userview_instance, 
         "SELECT "
             "id, "
             "name, "
@@ -40,10 +40,9 @@ userview_t* userview_get(userview_get_params_t* params) {
         "FROM "
             "\"user\" "
         "WHERE "
-            "id = %d "
-        "LIMIT 1"
-        ,
-        model_int(&params->id)
+            "id = :id "
+        "LIMIT 1",
+        params
     );
 }
 
@@ -57,21 +56,23 @@ array_t* userview_list() {
             "\"user\" "
         "ORDER BY "
             "id ASC "
-        "LIMIT 1000 OFFSET 0"
+        "LIMIT 1000 OFFSET 0", NULL
     );
 }
 
-int userview_execute(userview_execute_params_t* params) {
-    return model_execute(__dbid,
+int userview_execute(array_t* params) {
+    const int result = model_execute(__dbid,
         "UPDATE "
             "\"user\" "
         "SET"
-            "id = %d "
+            "id = :id "
         "WHERE "
             "name = 'test' "
         ,
-        model_int(&params->id)
+        params
     );
+
+    return result;
 }
 
 mfield_t* __first_field(void* arg) {

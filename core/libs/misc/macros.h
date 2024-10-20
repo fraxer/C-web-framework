@@ -6,5 +6,7 @@
 #define NARG_(...) MW_VA_NARGS_(__VA_ARGS__)
 
 #define args_str(...) (char*[NARG_(__VA_ARGS__,MW_NSEQ())]){__VA_ARGS__}, NARG_(__VA_ARGS__,MW_NSEQ())
+#define args_int(...) (int[NARG_(__VA_ARGS__,MW_NSEQ())]){__VA_ARGS__}, NARG_(__VA_ARGS__,MW_NSEQ())
+#define args_double(...) (double[NARG_(__VA_ARGS__,MW_NSEQ())]){__VA_ARGS__}, NARG_(__VA_ARGS__,MW_NSEQ())
 
 #endif

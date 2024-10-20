@@ -25,7 +25,9 @@ int __json_parse_string(jsonparser_t*);
 int __json_stringify_token(jsondoc_t*, jsontok_t*);
 void __json_free_stringify(jsonstr_t*);
 int __json_stringify_insert(jsondoc_t*, const char*, size_t);
+int __json_stringify_insert_processed(jsondoc_t*, const char*, size_t);
 void __json_set_error(jsondoc_t*, const char*);
+int __json_process_string_escapes(const char* source_str, size_t source_length, str_t* dest);
 
 jsondoc_t* json_init() {
     jsondoc_t* document = malloc(sizeof * document);
@@ -220,6 +222,8 @@ int json_parse(jsondoc_t* document, const char* string) {
 }
 
 void json_clear(jsondoc_t* document) {
+    if (document == NULL) return;
+
     if (document->tokens != NULL) {
         for (unsigned int i = 0; i < document->tokens_count; i++) {
             jsontok_t* token = document->tokens[i];
@@ -1328,7 +1332,7 @@ int __json_stringify_token(jsondoc_t* document, jsontok_t* token) {
             while (t) {
                 // write object key
                 if (!__json_stringify_insert(document, "\"", 1)) return 0;
-                if (!__json_stringify_insert(document, t->value.string, t->size)) return 0;
+                if (!__json_stringify_insert_processed(document, t->value.string, t->size)) return 0;
                 if (!__json_stringify_insert(document, "\":", 2)) return 0;
 
                 if (!__json_stringify_token(document, t->child)) return 0;
@@ -1367,7 +1371,7 @@ int __json_stringify_token(jsondoc_t* document, jsontok_t* token) {
             int size = token->size;
 
             if (!__json_stringify_insert(document, "\"", 1)) return 0;
-            if (!__json_stringify_insert(document, value, size)) return 0;
+            if (!__json_stringify_insert_processed(document, value, size)) return 0;
             if (!__json_stringify_insert(document, "\"", 1)) return 0;
         }
         break;
@@ -1432,6 +1436,35 @@ void __json_free_stringify(jsonstr_t* stringify) {
     str_clear(&stringify->string);
 }
 
+int __json_stringify_insert_processed(jsondoc_t* document, const char* string, size_t length) {
+    return __json_process_string_escapes(string, length, &document->stringify.string);
+}
+
 int __json_stringify_insert(jsondoc_t* document, const char* string, size_t length) {
     return str_append(&document->stringify.string, string, length);
+}
+
+int __json_process_string_escapes(const char* source_str, size_t source_length, str_t* dest) {
+    for (size_t i = 0; i < source_length; i++) {
+        char ch = source_str[i];
+        switch (ch) {
+            case '"':  str_append(dest, "\\\"", 2); break;
+            case '\\': str_append(dest, "\\\\", 2); break;
+            case '\b': str_append(dest, "\\b", 2);  break;
+            case '\f': str_append(dest, "\\f", 2);  break;
+            case '\n': str_append(dest, "\\n", 2);  break;
+            case '\r': str_append(dest, "\\r", 2);  break;
+            case '\t': str_append(dest, "\\t", 2);  break;
+            default:
+                if ((unsigned char)ch < 32) {
+                    char unicode[12];
+                    int size = snprintf(unicode, sizeof(unicode), "\\u%04x", (unsigned char)ch);
+                    str_append(dest, unicode, size);
+                }
+                else
+                    str_appendc(dest, ch);
+        }
+    }
+
+    return 1;
 }

@@ -69,11 +69,12 @@ void userget(httpctx_t* ctx) {
 
     const int userid = atoi(quser_id);
 
-    mparams_create(params,
+
+    mparams_create_array(params,
         mparam_int(id, userid)
     );
-    user_t* user = user_get(mparams_pass(&params));
-    mparams_clear(&params);
+    user_t* user = user_get(params);
+    array_free(params);
 
     if (user == NULL) {
         ctx->response->status_code = 500;
@@ -98,15 +99,11 @@ void userget(httpctx_t* ctx) {
 void userupdate(httpctx_t* ctx) {
     const int userid = 2;
 
-    mparams_create(params,
+    mparams_create_array(params,
         mparam_int(id, userid)
     );
-    user_t* user = user_get(mparams_pass(&params));
-    mparams_clear(&params);
-
-    // user_t* user = user_get(mparams(
-    //     mparam_int(id, userid)
-    // ));
+    user_t* user = user_get(params);
+    array_free(params);
 
     if (user == NULL) {
         ctx->response->status_code = 500;
@@ -145,11 +142,11 @@ void userupdate(httpctx_t* ctx) {
 void userdelete(httpctx_t* ctx) {
     const int userid = 5;
 
-    mparams_create(params,
+    mparams_create_array(params,
         mparam_int(id, userid)
     );
-    user_t* user = user_get(mparams_pass(&params));
-    mparams_clear(&params);
+    user_t* user = user_get(params);
+    array_free(params);
 
     if (user == NULL) {
         ctx->response->status_code = 500;

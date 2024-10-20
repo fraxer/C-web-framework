@@ -13,14 +13,9 @@ typedef struct {
     char* primary_key[1]; // remove or update by id (primary or unique key)
 } role_t;
 
-typedef struct {
-    mfield_t id;
-} role_get_params_t;
+void* role_instance(void);
 
-
-role_t* role_instance(void);
-
-role_t* role_get(mfield_t* params, int params_count);
+role_t* role_get(array_t* params);
 int role_create(role_t* role);
 int role_update(role_t* role);
 int role_delete(role_t* role);

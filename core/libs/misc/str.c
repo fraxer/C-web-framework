@@ -171,6 +171,15 @@ char* str_copy(str_t* str) {
     return data;
 }
 
+int str_modify_add_symbols_before(str_t* str, char add_symbol, char before_symbol) {
+    for (size_t i = 0; i < str_size(str); i++)
+        if (str_get(str)[i] == before_symbol)
+            if (!str_insertc(str, add_symbol, i++))
+                return 0;
+
+    return 1;
+}
+
 int __str_expand_buffer(str_t* str, const size_t extra_size) {
     size_t target_size = str->capacity + STR_BUFFER_SIZE;
     if (extra_size > 0)

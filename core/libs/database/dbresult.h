@@ -3,17 +3,18 @@
 
 #include "database.h"
 
+dbresult_t* dbresult_create(void);
+
 dbresultquery_t* dbresult_query_create(int, int);
+void dbresult_query_free(dbresultquery_t*);
 
 int dbresult_cell_create(db_table_cell_t*, const char*, size_t);
 
-void dbresult_query_table_insert(dbresultquery_t*, const char*, size_t, int, int);
+void dbresult_query_value_insert(dbresultquery_t*, const char*, size_t, int, int);
 
 void dbresult_query_field_insert(dbresultquery_t*, const char*, int);
 
 int dbresult_ok(dbresult_t*);
-
-const char* dbresult_error_message(dbresult_t*);
 
 void dbresult_free(dbresult_t*);
 

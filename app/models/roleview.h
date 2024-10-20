@@ -4,14 +4,6 @@
 #include "model.h"
 
 typedef struct {
-    mfield_t id;
-} roleview_get_params_t;
-
-typedef struct {
-    mfield_t user_id;
-} roleview_list_params_t;
-
-typedef struct {
     modelview_t base;
     struct {
         mfield_t id;
@@ -20,7 +12,7 @@ typedef struct {
 } roleview_t;
 
 void* roleview_instance(void);
-roleview_t* roleview_get(roleview_get_params_t* params);
-array_t* roleview_list(roleview_list_params_t* params);
+roleview_t* roleview_get(array_t* params);
+array_t* roleview_list(array_t* params);
 
 #endif
