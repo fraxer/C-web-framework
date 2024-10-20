@@ -6,6 +6,7 @@
 #include <time.h>
 
 #include "db.h"
+#include "log.h"
 #include "model.h"
 
 static void __model_value_clear(mvalue_t* value, mtype_e type);
@@ -15,7 +16,6 @@ static void* __modelview_fill(void*(create_instance)(void), dbresult_t* result);
 static array_t* __modelview_fill_array(void*(create_instance)(void), dbresult_t* result);
 static int __model_set_binary(mfield_t* field, const char* value, const size_t size);
 static int __model_set_date(mfield_t* field, tm_t* value);
-static str_t* __model_field_to_string(mfield_t* field);
 static jsontok_t* __model_json_create_object(void* arg, jsondoc_t* doc);
 static mfield_t __model_tmpfield_create(mfield_t* source_field);
 static int __model_field_is_primary_and_not_dirty(model_t* model, mfield_t* field);
@@ -38,8 +38,8 @@ int model_get(const char *dbid, void *arg, mfield_t *params, int params_count) {
     model_t* model = arg;
     int res = 0;
 
-    dbinstance_t dbinst = dbinstance(dbid);
-    if (!dbinst.ok) return 0;
+    dbinstance_t* dbinst = dbinstance(dbid);
+    if (dbinst == NULL) return 0;
 
     str_t* fields = str_create_empty();
     if (fields == NULL) return 0;
@@ -67,7 +67,7 @@ int model_get(const char *dbid, void *arg, mfield_t *params, int params_count) {
         str_append(where_params, param->name, strlen(param->name));
         str_appendc(where_params, '=');
 
-        str_t* value = __model_field_to_string(param);
+        str_t* value = model_field_to_string(param);
         if (value == NULL) goto failed;
 
         str_appendc(where_params, '\'');
@@ -76,7 +76,7 @@ int model_get(const char *dbid, void *arg, mfield_t *params, int params_count) {
         str_appendc(where_params, '\'');
     }
 
-    dbresult_t result = dbquery(&dbinst,
+    dbresult_t* result = dbquery(dbinst,
         "SELECT "
             "%s "
         "FROM "
@@ -90,23 +90,24 @@ int model_get(const char *dbid, void *arg, mfield_t *params, int params_count) {
         str_get(where_params)
     );
 
-    if (!dbresult_ok(&result))
+    if (!dbresult_ok(result))
         goto failed;
 
-    if (dbresult_query_rows(&result) == 0)
+    if (dbresult_query_rows(result) == 0)
         goto failed;
 
     const int row = 0;
-    if (!__model_fill(row, model->fields_count(model), model->first_field(model), &result))
+    if (!__model_fill(row, model->fields_count(model), model->first_field(model), result))
         goto failed;
 
     res = 1;
 
     failed:
 
+    dbinstance_free(dbinst);
     str_free(fields);
     str_free(where_params);
-    dbresult_free(&result);
+    dbresult_free(result);
 
     return res;
 }
@@ -117,69 +118,37 @@ int model_create(const char* dbid, void* arg) {
 
     int res = 0;
     model_t* model = arg;
+    if (model->fields_count(model) == 0)
+        return 0;
 
-    if (model->fields_count(model) == 0) return 0;
+    array_t* arr = array_create();
+    if (arr == NULL) return 0;
 
-    dbinstance_t dbinst = dbinstance(dbid);
-    if (!dbinst.ok) return 0;
-
-    str_t* fields = str_create_empty();
-    if (fields == NULL) return 0;
-
-    str_t* values = str_create_empty();
-    if (values == NULL) goto failed;
-
-    mfield_t* vfield = model->first_field(model);
-    if (vfield == NULL)
-        goto failed;
-
-    for (int i = 0, iter_set = 0; i < model->fields_count(model); i++) {
-        mfield_t* field = vfield + i;
+    for (int i = 0; i < model->fields_count(model); i++) {
+        mfield_t* field = model->first_field(model) + i;
         if (__model_field_is_primary_and_not_dirty(model, field))
             continue;
 
-        if (iter_set > 0) {
-            str_appendc(fields, ',');
-            str_appendc(values, ',');
-        }
-
-        str_t* value = __model_field_to_string(field);
-        if (value == NULL) goto failed;
-
-        str_append(fields, field->name, strlen(field->name));
-        str_appendc(values, '\'');
-        // UNDONE: escape sql injection
-        str_append(values, str_get(value), str_size(value));
-        str_appendc(values, '\'');
-
-        iter_set++;
+        array_push_back(arr, array_create_pointer(field, NULL));
     }
 
-    dbresult_t result = dbquery(&dbinst,
-        "INSERT INTO "
-            "%s "
-            "("
-                "%s "
-            ") "
-        "VALUES "
-            "("
-                "%s "
-            ")",
-        model->table(model),
-        str_get(fields),
-        str_get(values)
-    );
+    dbresult_t* result = NULL;
+    dbinstance_t* dbinst = dbinstance(dbid);
+    if (dbinst == NULL) goto failed;
 
-    if (!dbresult_ok(&result))
+    result = dbinsert(dbinst, model->table(model), arr);
+    if (!dbresult_ok(result)) {
+        // log_error("model_create: Error insert model %s\n", dbinst->error);
         goto failed;
+    }
 
     res = 1;
 
     failed:
 
-    str_free(fields);
-    str_free(values);
-    dbresult_free(&result);
+    array_free(arr);
+    dbinstance_free(dbinst);
+    dbresult_free(result);
 
     return res;
 }
@@ -190,8 +159,8 @@ int model_update(const char* dbid, void* arg) {
     model_t* model = arg;
     int res = 0;
 
-    dbinstance_t dbinst = dbinstance(dbid);
-    if (!dbinst.ok) return 0;
+    dbinstance_t* dbinst = dbinstance(dbid);
+    if (dbinst == NULL) return 0;
 
     mfield_t* first_field = model->first_field(model);
     const char** unique_fields = model->primary_key(model);
@@ -214,7 +183,7 @@ int model_update(const char* dbid, void* arg) {
                 tmpfield.oldvalue = field->value;
             }
 
-            str_t* fieldstr = __model_field_to_string(&tmpfield);
+            str_t* fieldstr = model_field_to_string(&tmpfield);
             if (fieldstr == NULL)
                 goto failed;
 
@@ -235,7 +204,7 @@ int model_update(const char* dbid, void* arg) {
         if (!field->dirty)
             continue;
 
-        str_t* fieldstr = __model_field_to_string(field);
+        str_t* fieldstr = model_field_to_string(field);
         if (fieldstr == NULL)
             continue;
 
@@ -251,7 +220,7 @@ int model_update(const char* dbid, void* arg) {
         iter_set++;
     }
 
-    dbresult_t result = dbquery(&dbinst,
+    dbresult_t* result = dbquery(dbinst,
         "UPDATE "
             "%s "
         "SET "
@@ -264,7 +233,7 @@ int model_update(const char* dbid, void* arg) {
         str_get(where_params)
     );
 
-    if (!dbresult_ok(&result))
+    if (!dbresult_ok(result))
         goto failed;
 
     res = 1;
@@ -277,9 +246,10 @@ int model_update(const char* dbid, void* arg) {
 
     failed:
 
+    dbinstance_free(dbinst);
     str_free(set_params);
     str_free(where_params);
-    dbresult_free(&result);
+    dbresult_free(result);
 
     return res;
 }
@@ -293,8 +263,8 @@ int model_delete(const char* dbid, void* arg) {
 
     if (model->fields_count(model) == 0) return 0;
 
-    dbinstance_t dbinst = dbinstance(dbid);
-    if (!dbinst.ok) return 0;
+    dbinstance_t* dbinst = dbinstance(dbid);
+    if (dbinst == NULL) return 0;
 
     mfield_t* vfield = model->first_field(arg);
     const char** vunique = model->primary_key(arg);
@@ -308,7 +278,7 @@ int model_delete(const char* dbid, void* arg) {
             if (strcmp(vunique[j], field->name) != 0)
                 continue;
 
-            str_t* fieldstr = __model_field_to_string(field);
+            str_t* fieldstr = model_field_to_string(field);
             if (fieldstr == NULL)
                 goto failed;
 
@@ -327,7 +297,7 @@ int model_delete(const char* dbid, void* arg) {
         }
     }
 
-    dbresult_t result = dbquery(&dbinst,
+    dbresult_t* result = dbquery(dbinst,
         "DELETE FROM "
             "%s "
         "WHERE "
@@ -337,15 +307,16 @@ int model_delete(const char* dbid, void* arg) {
         str_get(where_params)
     );
 
-    if (!dbresult_ok(&result))
+    if (!dbresult_ok(result))
         goto failed;
 
     res = 1;
 
     failed:
 
+    dbinstance_free(dbinst);
     str_free(where_params);
-    dbresult_free(&result);
+    dbresult_free(result);
 
     return res;
 }
@@ -363,28 +334,29 @@ void* model_one(const char* dbid, void*(create_instance)(void), const char* form
     vsnprintf(string, string_length + 1, format, args);
     va_end(args);
 
-    dbinstance_t dbinst = dbinstance(dbid);
-    if (!dbinst.ok) return NULL;
+    dbinstance_t* dbinst = dbinstance(dbid);
+    if (dbinst == NULL) return NULL;
 
-    dbresult_t result = dbquery(&dbinst, string);
+    dbresult_t* result = dbquery(dbinst, string);
 
     free(string);
 
     modelview_t* model = NULL;
 
-    if (!dbresult_ok(&result))
+    if (!dbresult_ok(result))
         goto failed;
 
-    if (dbresult_query_rows(&result) == 0)
+    if (dbresult_query_rows(result) == 0)
         goto failed;
 
-    model = __modelview_fill(create_instance, &result);
+    model = __modelview_fill(create_instance, result);
     if (model == NULL)
         goto failed;
 
     failed:
 
-    dbresult_free(&result);
+    dbinstance_free(dbinst);
+    dbresult_free(result);
 
     return model;
 }
@@ -402,26 +374,27 @@ array_t* model_list(const char* dbid, void*(create_instance)(void), const char* 
     vsnprintf(string, string_length + 1, format, args);
     va_end(args);
 
-    dbinstance_t dbinst = dbinstance(dbid);
-    if (!dbinst.ok) return NULL;
+    dbinstance_t* dbinst = dbinstance(dbid);
+    if (dbinst == NULL) return NULL;
 
-    dbresult_t result = dbquery(&dbinst, string);
+    dbresult_t* result = dbquery(dbinst, string);
 
     free(string);
 
     array_t* array = NULL;
 
-    if (!dbresult_ok(&result))
+    if (!dbresult_ok(result))
         goto failed;
 
-    if (dbresult_query_rows(&result) == 0)
+    if (dbresult_query_rows(result) == 0)
         goto failed;
 
-    array = __modelview_fill_array(create_instance, &result);
+    array = __modelview_fill_array(create_instance, result);
 
     failed:
 
-    dbresult_free(&result);
+    dbinstance_free(dbinst);
+    dbresult_free(result);
 
     return array;
 }
@@ -441,21 +414,22 @@ int model_execute(const char* dbid, const char* format, ...) {
 
     int res = 0;
 
-    dbinstance_t dbinst = dbinstance(dbid);
-    if (!dbinst.ok) return 0;
+    dbinstance_t* dbinst = dbinstance(dbid);
+    if (dbinst == NULL) return 0;
 
-    dbresult_t result = dbquery(&dbinst, string);
+    dbresult_t* result = dbquery(dbinst, string);
 
     free(string);
 
-    if (!dbresult_ok(&result))
+    if (!dbresult_ok(result))
         goto failed;
 
     res = 1;
 
     failed:
 
-    dbresult_free(&result);
+    dbinstance_free(dbinst);
+    dbresult_free(result);
 
     return res;
 }
@@ -908,7 +882,7 @@ int __model_set_date(mfield_t* field, tm_t* value) {
     return 1;
 }
 
-str_t* __model_field_to_string(mfield_t* field) {
+str_t* model_field_to_string(mfield_t* field) {
     if (field == NULL) return NULL;
 
     switch (field->type) {
@@ -1675,6 +1649,9 @@ mfield_t __model_tmpfield_create(mfield_t* source_field) {
 }
 
 int __model_field_is_primary_and_not_dirty(model_t* model, mfield_t* field) {
+    if (model == NULL) return 0;
+    if (field == NULL) return 0;
+
     const char** primary_key = model->primary_key(model);
     for (int i = 0; i < model->primary_key_count(model); i++) {
         if (strcmp(primary_key[i], field->name) != 0)

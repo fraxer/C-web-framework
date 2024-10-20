@@ -7,6 +7,18 @@
 db_table_cell_t* __dbresult_field(dbresult_t* result, const char* field);
 
 
+dbresult_t* dbresult_create(void) {
+    dbresult_t* result = malloc(sizeof * result);
+    if (result == NULL) return NULL;
+
+    result->ok = 0;
+    memset(result->error, 0, sizeof result->error);
+    result->query = NULL;
+    result->current = NULL;
+
+    return result;
+}
+
 dbresultquery_t* dbresult_query_create(int rows, int cols) {
     dbresultquery_t* query = (dbresultquery_t*)malloc(sizeof *query);
 
@@ -65,7 +77,7 @@ int dbresult_ok(dbresult_t* result) {
 const char* dbresult_error_message(dbresult_t* result) {
     if (result == NULL) return "Db result empty";
 
-    return result->error_message;
+    return result->error;
 }
 
 void dbresult_free(dbresult_t* result) {

@@ -61,7 +61,7 @@ void redis_host_free(void* arg) {
 }
 
 void redis_free(db_t* db) {
-    db_destroy(db);
+    db_free(db);
 }
 
 dbconnection_t* redis_connection_create(dbhosts_t* hosts) {
@@ -110,14 +110,14 @@ void redis_send_query(dbresult_t* result, dbconnection_t* connection, const char
 
     if (reply == NULL || redisconnection->connection->err != 0) {
         log_error("Redis error: %s\n", redisconnection->connection->errstr);
-        result->error_message = "Redis error: connection error";
+        result->error = "Redis error: connection error";
         freeReplyObject(reply);
         return;
     }
 
     if (reply->type == REDIS_REPLY_ERROR) {
         log_error("Redis error: %s\n", reply->str);
-        result->error_message = "Redis error: query error";
+        result->error = "Redis error: query error";
         freeReplyObject(reply);
         return;
     }
@@ -128,7 +128,7 @@ void redis_send_query(dbresult_t* result, dbconnection_t* connection, const char
     dbresultquery_t* query = dbresult_query_create(rows, cols);
 
     if (query == NULL) {
-        result->error_message = "Out of memory";
+        result->error = "Out of memory";
         freeReplyObject(reply);
         return;
     }
@@ -422,7 +422,7 @@ db_t* redis_load(const char* database_id, const jsontok_t* token_array) {
     failed:
 
     if (result == NULL)
-        db_destroy(database);
+        db_free(database);
 
     return result;
 }

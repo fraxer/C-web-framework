@@ -73,47 +73,48 @@ void websocket(httpctx_t* ctx) {
 }
 
 void mysql(httpctx_t* ctx) {
-    dbinstance_t dbinst = dbinstance("mysql");
+    dbinstance_t* dbinst = dbinstance("mysql");
 
-    if (!dbinst.ok) {
+    if (dbinst == NULL) {
         ctx->response->data(ctx->response, "db not found");
         return;
     }
 
-    dbresult_t result = dbquery(&dbinst, "select * from check_site ;select * from migration;");
+    dbresult_t* result = dbquery(dbinst, "select * from check_site ;select * from migration;");
+    dbinstance_free(dbinst);
 
-    if (!dbresult_ok(&result)) {
-        ctx->response->data(ctx->response, dbresult_error_message(&result));
-        dbresult_free(&result);
+    if (!dbresult_ok(result)) {
+        ctx->response->data(ctx->response, dbresult_error_message(result));
+        dbresult_free(result);
         return;
     }
 
     // do {
-    //     const db_table_cell_t* field = dbresult_field(&result, "domain");
+    //     const db_table_cell_t* field = dbresult_field(result, "domain");
 
     //     // printf("%s\n", field->value);
     // }
-    // while (dbresult_row_next(&result));
+    // while (dbresult_row_next(result));
 
-    // dbresult_row_first(&result);
-    // dbresult_col_first(&result);
+    // dbresult_row_first(result);
+    // dbresult_col_first(result);
 
-    // // printf("%d\n", dbresult_query_rows(&result));
-    // // printf("%d\n", dbresult_query_cols(&result));
+    // // printf("%d\n", dbresult_query_rows(result));
+    // // printf("%d\n", dbresult_query_cols(result));
     // // printf("\n");
 
-    // dbresult_query_first(&result);
+    // dbresult_query_first(result);
 
     // do {
-    //     for (int col = 0; col < dbresult_query_cols(&result); col++) {
+    //     for (int col = 0; col < dbresult_query_cols(result); col++) {
     //         // printf("%s | ", result.current->fields[col]->value);
     //     }
     //     // printf("\n");
 
-    //     for (int row = 0; row < dbresult_query_rows(&result); row++) {
-    //         for (int col = 0; col < dbresult_query_cols(&result); col++) {
+    //     for (int row = 0; row < dbresult_query_rows(result); row++) {
+    //         for (int col = 0; col < dbresult_query_cols(result); col++) {
     //             // printf("%d %d %p\n", row, col, result.current->fields[col]);
-    //             const db_table_cell_t* field = dbresult_cell(&result, row, col);
+    //             const db_table_cell_t* field = dbresult_cell(result, row, col);
 
     //             // printf("%s (%p) | ", field->value, field);
     //         }
@@ -121,26 +122,26 @@ void mysql(httpctx_t* ctx) {
     //     }
     //     // printf("\n");
 
-    //     dbresult_row_first(&result);
-    //     dbresult_col_first(&result);
-    // } while (dbresult_query_next(&result));
+    //     dbresult_row_first(result);
+    //     dbresult_col_first(result);
+    // } while (dbresult_query_next(result));
 
-    // dbresult_query_first(&result);
-    // dbresult_row_first(&result);
-    // dbresult_col_first(&result);
+    // dbresult_query_first(result);
+    // dbresult_row_first(result);
+    // dbresult_col_first(result);
 
-    db_table_cell_t* field = dbresult_field(&result, "domain");
+    db_table_cell_t* field = dbresult_field(result, "domain");
 
     char str[1024];
     
     if (field && field->value)
         strcpy(str, field->value);
 
-    dbresult_query_next(&result);
-    dbresult_row_first(&result);
-    dbresult_col_first(&result);
+    dbresult_query_next(result);
+    dbresult_row_first(result);
+    dbresult_col_first(result);
 
-    field = dbresult_cell(&result, 2, 0);
+    field = dbresult_cell(result, 2, 0);
 
     if (field && field->value) {
         strcat(str, " | ");
@@ -149,7 +150,7 @@ void mysql(httpctx_t* ctx) {
 
     ctx->response->data(ctx->response, str);
 
-    dbresult_free(&result);
+    dbresult_free(result);
 }
 
 void payload(httpctx_t* ctx) {

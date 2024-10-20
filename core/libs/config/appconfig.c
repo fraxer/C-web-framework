@@ -84,7 +84,7 @@ void appconfig_clear(appconfig_t* config) {
     mimetype_destroy(config->mimetype);
     config->mimetype = NULL;
 
-    db_destroy(config->databases);
+    array_free(config->databases);
     config->databases = NULL;
 
     storages_free(config->storages);

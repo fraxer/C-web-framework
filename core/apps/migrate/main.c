@@ -31,18 +31,19 @@ typedef enum mgactions {
     DOWN
 } mgactions_e;
 
-// migrate s1 create create_users_table config.json
+// migrate postgresql s1 create create_users_table config.json
 
-// migrate s1 up config.json
-// migrate s1 up 2 config.json
-// migrate s1 up all config.json
+// migrate postgresql s1 up config.json
+// migrate postgresql s1 up 2 config.json
+// migrate postgresql s1 up all config.json
 
-// migrate s1 down config.json
-// migrate s1 down 3 config.json
-// migrate s1 down all config.json
+// migrate postgresql s1 down config.json
+// migrate postgresql s1 down 3 config.json
+// migrate postgresql s1 down all config.json
 
 typedef struct mgconfig {
     int ok;
+    char* database_driver;
     char* server;
     mgactions_e action;
     char* migration_name;
@@ -57,22 +58,23 @@ void mg_config_free(mgconfig_t* config) {
     config->action = NONE;
     config->count_migrations = 0;
     config->count_applied_migrations = 0;
-    if (config->database) db_destroy(config->database);
+
+    if (config->database) db_free(config->database);
     if (config->server) free(config->server);
     if (config->migration_name) free(config->migration_name);
     if (config->config_path) free(config->config_path);
 }
 
 int mg_parse_action_create(mgconfig_t* config, int argc, char* argv[]) {
-    if (argc != 5) {
+    if (argc != 6) {
         printf("Error: command incorrect\n");
-        printf("Example: migrate <server id> create <migration name> <config path>\n");
+        printf("Example: migrate <db driver> <server id> create <migration name> <config path>\n");
         return -1;
     }
 
     config->ok = 1;
-    config->migration_name = strdup(argv[3]);
-    config->config_path = strdup(argv[4]);
+    config->migration_name = strdup(argv[4]);
+    config->config_path = strdup(argv[5]);
 
     return 0;
 }
@@ -94,8 +96,8 @@ int mg_parse_action_up_down(mgconfig_t* config, int pos, int argc, char* argv[])
     }
 
     printf("Error: command incorrect\n");
-    printf("Example: migrate <server id> up [number, all] <config path>\n");
-    printf("Example: migrate <server id> down [number, all] <config path>\n");
+    printf("Example: migrate <db driver> <server id> up [number, all] <config path>\n");
+    printf("Example: migrate <db driver> <server id> down [number, all] <config path>\n");
 
     return -1;
 }
@@ -103,6 +105,7 @@ int mg_parse_action_up_down(mgconfig_t* config, int pos, int argc, char* argv[])
 mgconfig_t mg_args_parse(int argc, char* argv[]) {
     mgconfig_t config = {
         .ok = 0,
+        .database_driver = NULL,
         .server = NULL,
         .action = NONE,
         .migration_name = NULL,
@@ -111,13 +114,14 @@ mgconfig_t mg_args_parse(int argc, char* argv[]) {
         .database = NULL
     };
 
-    if (argc < 4) {
+    if (argc < 5) {
         printf("Error: command incorrect\n");
-        printf("Example: migrate <server id> <action> [number, all] <config path>\n");
+        printf("Example: migrate <db driver> <server id> <action> [number, all] <config path>\n");
         return config;
     }
 
     int pos = 1;
+    config.database_driver = strdup(argv[pos++]);
     config.server = strdup(argv[pos++]);
 
     if (strcmp(argv[pos], "create") == 0) {
@@ -141,15 +145,14 @@ mgconfig_t mg_args_parse(int argc, char* argv[]) {
 }
 
 const char* mg_config_read(const char* config_path) {
-    int fd = open(config_path, O_RDONLY);
+    const int fd = open(config_path, O_RDONLY);
     if (fd == -1) return NULL;
 
-    size_t filesize = lseek(fd, 0, SEEK_END);
+    const size_t filesize = lseek(fd, 0, SEEK_END);
     lseek(fd, 0, SEEK_SET);
 
     char* result = NULL;
     char* buffer = malloc(filesize + 1);
-
     if (buffer == NULL) goto failed;
 
     if (read(fd, buffer, filesize) <= 0) goto failed;
@@ -169,22 +172,22 @@ const char* mg_config_read(const char* config_path) {
 
 int __module_loader_databases_load(mgconfig_t* config, const jsontok_t* token_databases) {
     if (token_databases == NULL) return 1;
-    if (!json_is_object(token_databases)) {
-        return 0;
-    }
+    if (!json_is_object(token_databases)) return 0;
 
     int result = 0;
     db_t* last_database = NULL;
     for (jsonit_t it = json_init_it(token_databases); !json_end_it(&it); json_next_it(&it)) {
         jsontok_t* token_array = json_it_value(&it);
-        if (!json_is_array(token_array)) {
+        if (!json_is_array(token_array))
             goto failed;
-        }
-        if (json_array_size(token_array) == 0) {
+        if (json_array_size(token_array) == 0)
             goto failed;
-        }
 
         const char* driver = json_it_key(&it);
+
+        if (strcmp(config->database_driver, driver) != 0)
+            continue;
+
         db_t* database = NULL;
 
         #ifdef PostgreSQL_FOUND
@@ -202,9 +205,8 @@ int __module_loader_databases_load(mgconfig_t* config, const jsontok_t* token_da
             database = redis_load(driver, token_array);
         #endif
 
-        if (database == NULL) {
+        if (database == NULL)
             goto failed;
-        }
 
         if (config->database == NULL)
             config->database = database;
@@ -220,7 +222,7 @@ int __module_loader_databases_load(mgconfig_t* config, const jsontok_t* token_da
     failed:
 
     if (result == 0)
-        db_destroy(config->database);
+        db_free(config->database);
 
     return result;
 }
@@ -384,26 +386,16 @@ int mg_migrate_run(mgconfig_t* config, const char* filename, const char* path) {
 
     int(*function_up)(dbinstance_t*) = NULL;
     int(*function_down)(dbinstance_t*) = NULL;
-    const char*(*function_db)() = NULL;
 
     *(void**)(&function_up) = dlsym(dlpointer, "up");
-    if (function_up == NULL) {
+    if (function_up == NULL)
         function_up = mg_default_up_down;
-    }
 
     *(void**)(&function_down) = dlsym(dlpointer, "down");
-    if (function_down == NULL) {
+    if (function_down == NULL)
         function_down = mg_default_up_down;
-    }
 
-    *(void**)(&function_db) = dlsym(dlpointer, "db");
-    if (function_db == NULL) {
-        printf("Error: can't load function db\n");
-        goto failed;
-    }
-
-    dbinstance_t dbinst = mg_dbinstance(config->database, function_db());
-
+    dbinstance_t dbinst = mg_dbinstance(config->database, config->database_driver);
     if (!dbinst.ok) {
         printf("Error: not found database in %s\n", path);
         goto failed;
@@ -551,14 +543,12 @@ int mg_make_directory(const char* server, const char* source_directory) {
 
 int mg_create_template(const char* source_directory, mgconfig_t* config) {
     char tmp[512] = {0};
-
     strcpy(&tmp[0], source_directory);
 
     size_t len = strlen(tmp);
 
-    if (tmp[len - 1] != '/') {
+    if (tmp[len - 1] != '/')
         strcat(&tmp[0], "/");
-    }
 
     strcat(&tmp[0], config->server);
     strcat(&tmp[0], "/");
@@ -608,8 +598,7 @@ int mg_create_template(const char* source_directory, mgconfig_t* config) {
     ;
 
     int fd = open(&tmp[0], O_RDWR | O_CREAT, S_IRWXU);
-
-    if (fd <= 0) {
+    if (fd < 0) {
         printf("Error: can't create migration %s", &tmp[0]);
         return -1;
     }

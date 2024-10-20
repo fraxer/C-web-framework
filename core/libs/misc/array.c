@@ -26,6 +26,8 @@ array_t* array_create(void) {
 }
 
 void array_free(array_t* array) {
+    if (array == NULL) return;
+
     for (size_t i = 0; i < array->size; i++)
         __array_free_value(&array->elements[i]);
 
@@ -97,6 +99,47 @@ size_t array_size(array_t* array) {
     return array->size;
 }
 
+void* array_get(array_t* array, size_t index) {
+    if (array == NULL) return NULL;
+    if (index >= array->size) {
+        log_error("array_get: Index out of bounds\n");
+        return NULL;
+    }
+
+    avalue_t* element = &array->elements[index];
+
+    if (element->type == ARRAY_INT)
+        return &element->_int;
+    if (element->type == ARRAY_DOUBLE)
+        return &element->_double;
+    if (element->type == ARRAY_STRING)
+        return &element->_string;
+
+    return element->_pointer;
+}
+
+int array_get_int(array_t* array, size_t index) {
+    void* value = array_get(array, index);
+    if (value == NULL) return 0;
+
+    return *(int*)value;
+}
+
+double array_get_double(array_t* array, size_t index) {
+    void* value = array_get(array, index);
+    if (value == NULL) return 0.0;
+
+    return *(double*)value;
+}
+
+const char* array_get_string(array_t* array, size_t index) {
+    return array_get(array, index);
+}
+
+void* array_get_pointer(array_t* array, size_t index) {
+    return array_get(array, index);
+}
+
 avalue_t array_create_int(int value) {
     avalue_t v = {
         .type = ARRAY_INT,
@@ -158,12 +201,16 @@ void __array_resize(array_t* array, size_t new_capacity) {
 void __array_free_value(avalue_t* value) {
     switch (value->type) {
         case ARRAY_STRING:
-            free(value->_string);
+            if (value->_string != NULL)
+                free(value->_string);
+
             value->_string = NULL;
             value->_length = 0;
             break;
         case ARRAY_POINTER:
-            value->_free_pointer(value->_pointer);
+            if (value->_free_pointer != NULL)
+                value->_free_pointer(value->_pointer);
+
             value->_free_pointer = NULL;
             value->_pointer = NULL;
             break;

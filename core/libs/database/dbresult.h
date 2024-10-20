@@ -3,6 +3,8 @@
 
 #include "database.h"
 
+dbresult_t* dbresult_create();
+
 dbresultquery_t* dbresult_query_create(int, int);
 
 int dbresult_cell_create(db_table_cell_t*, const char*, size_t);

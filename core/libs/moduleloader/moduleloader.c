@@ -799,8 +799,13 @@ int __module_loader_databases_load(appconfig_t* config, const jsontok_t* token_d
         return 0;
     }
 
+    config->databases = array_create();
+    if (config->databases == NULL) {
+        log_error("__module_loader_databases_load: can't create databases array\n");
+        return 0;
+    }
+
     int result = 0;
-    db_t* last_database = NULL;
     for (jsonit_t it = json_init_it(token_databases); !json_end_it(&it); json_next_it(&it)) {
         jsontok_t* token_array = json_it_value(&it);
         if (!json_is_array(token_array)) {
@@ -835,21 +840,12 @@ int __module_loader_databases_load(appconfig_t* config, const jsontok_t* token_d
             goto failed;
         }
 
-        if (config->databases == NULL)
-            config->databases = database;
-
-        if (last_database != NULL)
-            last_database->next = database;
-
-        last_database = database;
+        array_push_back(config->databases, array_create_pointer(database, db_free));
     }
 
     result = 1;
 
     failed:
-
-    if (result == 0)
-        db_destroy(config->databases);
 
     return result;
 }
@@ -904,8 +900,10 @@ int __module_loader_storages_load(appconfig_t* config, const jsontok_t* token_st
 
     failed:
 
-    if (result == 0)
+    if (result == 0) {
         storages_free(config->storages);
+        config->storages = NULL;
+    }
 
     return result;
 }

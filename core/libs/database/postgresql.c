@@ -1,43 +1,48 @@
+#define _GNU_SOURCE
+#include <unistd.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
 #include <stdio.h>
 
 #include "log.h"
+#include "array.h"
+#include "str.h"
+#include "model.h"
 #include "dbresult.h"
 #include "postgresql.h"
 
-#define WITH_LOOP 1
-#define WITHOUT_LOOP 0
+static postgresqlhost_t* __host_create(void);
+static void __host_free(void*);
+static void* __connection_create(void* host);
+static void __connection_free(void* connection);
+static dbresult_t* __query(void* connection, const char* sql);
+static PGconn* __connect(void* host);
+static char* __compile_table_exist(const char* table);
+static char* __compile_table_migration_create(const char* table);
+static str_t* __qoute_string(void* connection, str_t* str);
+static char* __compile_insert(void* connection, const char* table, array_t* params);
+static char* __compile_select(void* connection, const char* table, array_t* columns, array_t* params);
+static char* __compile_update(void* connection, const char* table, array_t* set, array_t* params);
+static char* __compile_delete(void* connection, const char* table, array_t* params);
 
-static dbhosts_t* __postgresql_hosts_create(void);
-static void __postgresql_connection_free(dbconnection_t* connection);
-static void __postgresql_send_query(dbresult_t* result, dbconnection_t* connection, const char* string);
-static PGconn* postgresql_connect(dbhosts_t* hosts, int with_loop);
-
-dbhosts_t* __postgresql_hosts_create(void) {
-    dbhosts_t* hosts = malloc(sizeof *hosts);
-    if (hosts == NULL) return NULL;
-
-    hosts->host = NULL;
-    hosts->current_host = NULL;
-    hosts->connection_create = postgresql_connection_create;
-    hosts->connection_create_manual = postgresql_connection_create_manual;
-    hosts->table_exist_sql = postgresql_table_exist_sql;
-    hosts->table_migration_create_sql = postgresql_table_migration_create_sql;
-
-    return hosts;
-}
-
-postgresqlhost_t* postgresql_host_create(void) {
+postgresqlhost_t* __host_create(void) {
     postgresqlhost_t* host = malloc(sizeof * host);
     if (host == NULL) return NULL;
 
-    host->base.free = postgresql_host_free;
-    host->base.migration = 0;
+    host->base.free = __host_free;
     host->base.port = 0;
     host->base.ip = NULL;
-    host->base.next = NULL;
+    host->base.id = NULL;
+    host->base.connection_create = __connection_create;
+    host->base.connections = array_create();
+    host->base.connections_locked = 0;
+    host->base.grammar.compile_table_exist = __compile_table_exist;
+    host->base.grammar.compile_table_migration_create = __compile_table_migration_create;
+    host->base.grammar.compile_insert = __compile_insert;
+    host->base.grammar.compile_select = __compile_select;
+    host->base.grammar.compile_update = __compile_update;
+    host->base.grammar.compile_delete = __compile_delete;
     host->dbname = NULL;
     host->user = NULL;
     host->password = NULL;
@@ -46,7 +51,7 @@ postgresqlhost_t* postgresql_host_create(void) {
     return host;
 }
 
-void postgresql_host_free(void* arg) {
+void __host_free(void* arg) {
     if (arg == NULL) return;
 
     postgresqlhost_t* host = arg;
@@ -57,68 +62,30 @@ void postgresql_host_free(void* arg) {
     if (host->password) free(host->password);
     host->base.port = 0;
     host->connection_timeout = 0;
-    host->base.next = NULL;
 
     free(host);
 }
 
-void postgresql_free(db_t* db) {
-    db_destroy(db);
-}
-
-dbconnection_t* postgresql_connection_create(dbhosts_t* hosts) {
-    postgresqlconnection_t* connection = (postgresqlconnection_t*)malloc(sizeof(postgresqlconnection_t));
-
+void* __connection_create(void* host) {
+    postgresqlconnection_t* connection = malloc(sizeof * connection);
     if (connection == NULL) return NULL;
 
-    connection->base.locked = 0;
-    connection->base.next = NULL;
-    connection->base.free = __postgresql_connection_free;
-    connection->base.send_query = __postgresql_send_query;
+    connection->base.thread_id = gettid();
+    connection->base.free = __connection_free;
+    connection->base.query = __query;
+    connection->base.quote_string = __qoute_string;
+    connection->connection = __connect(host);
 
-    void* host_address = hosts->current_host;
-
-    while (1) {
-        connection->connection = postgresql_connect(hosts, WITH_LOOP);
-
-        if (PQstatus(connection->connection) == CONNECTION_OK) break;
-
+    if (PQstatus(connection->connection) != CONNECTION_OK) {
         log_error("Postgresql error: %s\n", PQerrorMessage(connection->connection));
-
-        if (host_address == hosts->current_host) {
-            __postgresql_connection_free((dbconnection_t*)connection);
-            return NULL;
-        }
-        
-        PQfinish(connection->connection);
+        __connection_free((dbconnection_t*)connection);
+        return NULL;
     }
 
-    return (dbconnection_t*)connection;
+    return connection;
 }
 
-dbconnection_t* postgresql_connection_create_manual(dbhosts_t* hosts) {
-    postgresqlconnection_t* connection = (postgresqlconnection_t*)malloc(sizeof(postgresqlconnection_t));
-
-    if (connection == NULL) return NULL;
-
-    connection->base.locked = 0;
-    connection->base.next = NULL;
-    connection->base.free = __postgresql_connection_free;
-    connection->base.send_query = __postgresql_send_query;
-    connection->connection = postgresql_connect(hosts, WITHOUT_LOOP);
-
-    if (PQstatus(connection->connection) == CONNECTION_OK) {
-        return (dbconnection_t*)connection;
-    }
-
-    log_error("Postgresql error: %s\n", PQerrorMessage(connection->connection));
-
-    __postgresql_connection_free((dbconnection_t*)connection);
-
-    return NULL;
-}
-
-const char* postgresql_table_exist_sql(const char* table) {
+char* __compile_table_exist(const char* table) {
     char tmp[512] = {0};
 
     sprintf(
@@ -136,38 +103,40 @@ const char* postgresql_table_exist_sql(const char* table) {
     return strdup(&tmp[0]);
 }
 
-const char* postgresql_table_migration_create_sql(void)
+char* __compile_table_migration_create(const char* table)
 {
     char tmp[512] = {0};
 
-    strcpy(
+    sprintf(
         &tmp[0],
-        "CREATE TABLE migration "
+        "CREATE TABLE %s "
         "("
             "version     varchar(180)  NOT NULL PRIMARY KEY,"
             "apply_time  integer       NOT NULL DEFAULT 0"
-        ")"
+        ")",
+        table
     );
 
     return strdup(&tmp[0]);
 }
 
-void __postgresql_connection_free(dbconnection_t* connection) {
+void __connection_free(void* connection) {
     if (connection == NULL) return;
 
-    postgresqlconnection_t* conn = (postgresqlconnection_t*)connection;
+    postgresqlconnection_t* conn = connection;
 
     PQfinish(conn->connection);
     free(conn);
 }
 
-void __postgresql_send_query(dbresult_t* result, dbconnection_t* connection, const char* string) {
+dbresult_t* __query(void* connection, const char* sql) {
     postgresqlconnection_t* pgconnection = (postgresqlconnection_t*)connection;
+    dbresult_t* result = dbresult_create();
 
-    if (!PQsendQuery(pgconnection->connection, string)) {
+    if (!PQsendQuery(pgconnection->connection, sql)) {
         log_error("Postgresql error: %s", PQerrorMessage(pgconnection->connection));
-        result->error_message = "Postgresql error: connection error";
-        return;
+        strncpy(result->error, PQerrorMessage(pgconnection->connection), sizeof result->error);
+        return result;
     }
 
     result->ok = 1;
@@ -186,7 +155,7 @@ void __postgresql_send_query(dbresult_t* result, dbconnection_t* connection, con
 
             if (query == NULL) {
                 result->ok = 0;
-                result->error_message = "Out of memory";
+                strncpy(result->error, "Out of memory", sizeof result->error);
                 goto clear;
             }
 
@@ -216,22 +185,22 @@ void __postgresql_send_query(dbresult_t* result, dbconnection_t* connection, con
         else if (status == PGRES_FATAL_ERROR) {
             log_error("Postgresql Fatal error: %s", PQresultErrorMessage(res));
             result->ok = 0;
-            result->error_message = "Postgresql error: fatal error";
+            strncpy(result->error, PQresultErrorMessage(res), sizeof result->error);
         }
         else if (status == PGRES_NONFATAL_ERROR) {
             log_error("Postgresql Nonfatal error: %s", PQresultErrorMessage(res));
             result->ok = 0;
-            result->error_message = "Postgresql error: non fatal error";
+            strncpy(result->error, PQresultErrorMessage(res), sizeof result->error);
         }
         else if (status == PGRES_EMPTY_QUERY) {
             log_error("Postgresql Empty query: %s", PQresultErrorMessage(res));
             result->ok = 0;
-            result->error_message = "Postgresql error: empty query";
+            strncpy(result->error, PQresultErrorMessage(res), sizeof result->error);
         }
         else if (status == PGRES_BAD_RESPONSE) {
             log_error("Postgresql Bad response: %s", PQresultErrorMessage(res));
             result->ok = 0;
-            result->error_message = "Postgresql error: bad response";
+            strncpy(result->error, PQresultErrorMessage(res), sizeof result->error);
         }
 
         clear:
@@ -239,7 +208,7 @@ void __postgresql_send_query(dbresult_t* result, dbconnection_t* connection, con
         PQclear(res);
     }
 
-    return;
+    return result;
 }
 
 size_t postgresql_connection_string(char* buffer, size_t size, postgresqlhost_t* host) {
@@ -259,16 +228,14 @@ size_t postgresql_connection_string(char* buffer, size_t size, postgresqlhost_t*
     );
 }
 
-PGconn* postgresql_connect(dbhosts_t* hosts, int with_loop) {
-    postgresqlhost_t* host = (postgresqlhost_t*)hosts->current_host;
+PGconn* __connect(void* arg) {
+    postgresqlhost_t* host = arg;
 
     size_t string_length = postgresql_connection_string(NULL, 0, host);
     char* string = malloc(string_length + 1);
     if (string == NULL) return NULL;
 
     postgresql_connection_string(string, string_length, host);
-
-    if (with_loop) db_next_host(hosts);
 
     PGconn* connection = PQconnectdb(string);
 
@@ -277,27 +244,51 @@ PGconn* postgresql_connect(dbhosts_t* hosts, int with_loop) {
     return connection;
 }
 
+str_t* __qoute_string(void* connection, str_t* str) {
+    postgresqlconnection_t* conn = connection;
+
+    char* quoted = malloc(2 * str_size(str) + 3);
+    if (quoted == NULL) return NULL;
+
+    int error = 0;
+    const size_t quotedlen = PQescapeStringConn(conn->connection, quoted, str_get(str), str_size(str), &error);
+    if (error) {
+        free(quoted);
+        return NULL;
+    }
+
+    str_t* quoted_str = str_create_empty();
+    if (quoted_str == NULL) {
+        free(quoted);
+        return NULL;
+    }
+
+    str_appendc(quoted_str, '\'');
+    str_append(quoted_str, quoted, quotedlen);
+    str_appendc(quoted_str, '\'');
+
+    free(quoted);
+
+    return quoted_str;
+}
+
 db_t* postgresql_load(const char* database_id, const jsontok_t* token_array) {
     db_t* result = NULL;
     db_t* database = db_create(database_id);
-    if (database == NULL) return NULL;
-
-    database->hosts = __postgresql_hosts_create();
-    if (database->hosts == NULL) {
-        log_error("postgresql_load: can't create hosts\n");
-        goto failed;
+    if (database == NULL) {
+        log_error("postgresql_load: can't create database\n");
+        return NULL;
     }
 
-    enum fields { PORT = 0, IP, DBNAME, USER, PASSWORD, CONNECTION_TIMEOUT, MIGRATION, FIELDS_COUNT };
+    enum fields { PORT = 0, IP, DBNAME, USER, PASSWORD, CONNECTION_TIMEOUT, FIELDS_COUNT };
     enum reqired_fields { R_PORT = 0, R_IP, R_DBNAME, R_USER, R_PASSWORD, R_CONNECTION_TIMEOUT, R_FIELDS_COUNT };
-    char* field_names[FIELDS_COUNT] = {"port", "ip", "dbname", "user", "password", "connection_timeout", "migration"};
-    dbhost_t* host_last = NULL;
+    char* field_names[FIELDS_COUNT] = {"port", "ip", "dbname", "user", "password", "connection_timeout"};
 
     for (jsonit_t it_array = json_init_it(token_array); !json_end_it(&it_array); json_next_it(&it_array)) {
         jsontok_t* token_object = json_it_value(&it_array);
         int lresult = 0;
         int finded_fields[FIELDS_COUNT] = {0};
-        postgresqlhost_t* host = postgresql_host_create();
+        postgresqlhost_t* host = __host_create();
         if (host == NULL) {
             log_error("postgresql_load: can't create host\n");
             goto failed;
@@ -423,34 +414,13 @@ db_t* postgresql_load(const char* database_id, const jsontok_t* token_array) {
 
                 host->connection_timeout = json_int(token_value);
             }
-            else if (strcmp(key, "migration") == 0) {
-                if (finded_fields[MIGRATION]) {
-                    log_error("postgresql_load: field %s must be unique\n", key);
-                    goto host_failed;
-                }
-                if (!json_is_bool(token_value)) {
-                    log_error("postgresql_load: field %s must be bool\n", key);
-                    goto host_failed;
-                }
-
-                finded_fields[MIGRATION] = 1;
-
-                host->base.migration = json_bool(token_value);
-            }
             else {
                 log_error("postgresql_load: unknown field: %s\n", key);
                 goto host_failed;
             }
         }
 
-        if (database->hosts->host == NULL) {
-            database->hosts->host = (dbhost_t*)host;
-            database->hosts->current_host = (dbhost_t*)host;
-        }
-        if (host_last != NULL)
-            host_last->next = (dbhost_t*)host;
-
-        host_last = (dbhost_t*)host;
+        array_push_back(database->hosts, array_create_pointer(host, host->base.free));
 
         for (int i = 0; i < R_FIELDS_COUNT; i++) {
             if (finded_fields[i] == 0) {
@@ -464,7 +434,7 @@ db_t* postgresql_load(const char* database_id, const jsontok_t* token_array) {
         host_failed:
 
         if (lresult == 0) {
-            postgresql_host_free(host);
+            host->base.free(host);
             goto failed;
         }
     }
@@ -474,8 +444,224 @@ db_t* postgresql_load(const char* database_id, const jsontok_t* token_array) {
     failed:
 
     if (result == NULL) {
-        db_destroy(database);
+        db_free(database);
     }
 
     return result;
+}
+
+char* __compile_insert(void* connection, const char* table, array_t* params) {
+    if (connection == NULL) return 0;
+    if (table == NULL) return 0;
+    if (params == NULL) return 0;
+
+    char* buffer = NULL;
+
+    str_t* fields = str_create_empty();
+    if (fields == NULL) return 0;
+
+    str_t* values = str_create_empty();
+    if (values == NULL) goto failed;
+
+    for (size_t i = 0; i < array_size(params); i++) {
+        mfield_t* field = array_get(params, i);
+
+        if (i > 0) {
+            str_appendc(fields, ',');
+            str_appendc(values, ',');
+        }
+
+        str_append(fields, field->name, strlen(field->name));
+
+        str_t* value = model_field_to_string(field);
+        if (value == NULL) goto failed;
+
+        str_t* quoted_str = __qoute_string(connection, value);
+        if (quoted_str == NULL) goto failed;
+
+        str_append(values, str_get(quoted_str), str_size(quoted_str));
+        str_free(quoted_str);
+    }
+
+    const char* format = "INSERT INTO %s (%s) VALUES (%s)";
+    const size_t buffer_size = strlen(format) + strlen(table) + str_size(fields) + str_size(values) + 1;
+    buffer = malloc(buffer_size);
+    if (buffer == NULL) goto failed;
+
+    snprintf(buffer, buffer_size,
+        format,
+        table,
+        str_get(fields),
+        str_get(values)
+    );
+
+    failed:
+
+    str_free(fields);
+    str_free(values);
+
+    return buffer;
+}
+
+char* __compile_select(void* connection, const char* table, array_t* columns, array_t* params) {
+    (void)columns;
+    (void)params;
+    if (connection == NULL) return 0;
+    if (table == NULL) return 0;
+    if (params == NULL) return 0;
+
+    char* buffer = NULL;
+
+    str_t* fields = str_create_empty();
+    if (fields == NULL) return 0;
+
+    str_t* values = str_create_empty();
+    if (values == NULL) goto failed;
+
+    for (size_t i = 0; i < array_size(params); i++) {
+        mfield_t* field = array_get(params, i);
+
+        if (i > 0) {
+            str_appendc(fields, ',');
+            str_appendc(values, ',');
+        }
+
+        str_append(fields, field->name, strlen(field->name));
+
+        str_t* value = model_field_to_string(field);
+        if (value == NULL) goto failed;
+
+        str_t* quoted_str = __qoute_string(connection, value);
+        if (quoted_str == NULL) goto failed;
+
+        str_append(values, str_get(quoted_str), str_size(quoted_str));
+        str_free(quoted_str);
+    }
+
+    const char* format = "INSERT INTO %s (%s) VALUES (%s)";
+    const size_t buffer_size = strlen(format) + strlen(table) + str_size(fields) + str_size(values) + 1;
+    buffer = malloc(buffer_size);
+    if (buffer == NULL) goto failed;
+
+    snprintf(buffer, buffer_size,
+        format,
+        table,
+        str_get(fields),
+        str_get(values)
+    );
+
+    failed:
+
+    str_free(fields);
+    str_free(values);
+
+    return buffer;
+}
+
+char* __compile_update(void* connection, const char* table, array_t* set, array_t* params) {
+    (void)set;
+    (void)params;
+    if (connection == NULL) return 0;
+    if (table == NULL) return 0;
+    if (params == NULL) return 0;
+
+    char* buffer = NULL;
+
+    str_t* fields = str_create_empty();
+    if (fields == NULL) return 0;
+
+    str_t* values = str_create_empty();
+    if (values == NULL) goto failed;
+
+    for (size_t i = 0; i < array_size(params); i++) {
+        mfield_t* field = array_get(params, i);
+
+        if (i > 0) {
+            str_appendc(fields, ',');
+            str_appendc(values, ',');
+        }
+
+        str_append(fields, field->name, strlen(field->name));
+
+        str_t* value = model_field_to_string(field);
+        if (value == NULL) goto failed;
+
+        str_t* quoted_str = __qoute_string(connection, value);
+        if (quoted_str == NULL) goto failed;
+
+        str_append(values, str_get(quoted_str), str_size(quoted_str));
+        str_free(quoted_str);
+    }
+
+    const char* format = "INSERT INTO %s (%s) VALUES (%s)";
+    const size_t buffer_size = strlen(format) + strlen(table) + str_size(fields) + str_size(values) + 1;
+    buffer = malloc(buffer_size);
+    if (buffer == NULL) goto failed;
+
+    snprintf(buffer, buffer_size,
+        format,
+        table,
+        str_get(fields),
+        str_get(values)
+    );
+
+    failed:
+
+    str_free(fields);
+    str_free(values);
+
+    return buffer;
+}
+
+char* __compile_delete(void* connection, const char* table, array_t* params) {
+    if (connection == NULL) return 0;
+    if (table == NULL) return 0;
+    if (params == NULL) return 0;
+
+    char* buffer = NULL;
+
+    str_t* fields = str_create_empty();
+    if (fields == NULL) return 0;
+
+    str_t* values = str_create_empty();
+    if (values == NULL) goto failed;
+
+    for (size_t i = 0; i < array_size(params); i++) {
+        mfield_t* field = array_get(params, i);
+
+        if (i > 0) {
+            str_appendc(fields, ',');
+            str_appendc(values, ',');
+        }
+
+        str_append(fields, field->name, strlen(field->name));
+
+        str_t* value = model_field_to_string(field);
+        if (value == NULL) goto failed;
+
+        str_t* quoted_str = __qoute_string(connection, value);
+        if (quoted_str == NULL) goto failed;
+
+        str_append(values, str_get(quoted_str), str_size(quoted_str));
+        str_free(quoted_str);
+    }
+
+    const char* format = "INSERT INTO %s (%s) VALUES (%s)";
+    const size_t buffer_size = strlen(format) + strlen(table) + str_size(fields) + str_size(values) + 1;
+    buffer = malloc(buffer_size);
+    if (buffer == NULL) goto failed;
+
+    snprintf(buffer, buffer_size,
+        format,
+        table,
+        str_get(fields),
+        str_get(values)
+    );
+
+    failed:
+
+    str_free(fields);
+    str_free(values);
+
+    return buffer;
 }

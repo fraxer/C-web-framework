@@ -5,7 +5,7 @@
 #include "websocketsresponse.h"
 
 typedef struct wsctx {
-    struct websocketsrequest* request;
+    websocketsrequest_t* request;
     websocketsresponse_t* response;
 
     void(*free)(struct wsctx* ctx);

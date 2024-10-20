@@ -282,7 +282,7 @@ str_t* model_timetz_to_str(mfield_t* field);
 
 str_t* model_json_to_str(mfield_t* field);
 
-
+str_t* model_field_to_string(mfield_t* field);
 
 void model_params_clear(void* params, const size_t size);
 void model_params_free(void* params, const size_t size);

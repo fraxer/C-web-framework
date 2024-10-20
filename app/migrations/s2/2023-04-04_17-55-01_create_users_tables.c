@@ -4,9 +4,6 @@
 #include "dbquery.h"
 #include "dbresult.h"
 
-// const char* server() { return "s1"; }
-const char* db() { return "postresql"; }
-
 int up(dbinstance_t* dbinst) {
     dbresult_t result = dbquery(dbinst, "CREATE TABLE users");
 

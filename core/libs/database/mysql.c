@@ -61,7 +61,7 @@ void my_host_free(void* arg) {
 }
 
 void my_free(db_t* db) {
-    db_destroy(db);
+    db_free(db);
 }
 
 dbconnection_t* my_connection_create(dbhosts_t* hosts) {
@@ -163,7 +163,7 @@ void __my_send_query(dbresult_t* result, dbconnection_t* connection, const char*
 
     if (mysql_query(myconnection->connection, string) != 0) {
         log_error("Mysql error: %s\n", mysql_error(myconnection->connection));
-        result->error_message = "Mysql error: connection error";
+        result->error = "Mysql error: connection error";
         return;
     }
 
@@ -183,7 +183,7 @@ void __my_send_query(dbresult_t* result, dbconnection_t* connection, const char*
 
             if (query == NULL) {
                 result->ok = 0;
-                result->error_message = "Out of memory";
+                result->error = "Out of memory";
                 goto clear;
             }
 
@@ -226,14 +226,14 @@ void __my_send_query(dbresult_t* result, dbconnection_t* connection, const char*
         else if (mysql_field_count(myconnection->connection) != 0) {
             log_error("Mysql error: %s\n", mysql_error(myconnection->connection));
             result->ok = 0;
-            result->error_message = mysql_error(myconnection->connection);
+            result->error = mysql_error(myconnection->connection);
             break;
         }
 
         if ((status = mysql_next_result(myconnection->connection)) > 0) {
             log_error("Mysql error: %s\n", mysql_error(myconnection->connection));
             result->ok = 0;
-            result->error_message = mysql_error(myconnection->connection);
+            result->error = mysql_error(myconnection->connection);
         }
 
     } while (status == 0);
@@ -444,7 +444,7 @@ db_t* my_load(const char* database_id, const jsontok_t* token_array) {
     failed:
 
     if (result == NULL)
-        db_destroy(database);
+        db_free(database);
 
     return result;
 }

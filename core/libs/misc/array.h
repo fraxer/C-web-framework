@@ -41,6 +41,11 @@ void array_push_back(array_t* array, avalue_t value);
 void array_update(array_t* array, size_t index, avalue_t value);
 void array_delete(array_t* array, size_t index);
 size_t array_size(array_t* array);
+void* array_get(array_t* array, size_t index);
+int array_get_int(array_t* array, size_t index);
+double array_get_double(array_t* array, size_t index);
+const char* array_get_string(array_t* array, size_t index);
+void* array_get_pointer(array_t* array, size_t index);
 
 avalue_t array_create_int(int value);
 avalue_t array_create_double(double value);
