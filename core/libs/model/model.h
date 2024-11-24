@@ -639,6 +639,8 @@ tm_t* tm_create(tm_t* time);
 #define mparams_fill_array(ARRAY, ...) MDL_ITEM(ARRAY, MDL_VA_NARGS(__VA_ARGS__), __VA_ARGS__)
 #define mparams_create_array(ARRAY, ...) array_t* ARRAY = array_create();mparams_fill_array(ARRAY, __VA_ARGS__)
 
+#define MDL_NSEQ() 64,MW_NSEQ()
+#define display_fields(...) (char*[NARG_(__VA_ARGS__,MDL_NSEQ())]){__VA_ARGS__, NULL}
 
 typedef enum {
     MODEL_BOOL = 0,
@@ -712,8 +714,8 @@ void* model_one(const char* dbid, void*(create_instance)(void), const char* form
 array_t* model_list(const char* dbid, void*(create_instance)(void), const char* format, array_t* params);
 int model_execute(const char* dbid, const char* format, array_t* params);
 
-jsontok_t* model_to_json(void* arg, jsondoc_t* document);
-char* model_stringify(void* arg);
+jsontok_t* model_to_json(void* arg, jsondoc_t* document, ...);
+char* model_stringify(void* arg, ...);
 char* model_list_stringify(array_t* array);
 void model_free(void* arg);
 
@@ -826,5 +828,7 @@ str_t* model_field_to_string(mfield_t* field);
 void model_param_clear(void* field);
 void model_params_clear(void* params, const size_t size);
 void model_params_free(void* params, const size_t size);
+
+jsontok_t* model_json_create_object(void* arg, char** display_fields, jsondoc_t* doc);
 
 #endif

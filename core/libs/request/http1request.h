@@ -62,7 +62,7 @@ typedef struct http1request {
     int(*append_formdata_file)(struct http1request*, const char*, file_t*);
     int(*append_formdata_file_content)(struct http1request*, const char*, file_content_t*);
 
-    int(*set_payload_raw)(struct http1request*, const char*, const char*);
+    int(*set_payload_raw)(struct http1request*, const char*, const size_t, const char*);
     int(*set_payload_text)(struct http1request*, const char*);
     int(*set_payload_json)(struct http1request*, jsondoc_t*);
     int(*set_payload_filepath)(struct http1request*, const char*);

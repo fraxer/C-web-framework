@@ -154,6 +154,7 @@ dbresult_t* __query(void* connection, const char* sql) {
         ExecStatusType status = PQresultStatus(res);
 
         switch (status) {
+        case PGRES_COMMAND_OK:
         case PGRES_TUPLES_OK:
         case PGRES_SINGLE_TUPLE: {
             int cols = PQnfields(res);
@@ -254,12 +255,12 @@ int __is_active(void* connection) {
 int __reconnect(void* host, void* connection) {
     postgresqlconnection_t* conn = connection;
 
-    if (!__is_active(conn->connection)) {
+    if (!__is_active(conn)) {
         PQfinish(conn->connection);
 
         conn->connection = __connect(host);
 
-        if (!__is_active(conn->connection)) {
+        if (!__is_active(conn)) {
             PQfinish(conn->connection);
             conn->connection = NULL;
             return 0;

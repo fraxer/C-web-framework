@@ -16,7 +16,7 @@ static void* __modelview_fill(void*(create_instance)(void), dbresult_t* result);
 static array_t* __modelview_fill_array(void*(create_instance)(void), dbresult_t* result);
 static int __model_set_binary(mfield_t* field, const char* value, const size_t size);
 static int __model_set_date(mfield_t* field, tm_t* value);
-static jsontok_t* __model_json_create_object(void* arg, jsondoc_t* doc);
+static int __model_allow_field_in_json(const char* field_name, char** display_fields);
 static mfield_t __model_tmpfield_create(mfield_t* source_field);
 static int __model_field_is_primary_and_not_dirty(model_t* model, mfield_t* field);
 
@@ -60,10 +60,12 @@ void* model_get(const char* dbid, void*(create_instance)(void), array_t* params)
             str_appendc(fields, ',');
 
         str_t* field_name = str_create(field->name, strlen(field->name));
-        conn->escape_identifier(conn, field_name);
+        str_t* escaped_value = conn->escape_identifier(conn, field_name);
+        if (escaped_value == NULL) goto failed;
 
-        str_append(fields, str_get(field_name), str_size(field_name));
+        str_append(fields, str_get(escaped_value), str_size(escaped_value));
         str_free(field_name);
+        str_free(escaped_value);
     }
 
     for (size_t i = 0; i < array_size(params); i++) {
@@ -414,17 +416,31 @@ int model_execute(const char* dbid, const char* format, array_t* params) {
     return res;
 }
 
-jsontok_t* model_to_json(void* arg, jsondoc_t* document) {
-    return __model_json_create_object(arg, document);
+jsontok_t* model_to_json(void* arg, jsondoc_t* document, ...) {
+    va_list va_args;
+    va_start(va_args, 0);
+
+    char** display_fields = va_arg(va_args, char**);
+
+    va_end(va_args);
+
+    return model_json_create_object(arg, display_fields, document);
 }
 
-char* model_stringify(void* arg) {
+char* model_stringify(void* arg, ...) {
     if (arg == NULL) return NULL;
+
+    va_list va_args;
+    va_start(va_args, 0);
+
+    char** display_fields = va_arg(va_args, char**);
+
+    va_end(va_args);
 
     jsondoc_t* doc = json_init();
     if (!doc) return NULL;
 
-    jsontok_t* object = __model_json_create_object(arg, doc);
+    jsontok_t* object = model_json_create_object(arg, display_fields, doc);
     if (object == NULL) {
         json_free(doc);
         return NULL;
@@ -1489,8 +1505,24 @@ str_t* model_timestamp_to_str(mfield_t* field) {
     if (field == NULL) return NULL;
     if (field->type != MODEL_TIMESTAMP) return NULL;
 
-    char value[32] = {0};
-    const size_t size = strftime(value, sizeof(value), "%Y-%m-%d %H:%M:%S", field->value._tm);
+    char value[64] = {0};
+
+    tm_t tm = {0};
+    memcpy(&tm, field->value._tm, sizeof(tm));
+    size_t size = 0;
+
+    if (field->value._tm->tm_year == 0) {
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+
+        size = strftime(value, sizeof(value), "%Y-%m-%dT%H:%M:%S", gmtime(&ts.tv_sec));
+        // Add milliseconds
+        size += sprintf(value + size, ".%06ld", ts.tv_nsec / 1000);
+    }
+    else {
+        size = strftime(value, sizeof(value), "%Y-%m-%d %H:%M:%S", &tm);
+    }
+
     if (size == 0)
         return NULL;
 
@@ -1649,7 +1681,7 @@ void model_params_free(void* params, const size_t size) {
     free(params);
 }
 
-jsontok_t* __model_json_create_object(void* arg, jsondoc_t* doc) {
+jsontok_t* model_json_create_object(void* arg, char** display_fields, jsondoc_t* doc) {
     if (arg == NULL) return NULL;
     if (doc == NULL) return NULL;
 
@@ -1661,6 +1693,9 @@ jsontok_t* __model_json_create_object(void* arg, jsondoc_t* doc) {
 
     for (int i = 0; i < model->fields_count(model); i++) {
         mfield_t* field = model->first_field(model) + i;
+
+        if (!__model_allow_field_in_json(field->name, display_fields))
+            continue;
 
         jsontok_t* token_value = NULL;
 
@@ -1740,6 +1775,19 @@ jsontok_t* __model_json_create_object(void* arg, jsondoc_t* doc) {
         return NULL;
 
     return object;
+}
+
+int __model_allow_field_in_json(const char* field_name, char** display_fields) {
+    if (display_fields == NULL) return 1;
+
+    while (*display_fields != NULL) {
+        if (strcmp(*display_fields, field_name) == 0)
+            return 1;
+
+        display_fields++;
+    }
+
+    return 0;
 }
 
 mfield_t __model_tmpfield_create(mfield_t* source_field) {

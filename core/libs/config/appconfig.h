@@ -7,14 +7,20 @@
 #include "database.h"
 #include "viewstore.h"
 #include "mimetype.h"
+#include "session.h"
 
 typedef struct env_gzip_str {
     char* mimetype;
     struct env_gzip_str* next;
 } env_gzip_str_t;
 
+typedef enum {
+    APPCONFIG_RELOAD_SOFT = 0,
+    APPCONFIG_RELOAD_HARD
+} appconfig_reload_state_e;
+
 typedef struct env_main {
-    unsigned int reload;
+    appconfig_reload_state_e reload;
     unsigned int workers;
     unsigned int threads;
     unsigned int buffer_size;
@@ -39,19 +45,14 @@ typedef struct {
     env_migrations_t migrations;
 } env_t;
 
-typedef enum {
-    APPCONFIG_RELOAD_SOFT = 0,
-    APPCONFIG_RELOAD_HARD
-} appconfig_reload_state_e;
-
 typedef struct appconfig {
-    appconfig_reload_state_e reload;
     atomic_bool shutdown;
     atomic_bool threads_pause;
     atomic_bool threads_pause_lock;
     atomic_int threads_stop_count;
     atomic_int threads_count;
     env_t env;
+    sessionconfig_t sessionconfig;
     char* path;
     mimetype_t* mimetype;
     array_t* databases;

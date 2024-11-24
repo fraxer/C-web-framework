@@ -16,6 +16,8 @@
 #include "http1responseparser.h"
 #include "storage.h"
 #include "view.h"
+#include "json.h"
+#include "model.h"
 
 static void __http1response_data(http1response_t* response, const char* data);
 static void __http1response_datan(http1response_t* response, const char* data, size_t length);
@@ -23,6 +25,10 @@ static void __http1response_file(http1response_t* response, const char* path);
 static void __http1response_filen(http1response_t* response, const char* path, size_t length);
 static void __http1response_filef(http1response_t*, const char*, const char*, ...);
 static void __http1response_default(http1response_t* response, int status_code);
+static void __http1response_json(http1response_t* response, jsondoc_t* document);
+static void __http1response_model(http1response_t* response, void* model, ...);
+static void __http1response_models(http1response_t* response, array_t* models, ...);
+
 static http1_header_t* __http1response_header_get(http1response_t* response, const char* key);
 static int __http1response_header_add(http1response_t* response, const char* key, const char* value);
 static int __http1response_headern_add(http1response_t* response, const char* key, size_t key_length, const char* value, size_t value_length);
@@ -114,6 +120,9 @@ http1response_t* http1response_create(connection_t* connection) {
     response->datan = __http1response_datan;
     response->view = __http1response_view;
     response->def = __http1response_default;
+    response->json = __http1response_json;
+    response->model = __http1response_model;
+    response->models = __http1response_models;
     response->redirect = http1response_redirect;
     response->header = __http1response_header_get;
     response->header_add = __http1response_header_add;
@@ -588,6 +597,124 @@ void __http1response_default(http1response_t* response, int status_code) {
     response->datan(response, data, data_length);
 }
 
+void __http1response_json(http1response_t* response, jsondoc_t* document) {
+    const char* connection = __http1response_keepalive_enabled(response) ? "keep-alive" : "close";
+    response->headeru_add(response, "Content-Type", 12, "application/json", 16);
+    response->headeru_add(response, "Connection", 10, connection, strlen(connection));
+    response->headeru_add(response, "Cache-Control", 13, "no-store, no-cache", 18);
+
+    if (document == NULL) {
+        response->def(response, 500);
+        return;
+    }
+
+    const char* data = json_stringify(document);
+    const size_t length = json_stringify_size(document);
+
+    if (!__http1response_prepare_body(response, length)) {
+        response->def(response, 500);
+        return;
+    }
+
+    if (!__http1response_alloc_body(response, data, length))
+        response->def(response, 500);
+}
+
+void __http1response_model(http1response_t* response, void* model, ...) {
+    const char* connection = __http1response_keepalive_enabled(response) ? "keep-alive" : "close";
+    response->headeru_add(response, "Content-Type", 12, "application/json", 16);
+    response->headeru_add(response, "Connection", 10, connection, strlen(connection));
+    response->headeru_add(response, "Cache-Control", 13, "no-store, no-cache", 18);
+
+    if (model == NULL) {
+        response->def(response, 500);
+        return;
+    }
+
+    va_list va_args;
+    va_start(va_args, 0);
+
+    char** display_fields = va_arg(va_args, char**);
+
+    va_end(va_args);
+
+    jsondoc_t* doc = json_init();
+    if (!doc) {
+        response->def(response, 500);
+        return;
+    }
+
+    jsontok_t* object = model_json_create_object(model, display_fields, doc);
+    if (object == NULL) {
+        json_free(doc);
+        response->def(response, 500);
+        return;
+    }
+
+    const char* data = json_stringify(doc);
+    const size_t length = json_stringify_size(doc);
+
+    if (!__http1response_prepare_body(response, length)) {
+        response->def(response, 500);
+        json_free(doc);
+        return;
+    }
+
+    if (!__http1response_alloc_body(response, data, length))
+        response->def(response, 500);
+
+    json_free(doc);
+}
+
+void __http1response_models(http1response_t* response, array_t* models, ...) {
+    const char* connection = __http1response_keepalive_enabled(response) ? "keep-alive" : "close";
+    response->headeru_add(response, "Content-Type", 12, "application/json", 16);
+    response->headeru_add(response, "Connection", 10, connection, strlen(connection));
+    response->headeru_add(response, "Cache-Control", 13, "no-store, no-cache", 18);
+
+    if (models == NULL) {
+        response->def(response, 500);
+        return;
+    }
+
+    va_list va_args;
+    va_start(va_args, 0);
+
+    char** display_fields = va_arg(va_args, char**);
+
+    va_end(va_args);
+
+    jsondoc_t* doc = json_init();
+    if (!doc) {
+        response->def(response, 500);
+        return;
+    }
+
+    for (size_t i = 0; i < array_size(models); i++) {
+        void* model = array_get(models, i);
+        jsontok_t* object = model_json_create_object(model, display_fields, doc);
+        if (object == NULL) {
+            json_free(doc);
+            response->def(response, 500);
+            return;
+        }
+    }
+
+    const char* data = json_stringify(doc);
+    const size_t length = json_stringify_size(doc);
+
+    if (!__http1response_prepare_body(response, length)) {
+        response->def(response, 500);
+        json_free(doc);
+        return;
+    }
+
+    if (!__http1response_alloc_body(response, data, length))
+        response->def(response, 500);
+
+    json_free(doc);
+}
+
 int __http1response_keepalive_enabled(http1response_t* response) {
     return response->connection->keepalive_enabled;
 }
@@ -735,11 +862,11 @@ void __http1response_cookie_add(http1response_t* response, cookie_t cookie) {
     int count = 2;
     const char* vars[4];
 
-    if (cookie.minutes > 0) {
+    if (cookie.seconds > 0) {
         vars[count - 2] = date;
         count++;
         time_t t = time(NULL);
-        t += cookie.minutes * 60;
+        t += cookie.seconds;
         struct tm* timeptr = localtime(&t);
 
         if (strftime(date, sizeof(date), "%a, %d %b %Y %T GMT", timeptr) == 0) return;

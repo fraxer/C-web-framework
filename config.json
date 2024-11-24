@@ -36,6 +36,15 @@
                     "/wss": {
                         "GET": ["<project directory path>/build/exec/handlers/index/libindex.so", "websocket"]
                     },
+                    "/login": {
+                        "GET": ["/home/alex/development/server/build/exec/handlers/auth/lib_auth.so", "login"]
+                    },
+                    "/registration": {
+                        "GET": ["/home/alex/development/server/build/exec/handlers/auth/lib_auth.so", "registration"]
+                    },
+                    "/secret_page": {
+                        "GET": ["/home/alex/development/server/build/exec/handlers/auth/lib_auth.so", "secret_page"]
+                    },
                     "/file_create_tmpfile": {
                         "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_create_tmpfile"]
                     },
@@ -44,6 +53,9 @@
                     },
                     "/file_put_storage": {
                         "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_put_storage"]
+                    },
+                    "/file_get_file_list": {
+                        "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_get_file_list"]
                     },
                     "/file_remove_storage": {
                         "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_remove_storage"]
@@ -96,27 +108,28 @@
     "databases": {
         "postgresql": [
             {
+                "host_id": "p1",
                 "ip": "127.0.0.1",
                 "port": 5432,
                 "dbname": "dbname",
                 "user": "root",
                 "password": "",
-                "connection_timeout": 3,
-                "migration": true
+                "connection_timeout": 3
             }
         ],
         "mysql": [
             {
+                "host_id": "m1",
                 "ip": "127.0.0.1",
                 "port": 3306,
                 "dbname": "dbname",
                 "user": "root",
-                "password": "",
-                "migration": false
+                "password": ""
             }
         ],
         "redis": [
             {
+                "host_id": "r1",
                 "ip": "127.0.0.1",
                 "port": 6379,
                 "dbindex": 0,
@@ -139,6 +152,16 @@
             "port": "",
             "bucket": "*"
         }
+    },
+    "sessions": {
+        "driver": "storage",
+        "storage_name": "sessions",
+        "lifetime": 60
+    },
+    "mail": {
+        "dkim_private": "/home/alex/dkim_private.pem",
+        "dkim_selector": "mail",
+        "host": "example.com"
     },
     "mimetypes": {
         "text/html": ["html", "htm", "shtml"],

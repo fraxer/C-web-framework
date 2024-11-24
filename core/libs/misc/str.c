@@ -155,6 +155,9 @@ int str_move(str_t* srcstr, str_t* dststr) {
 }
 
 char* str_get(str_t* str) {
+    if (str->size == 0)
+        return "";
+
     return str->buffer;
 }
 

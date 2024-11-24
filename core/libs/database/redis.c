@@ -250,12 +250,12 @@ int __is_active(void* connection) {
 int __reconnect(void* host, void* connection) {
     redisconnection_t* conn = connection;
 
-    if (__is_active(conn->connection)) {
+    if (__is_active(conn)) {
         redisFree(conn->connection);
 
         conn->connection = __connect(host);
 
-        if (!__is_active(conn->connection)) {
+        if (!__is_active(conn)) {
             redisFree(conn->connection);
             conn->connection = NULL;
             return 0;

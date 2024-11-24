@@ -43,7 +43,7 @@ int http1request_append_formdata_json(http1request_t*, const char*, jsondoc_t*);
 int http1request_append_formdata_filepath(http1request_t*, const char*, const char*);
 int http1request_append_formdata_file(http1request_t*, const char*, file_t*);
 int http1request_append_formdata_file_content(http1request_t*, const char*, file_content_t*);
-int http1request_set_payload_raw(http1request_t*, const char*, const char*);
+int http1request_set_payload_raw(http1request_t*, const char*, const size_t, const char*);
 int http1request_set_payload_text(http1request_t*, const char*);
 int http1request_set_payload_json(http1request_t*, jsondoc_t*);
 int http1request_set_payload_filepath(http1request_t*, const char*);
@@ -865,7 +865,7 @@ int http1request_append_formdata_file_content(http1request_t* request, const cha
     return result;
 }
 
-int http1request_set_payload_raw(http1request_t* request, const char* value, const char* mimetype) {
+int http1request_set_payload_raw(http1request_t* request, const char* value, const size_t value_size, const char* mimetype) {
     http1_payload_t* payload = &request->payload_;
     file_t* file = &payload->file;
 
@@ -884,7 +884,7 @@ int http1request_set_payload_raw(http1request_t* request, const char* value, con
     request->header_del(request, "Content-Type");
     request->header_add(request, "Content-Type", mimetype);
 
-    if (!file->append_content(file, value, strlen(value)))
+    if (!file->append_content(file, value, value_size))
         return 0;
 
     payload->type = PLAIN;
@@ -893,11 +893,11 @@ int http1request_set_payload_raw(http1request_t* request, const char* value, con
 }
 
 int http1request_set_payload_text(http1request_t* request, const char* value) {
-    return http1request_set_payload_raw(request, value, "text/plain");
+    return http1request_set_payload_raw(request, value, strlen(value), "text/plain");
 }
 
 int http1request_set_payload_json(http1request_t* request, jsondoc_t* document) {
-    return http1request_set_payload_raw(request, json_stringify(document), "application/json");
+    return http1request_set_payload_raw(request, json_stringify(document), json_stringify_size(document), "application/json");
 }
 
 int http1request_set_payload_filepath(http1request_t* request, const char* filepath) {

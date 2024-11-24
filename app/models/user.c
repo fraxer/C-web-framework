@@ -4,7 +4,7 @@
 #include "db.h"
 #include "user.h"
 
-static const char* __dbid = "postgresql";
+static const char* __dbid = "postgresql.p1";
 
 static mfield_t* __first_field(void* arg);
 static int __fields_count(void* arg);
@@ -28,13 +28,13 @@ void* user_instance(void) {
             mfield_int(id, 0),
             mfield_text(email, NULL),
             mfield_text(name, NULL),
-            mfield_enum(enm, NULL, "V1", "V2", "V3"),
-            mfield_timestamp(dt, NULL)
+            // mfield_enum(enm, NULL, "V1", "V2", "V3"),
+            mfield_timestamp(created_at, NULL),
+            mfield_text(secret, NULL)
         },
         .table = "\"user\"",
         .primary_key = {
             "id",
-            "name",
         }
     };
 
@@ -59,6 +59,7 @@ int user_delete(user_t* user) {
     return model_delete(__dbid, user);
 }
 
+
 user_t* user_create_anonymous(void) {
     return NULL;
 }
@@ -71,16 +72,16 @@ void user_set_name(user_t* user, const char* name) {
     model_set_text(&user->field.name, name);
 }
 
+void user_set_secret(user_t* user, const char* secret) {
+    model_set_text(&user->field.secret, secret);
+}
+
 void user_set_email(user_t* user, const char* email) {
     model_set_text(&user->field.email, email);
 }
 
-void user_set_enum(user_t* user, const char* value) {
-    model_set_enum(&user->field.enm, value);
-}
-
-void user_set_ts(user_t* user, const char* value) {
-    model_set_timestamp_from_str(&user->field.dt, value);
+void user_set_created_at(user_t* user, const char* value) {
+    model_set_timestamp_from_str(&user->field.created_at, value);
 }
 
 int user_id(user_t* user) {
@@ -93,6 +94,47 @@ const char* user_name(user_t* user) {
 
 const char* user_email(user_t* user) {
     return str_get(model_text(&user->field.email));
+}
+
+const char* user_secret(user_t* user) {
+    return str_get(model_text(&user->field.secret));
+}
+
+const char* user_salt(user_t* user) {
+    const char* secret = user_secret(user);
+    if (secret == NULL) return NULL;
+
+    const char* at_pos = strchr(secret, '$');
+    if (!at_pos) return NULL;
+
+    const char* salt = at_pos + 1;
+
+    at_pos = strchr(at_pos + 1, '$');
+    if (!at_pos) at_pos = secret + strlen(secret);
+
+    const size_t length = at_pos - salt;
+
+    strncpy(user->salt, salt, length);
+    user->salt[length] = 0;
+
+    return user->salt;
+}
+
+const char* user_hash(user_t* user) {
+    const char* secret = user_secret(user);
+    if (secret == NULL) return NULL;
+
+    const char* at_pos = strrchr(secret, '$');
+    if (!at_pos) return NULL;
+
+    const char* hash = at_pos + 1;
+
+    const size_t length = (secret + strlen(secret)) - hash;
+
+    strncpy(user->hash, hash, length);
+    user->hash[length] = 0;
+
+    return user->hash;
 }
 
 mfield_t* __first_field(void* arg) {
