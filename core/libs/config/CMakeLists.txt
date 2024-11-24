@@ -8,4 +8,4 @@ add_library(${LIB_NAME} STATIC ${SOURCES})
 
 target_include_directories(${LIB_NAME} PUBLIC .)
 
-target_link_libraries(${LIB_NAME} misc json server database storage view mimetype log)
+target_link_libraries(${LIB_NAME} session misc json server database storage view mimetype log)

@@ -10,7 +10,7 @@ foreach(FILEPATH ${FILEPATHS})
 
 	file(RELATIVE_PATH RELATIVE_PATH_VARIABLE ${CMAKE_CURRENT_SOURCE_DIR} ${FILEDIR})
 
-    set(TARGET_NAME ${FILENAME})
+    set(TARGET_NAME _${FILENAME})
     set(TARGET_SOURCES ${FILEPATH})
 
     set(TARGET_OUTPUT_DIR "${CMAKE_BINARY_DIR}/exec/handlers/${RELATIVE_PATH_VARIABLE}")
@@ -20,5 +20,5 @@ foreach(FILEPATH ${FILEPATHS})
         LIBRARY_OUTPUT_DIRECTORY ${TARGET_OUTPUT_DIR}
     )
 
-    target_link_libraries(${TARGET_NAME} models view middlewares handler_context mail storage misc database json request response protocols broadcast client mybroadcast)
+    target_link_libraries(${TARGET_NAME} auth models view middlewares handler_context mail storage misc database json request response protocols broadcast client mybroadcast)
 endforeach()

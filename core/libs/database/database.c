@@ -52,8 +52,9 @@ void db_cell_free(db_table_cell_t* cell) {
 dbhost_t* db_host_find(db_t* db, const char* host_id) {
     if (host_id == NULL) {
         db_lock(db);
-        db->circular_index = db->circular_index + 1 % array_size(db->hosts);
+        db->circular_index = db->circular_index % array_size(db->hosts);
         dbhost_t* host = array_get(db->hosts, db->circular_index);
+        db->circular_index++;
         db_unlock(db);
 
         return host;

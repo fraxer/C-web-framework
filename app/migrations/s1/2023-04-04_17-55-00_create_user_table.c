@@ -7,13 +7,13 @@ int up(dbinstance_t* dbinst) {
     dbresult_t* result = dbqueryf(dbinst,
         "CREATE TABLE public.user"
         "("
-            "id    bigserial    NOT NULL PRIMARY KEY,"
-            "email varchar(100) NOT NULL DEFAULT '',"
-            "name  varchar(100) NOT NULL DEFAULT ''"
+            "id         bigserial    NOT NULL PRIMARY KEY,"
+            "email      varchar(100) NOT NULL DEFAULT '',"
+            "name       varchar(100) NOT NULL DEFAULT '',"
+            "created_at timestamp    NOT NULL DEFAULT NOW(),"
+            "secret     text         NOT NULL DEFAULT ''"
         ")"
     );
-
-    
 
     int res = dbresult_ok(result);
 

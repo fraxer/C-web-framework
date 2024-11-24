@@ -2,14 +2,13 @@
 #include <string.h>
 #include <ctype.h>
 
+#include "str.h"
 #include "helpers.h"
 #include "http1common.h"
 
 http1_header_t* http1_header_alloc();
 http1_query_t* http1_query_alloc();
 http1_cookie_t* http1_cookie_alloc();
-char http1_from_hex(char);
-char http1_to_hex(char);
 
 
 http1_header_t* http1_header_alloc() {
@@ -120,6 +119,28 @@ void http1_queries_free(http1_query_t* query) {
     }
 }
 
+char* http1_query_str(http1_query_t* query) {
+    if (query == NULL) return NULL;
+
+    str_t* uri = str_create_empty();
+    if (uri == NULL) return NULL;
+
+    while (query != NULL) {
+        str_append(uri, query->key, strlen(query->key));
+        str_appendc(uri, '=');
+        str_append(uri, query->value, strlen(query->value));
+        if (query->next != NULL)
+            str_appendc(uri, '&');
+
+        query = query->next;
+    }
+
+    char* string = str_copy(uri);
+    str_free(uri);
+
+    return string;
+}
+
 char* http1_set_field(const char* string, size_t length) {
     char* value = malloc(length + 1);
     if (value == NULL) return value;
@@ -162,75 +183,6 @@ void http1_payloadpart_free(http1_payloadpart_t* part) {
 
         part = next;
     }
-}
-
-char http1_from_hex(char ch) {
-  return isdigit(ch) ? ch - '0' : tolower(ch) - 'a' + 10;
-}
-
-char http1_to_hex(char code) {
-  static char hex[] = "0123456789abcdef";
-  return hex[code & 15];
-}
-
-http1_urlendec_t http1_urlencode(const char* string, size_t length) {
-    if (string == NULL)
-        return (http1_urlendec_t){ .string = NULL, .length = 0 };
-
-    char* buffer = malloc(length * 3 + 1);
-    if (buffer == NULL)
-        return (http1_urlendec_t){ .string = NULL, .length = 0 };
-
-    char* pbuffer = buffer;
-
-    for (size_t i = 0; i < length; i++) {
-        char ch = string[i];
-
-        if (isalnum(ch) || ch == '-' || ch == '_' || ch == '.' || ch == '~')
-            *pbuffer++ = ch;
-        else if (ch == ' ')
-            *pbuffer++ = '+';
-        else {
-            *pbuffer++ = '%';
-            *pbuffer++ = http1_to_hex(ch >> 4);
-            *pbuffer++ = http1_to_hex(ch & 15);
-        }
-    }
-
-    *pbuffer = 0;
-
-    return (http1_urlendec_t){
-        .string = buffer,
-        .length = pbuffer - buffer
-    };
-}
-
-http1_urlendec_t http1_urldecode(const char* string, size_t length) {
-    char* buffer = malloc(length + 1);
-    if (buffer == NULL) return (http1_urlendec_t){ .string = NULL, .length = 0 };
-
-    char* pbuffer = buffer;
-
-    while (*string) {
-        if (*string == '%') {
-            if (string[1] && string[2]) {
-                *pbuffer++ = http1_from_hex(string[1]) << 4 | http1_from_hex(string[2]);
-                string += 2;
-            }
-        } else if (*string == '+') { 
-            *pbuffer++ = ' ';
-        } else {
-            *pbuffer++ = *string;
-        }
-        string++;
-    }
-
-    *pbuffer = 0;
-
-    return (http1_urlendec_t){
-        .string = buffer,
-        .length = pbuffer - buffer
-    };
 }
 
 http1_payloadfield_t* http1_payloadfield_create() {

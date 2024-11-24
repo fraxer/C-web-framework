@@ -8,12 +8,13 @@
 #include "storage.h"
 #include "view.h"
 #include "model.h"
+#include "auth.h"
 
 void get(httpctx_t* ctx) {
     ctx->response->cookie_add(ctx->response, (cookie_t){
         .name = "mytoken",
         .value = "token_value",
-        .minutes = 60,
+        .seconds = 3600,
         .path = "/",
         .secure = 1,
         .http_only = 1,

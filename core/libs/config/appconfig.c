@@ -36,7 +36,6 @@ appconfig_t* appconfig_create(const char* path) {
     appconfig_t* config = malloc(sizeof * config);
     if (config == NULL) return NULL;
 
-    atomic_store(&config->reload, 0);
     atomic_store(&config->shutdown, 0);
     atomic_store(&config->threads_pause, 1);
     atomic_store(&config->threads_pause_lock, 0);
@@ -48,6 +47,7 @@ appconfig_t* appconfig_create(const char* path) {
     config->storages = NULL;
     config->viewstore = NULL;
     config->server_chain = NULL;
+    memset(&config->sessionconfig, 0, sizeof(config->sessionconfig));
     config->path = strdup(path);
     if (config->path == NULL) {
         log_print("Usage: -c <path to config file>\n", "");
@@ -73,7 +73,6 @@ void appconfig_set(appconfig_t* config) {
 void appconfig_clear(appconfig_t* config) {
     if (config == NULL) return;
 
-    atomic_store(&config->reload, 0);
     atomic_store(&config->shutdown, 0);
     atomic_store(&config->threads_pause, 1);
     atomic_store(&config->threads_pause_lock, 0);
@@ -95,6 +94,8 @@ void appconfig_clear(appconfig_t* config) {
 
     server_chain_destroy(config->server_chain);
     config->server_chain = NULL;
+
+    sessionconfig_clear(&config->sessionconfig);
 }
 
 void appconfig_free(appconfig_t* config) {
@@ -163,6 +164,7 @@ void appconfg_threads_decrement(appconfig_t* config) {
 void __appconfig_env_init(env_t* env) {
     if (env == NULL) return;
 
+    env->main.reload = APPCONFIG_RELOAD_SOFT;
     env->main.client_max_body_size = 0;
     env->main.gzip = NULL;
     env->main.buffer_size = 0;

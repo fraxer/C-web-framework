@@ -245,12 +245,12 @@ int __is_active(void* connection) {
 int __reconnect(void* host, void* connection) {
     myconnection_t* conn = connection;
 
-    if (__is_active(conn->connection)) {
+    if (__is_active(conn)) {
         mysql_close(conn->connection);
 
         conn->connection = __connect(host);
 
-        if (!__is_active(conn->connection)) {
+        if (!__is_active(conn)) {
             mysql_close(conn->connection);
             conn->connection = NULL;
             return 0;

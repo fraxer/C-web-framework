@@ -3,6 +3,7 @@
 
 #include "connection.h"
 #include "http1common.h"
+#include "array.h"
 #include "json.h"
 #include "response.h"
 
@@ -14,7 +15,7 @@ typedef struct http1response_head {
 typedef struct {
     const char* name;
     const char* value;
-    int minutes;
+    int seconds;
     const char* path;
     const char* domain;
     int secure;
@@ -47,6 +48,10 @@ typedef struct http1response {
     void(*datan)(struct http1response*, const char*, size_t);
     void(*view)(struct http1response*, jsondoc_t* document, const char* storage_name, const char* path_format, ...);
     void(*def)(struct http1response*, int);
+    void(*json)(struct http1response*, jsondoc_t* document);
+    void(*model)(struct http1response*, void* model, ...);
+    void(*models)(struct http1response*, array_t* models, ...);
+
     void(*redirect)(struct http1response*, const char*, int);
     http1_header_t*(*header)(struct http1response*, const char*);
     int(*header_add)(struct http1response*, const char*, const char*);

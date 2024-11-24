@@ -11,6 +11,10 @@ wsctx_t* wsctx_create(void* request, void* response) {
     return ctx;
 }
 
+void wsctx_set_user(wsctx_t* ctx, user_t* user) {
+    ctx->user = user;
+}
+
 void wsctx_free(wsctx_t* ctx) {
     if (ctx == NULL) return;
 

@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <sys/sendfile.h>
 
+#include "array.h"
 #include "file.h"
 #include "helpers.h"
 
@@ -25,8 +26,10 @@ typedef struct storage {
     file_t(*file_get)(void* storage, const char* path);
     int(*file_put)(void* storage, const file_t* file, const char* path);
     int(*file_content_put)(void* storage, const file_content_t* file_content, const char* path);
+    int(*file_data_put)(void* storage, const char* data, const size_t data_size, const char* path);
     int(*file_remove)(void* storage, const char* path);
     int(*file_exist)(void* storage, const char* path);
+    array_t*(*file_list)(void* storage, const char* path);
 
     struct storage* next;
 } storage_t;
@@ -34,9 +37,11 @@ typedef struct storage {
 file_t storage_file_get(const char* storage_name, const char* path_format, ...);
 int storage_file_put(const char* storage_name, file_t* file, const char* path_format, ...);
 int storage_file_content_put(const char* storage_name, file_content_t* file_content, const char* path_format, ...);
+int storage_file_data_put(const char* storage_name, const char* data, const size_t data_size, const char* path_format, ...);
 int storage_file_remove(const char* storage_name, const char* path_format, ...);
 int storage_file_exist(const char* storage_name, const char* path_format, ...);
 int storage_file_duplicate(const char* from_storage_name, const char* to_storage_name, const char* path_format, ...);
+array_t* storage_file_list(const char* storage_name, const char* path_format, ...);
 void storages_free(storage_t* storage);
 void storage_merge_slash(char* path);
 

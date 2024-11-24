@@ -47,6 +47,17 @@ int storage_file_content_put(const char* storage_name, file_content_t* file_cont
     return storage->file_content_put(storage, file_content, path);
 }
 
+int storage_file_data_put(const char* storage_name, const char* data, const size_t data_size, const char* path_format, ...) {
+    storage_t* storage = __storage_find(storage_name);
+    if (storage == NULL)
+        return 0;
+
+    char path[PATH_MAX];
+    STORAGE_BUILD_PATH(path);
+
+    return storage->file_data_put(storage, data, data_size, path);
+}
+
 int storage_file_remove(const char* storage_name, const char* path_format, ...) {
     storage_t* storage = __storage_find(storage_name);
     if (storage == NULL)
@@ -87,6 +98,17 @@ int storage_file_duplicate(const char* from_storage_name, const char* to_storage
     file.close(&file);
 
     return result;
+}
+
+array_t* storage_file_list(const char* storage_name, const char* path_format, ...) {
+    storage_t* storage = __storage_find(storage_name);
+    if (storage == NULL)
+        return 0;
+
+    char path[PATH_MAX];
+    STORAGE_BUILD_PATH(path);
+
+    return storage->file_list(storage, path);
 }
 
 void storages_free(storage_t* storage) {

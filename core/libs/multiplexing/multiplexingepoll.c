@@ -126,7 +126,7 @@ int __mpx_epoll_process_events(appconfig_t* appconfig, void* arg) {
     mpxapi_t* api = arg;
     epoll_config_t* apiconfig = api->config;
     epoll_event_t events[EPOLL_MAX_EVENTS];
-    const int config_shutdown = atomic_load(&appconfig->shutdown) && appconfig->reload == APPCONFIG_RELOAD_HARD;
+    const int config_shutdown = atomic_load(&appconfig->shutdown) && appconfig->env.main.reload == APPCONFIG_RELOAD_HARD;
 
     int n = epoll_wait(apiconfig->basefd, events, EPOLL_MAX_EVENTS, apiconfig->timeout);
     if (n == -1) return 0;

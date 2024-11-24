@@ -31,4 +31,5 @@ Documentation for the framework is available [here](https://cwebframework.tech/e
 * PCRE Regular Expression Library 8.43
 * Zlib data compression library 1.2.11
 * Library Openssl 1.1.1k
+* LibXml2 2.9.13
 
