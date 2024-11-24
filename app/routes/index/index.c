@@ -8,6 +8,7 @@
 #include "storage.h"
 #include "view.h"
 #include "model.h"
+#include "auth.h"
 
 void get(httpctx_t* ctx) {
     ctx->response->cookie_add(ctx->response, (cookie_t){
@@ -424,4 +425,24 @@ void template_engine(httpctx_t* ctx) {
     ctx->response->view(ctx->response, document, "views", "/index.tpl");
 
     json_free(document);
+}
+
+void auth(httpctx_t* ctx) {
+    const char* email = ctx->request->query(ctx->request, "email");
+    const char* password = ctx->request->query(ctx->request, "password");
+
+    // Найти пользователя в базе данных с указанным логином и паролем
+    // Если пользователь не найден, вернуть ошибку аутентификации
+    // Если пользователь найден, добавить его в контекст
+    user_t* user = authenticate(email, password);
+    if (user == NULL) {
+        ctx->response->data(ctx->response, "can't authenticate user");
+        return;
+    }
+
+    httpctx_set_user(ctx, user);
+
+    ctx->response->data(ctx->response, model_stringify(user));
+
+    model_free(user);
 }

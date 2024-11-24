@@ -11,6 +11,10 @@ httpctx_t* httpctx_create(void* request, void* response) {
     return ctx;
 }
 
+void httpctx_set_user(httpctx_t* ctx, user_t* user) {
+    ctx->user = user;
+}
+
 void httpctx_free(httpctx_t* ctx) {
     if (ctx == NULL) return;
 

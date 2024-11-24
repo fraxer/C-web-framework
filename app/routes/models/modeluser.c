@@ -3,27 +3,6 @@
 #include "userview.h"
 #include "middleware.h"
 
-int authenticate_by_name_pass(httpctx_t *ctx) {
-    (void)ctx;
-    // char* name = ctx->request->payloadf(ctx->request, "key1");
-    // char* email = ctx->request->payloadf(ctx->request, "key1");
-
-    // user_t* user = authenticate("mysql", name, email);
-    // if (user == NULL) {
-    //     free(name);
-    //     free(email);
-    //     ctx->response->data(ctx->response, "can't authenticate user");
-    //     return 0;
-    // }
-
-    // // ctx->user->swap(ctx->user, user);
-
-    // free(name);
-    // free(email);
-
-    return 1;
-}
-
 void usercreate(httpctx_t* ctx) {
     user_t* user = user_instance();
     if (user == NULL) {
