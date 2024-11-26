@@ -29,7 +29,9 @@ void* user_instance(void) {
             mfield_text(email, NULL),
             mfield_text(name, NULL),
             mfield_enum(enm, NULL, "V1", "V2", "V3"),
-            mfield_timestamp(dt, NULL)
+            mfield_timestamp(dt, NULL),
+            mfield_text(token, NULL),
+            mfield_text(secret, NULL)
         },
         .table = "\"user\"",
         .primary_key = {
@@ -59,6 +61,7 @@ int user_delete(user_t* user) {
     return model_delete(__dbid, user);
 }
 
+
 user_t* user_create_anonymous(void) {
     return NULL;
 }
@@ -69,6 +72,10 @@ void user_set_id(user_t* user, int id) {
 
 void user_set_name(user_t* user, const char* name) {
     model_set_text(&user->field.name, name);
+}
+
+void user_set_secret(user_t* user, const char* secret) {
+    model_set_text(&user->field.secret, secret);
 }
 
 void user_set_email(user_t* user, const char* email) {
@@ -93,6 +100,55 @@ const char* user_name(user_t* user) {
 
 const char* user_email(user_t* user) {
     return str_get(model_text(&user->field.email));
+}
+
+const char* user_token(user_t* user) {
+    return str_get(model_text(&user->field.token));
+}
+
+const char* user_secret(user_t* user) {
+    return str_get(model_text(&user->field.secret));
+}
+
+const char* user_salt(user_t* user) {
+    const char* secret = user_secret(user);
+    if (secret == NULL) return NULL;
+
+    const char* at_pos = strrchr(secret, '$');
+    if (!at_pos) return NULL;
+
+    const char* salt = at_pos + 1;
+
+    const size_t length = strlen(salt);
+
+    if (length > USER_SALT_SIZE) return NULL;
+
+    strncpy(user->salt, salt, length);
+    user->salt[length] = 0;
+
+    return user->salt;
+}
+
+const char* user_hash(user_t* user) {
+    const char* secret = user_secret(user);
+    if (secret == NULL) return NULL;
+
+    const char* at_pos = strchr(secret, '$');
+    if (!at_pos) return NULL;
+
+    const char* hash = at_pos + 1;
+
+    at_pos = strrchr(secret, '$');
+    if (!at_pos) return NULL;
+
+    const size_t length = at_pos - hash;
+
+    if (length > USER_HASH_SIZE) return NULL;
+
+    strncpy(user->hash, hash, length);
+    user->hash[length] = 0;
+
+    return user->hash;
 }
 
 mfield_t* __first_field(void* arg) {

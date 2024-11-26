@@ -53,7 +53,8 @@ int __is_special_char(char c) {
  * @return 1 if a repeated sequence is found, 0 otherwise.
  */
 int __has_repeated_chars(const char* password, int threshold) {
-    for (int i = 0; i <= strlen(password) - threshold; i++) {
+    size_t size = strlen(password) - threshold;
+    for (size_t i = 0; i <= size; i++) {
         int repeated = 1;
         for (int j = 1; j < threshold; j++)
             if (password[i] == password[i + j])

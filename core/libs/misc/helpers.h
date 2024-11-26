@@ -11,5 +11,7 @@ const char* file_extention(const char* path);
 int cmpsubstr_lower(const char* a, const char* b);
 int starts_with_substr(const char* string, const char* substring);
 int timezone_offset();
+int hex_to_raw(const char* hex, unsigned char* raw);
+void raw_to_hex(const unsigned char* raw, char* hex);
 
 #endif

@@ -9,6 +9,8 @@
 
 #include "helpers.h"
 
+static int __hex_char_to_int(char c);
+
 int helpers_mkdir(const char* path) {
     if (path == NULL) return 0;
     if (path[0] == 0) return 0;
@@ -150,4 +152,46 @@ int timezone_offset() {
     const int gm_time = gmtime(&epoch_plus_11h)->tm_hour;
 
     return local_time - gm_time;
+}
+
+int __hex_char_to_int(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+int hex_to_raw(const char* hex, unsigned char* raw) {
+    int len = strlen(hex);
+    if (len % 2 != 0) {
+        log_error("Error: Hex string length must be even\n");
+        return 0;
+    }
+
+    for (int i = 0; i < len; i += 2) {
+        int high = __hex_char_to_int(hex[i]);
+        int low = __hex_char_to_int(hex[i + 1]);
+
+        if (high == -1 || low == -1) {
+            log_error("Error: Invalid hex character\n");
+            return 0;
+        }
+
+        raw[i / 2] = (high << 4) | low; // Combine high and low nibble
+    }
+
+    return 1;
+}
+
+void raw_to_hex(const unsigned char* raw, char* hex) {
+    const char* hexChars = "0123456789abcdef";
+    int i = 0;
+
+    while (raw[i] != '\0') {
+        // Convert each byte to two hexadecimal characters
+        hex[i * 2] = hexChars[(raw[i] >> 4) & 0xF]; // High nibble
+        hex[i * 2 + 1] = hexChars[raw[i] & 0xF];    // Low nibble
+        i++;
+    }
+    hex[i * 2] = '\0'; // Null-terminate the hex string
 }
