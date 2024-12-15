@@ -127,9 +127,12 @@ int __file_set_content(file_t* file, const char* data, const size_t size) {
     const int r = write(file->fd, data, size);
     lseek(file->fd, 0, SEEK_SET);
 
+    if (r == -1)
+        return 0;
+
     file->size = r;
 
-    return r > 0;
+    return r;
 }
 
 int __file_append_content(file_t* file, const char* data, const size_t size) {

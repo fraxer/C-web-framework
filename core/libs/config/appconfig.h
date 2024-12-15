@@ -7,6 +7,7 @@
 #include "database.h"
 #include "viewstore.h"
 #include "mimetype.h"
+#include "session.h"
 
 typedef struct env_gzip_str {
     char* mimetype;
@@ -52,6 +53,7 @@ typedef struct appconfig {
     atomic_int threads_stop_count;
     atomic_int threads_count;
     env_t env;
+    sessionconfig_t sessionconfig;
     char* path;
     mimetype_t* mimetype;
     array_t* databases;

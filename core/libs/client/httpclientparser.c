@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "helpers.h"
 #include "http1common.h"
 #include "httpclient.h"
 #include "httpclientparser.h"
@@ -301,20 +302,12 @@ int __httpclientparser_set_port(httpclientparser_t* parser) {
 }
 
 int __httpclientparser_set_uri(httpclientparser_t* parser) {
-    size_t length = bufferdata_writed(&parser->buf);
     const char* string = bufferdata_get(&parser->buf);
-
+    size_t length = bufferdata_writed(&parser->buf);
     if (length == 0) {
         string = "/";
         length = 1;
     }
-
-    http1_urlendec_t st = http1_urldecode(string, length);
-    if (st.string == NULL) return 0;
-
-    parser->uri = st.string;
-    string = st.string;
-    length = st.length;
 
     size_t path_point_end = 0;
     size_t ext_point_start = 0;
@@ -344,6 +337,21 @@ int __httpclientparser_set_uri(httpclientparser_t* parser) {
     if (!__httpclientparser_set_ext(parser, &string[ext_point_start], path_point_end - ext_point_start))
         return 0;
 
+    str_t* uri = str_create(parser->path, path_point_end);
+    if (uri == NULL) return 0;
+
+    http1_query_t* query = parser->query;
+    if (query != NULL) str_appendc(uri, '?');
+
+    char* query_str = http1_query_str(parser->query);
+    if (query_str != NULL) {
+        str_append(uri, query_str, strlen(query_str));
+        free(query_str);
+    }
+
+    parser->uri = str_copy(uri);
+    str_free(uri);
+
     return 1;
 }
 
@@ -364,7 +372,7 @@ int __httpclientparser_set_query(httpclientparser_t* parser, const char* string,
 
             stage = VALUE;
 
-            query->key = http1_set_field(&string[point_start], pos - point_start);
+            query->key = urlencode(&string[point_start], pos - point_start);
             if (query->key == NULL) return 0;
 
             point_start = pos + 1;
@@ -372,7 +380,7 @@ int __httpclientparser_set_query(httpclientparser_t* parser, const char* string,
         case '&':
             stage = KEY;
 
-            query->value = http1_set_field(&string[point_start], pos - point_start);
+            query->value = urlencode(&string[point_start], pos - point_start);
             if (query->value == NULL) return 0;
 
             http1_query_t* query_new = http1_query_create(NULL, 0, NULL, 0);
@@ -386,11 +394,11 @@ int __httpclientparser_set_query(httpclientparser_t* parser, const char* string,
             break;
         case '#':
             if (stage == KEY) {
-                query->key = http1_set_field(&string[point_start], pos - point_start);
+                query->key = urlencode(&string[point_start], pos - point_start);
                 if (query->key == NULL) return 0;
             }
             else if (stage == VALUE) {
-                query->value = http1_set_field(&string[point_start], pos - point_start);
+                query->value = urlencode(&string[point_start], pos - point_start);
                 if (query->value == NULL) return 0;
             }
 
@@ -399,14 +407,14 @@ int __httpclientparser_set_query(httpclientparser_t* parser, const char* string,
     }
 
     if (stage == KEY) {
-        query->key = http1_set_field(&string[point_start], pos - point_start);
+        query->key = urlencode(&string[point_start], pos - point_start);
         if (query->key == NULL) return 0;
 
         query->value = http1_set_field("", 1);
         if (query->value == NULL) return 0;
     }
     else if (stage == VALUE) {
-        query->value = http1_set_field(&string[point_start], pos - point_start);
+        query->value = urlencode(&string[point_start], pos - point_start);
         if (query->value == NULL) return 0;
     }
 

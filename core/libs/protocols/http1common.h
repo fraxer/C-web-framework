@@ -82,11 +82,6 @@ typedef struct http1_payload {
     http1_payload_type_e type;
 } http1_payload_t;
 
-typedef struct http1_urlendec {
-    char* string;
-    size_t length;
-} http1_urlendec_t;
-
 http1_header_t* http1_header_create(const char*, size_t, const char*, size_t);
 void http1_header_free(http1_header_t*);
 void http1_headers_free(http1_header_t*);
@@ -95,6 +90,7 @@ http1_header_t* http1_header_delete(http1_header_t*, const char*);
 http1_query_t* http1_query_create(const char*, size_t, const char*, size_t);
 void http1_query_free(http1_query_t*);
 void http1_queries_free(http1_query_t*);
+char* http1_query_str(http1_query_t*);
 
 char* http1_set_field(const char*, size_t);
 
@@ -102,9 +98,6 @@ http1_payloadpart_t* http1_payloadpart_create();
 void http1_payloadpart_free(http1_payloadpart_t*);
 http1_payloadfield_t* http1_payloadfield_create();
 void http1_payloadfield_free(http1_payloadfield_t*);
-
-http1_urlendec_t http1_urlencode(const char*, size_t);
-http1_urlendec_t http1_urldecode(const char*, size_t);
 
 http1_cookie_t* http1_cookie_create();
 void http1_cookie_free(http1_cookie_t*);

@@ -1,25 +1,34 @@
- #include <openssl/evp.h>
- #include <openssl/hmac.h>
- 
- #include "appconfig.h"
- #include "base64.h"
- #include "helpers.h"
- #include "mimetype.h"
- #include "storages3.h"
- #include "httpclient.h"
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
+#include <libxml/parser.h>
+#include <libxml/tree.h>
 
-void __storages3_free(void* storage);
-file_t __storages3_file_get(void* storage, const char* path);
-int __storages3_file_put(void* storage, const file_t* file, const char* path);
-int __storages3_file_content_put(void* storage, const file_content_t* file_content, const char* path);
-int __storages3_file_remove(void* storage, const char* path);
-int __storages3_file_exist(void* storage, const char* path);
-int __storages3_create_signature(storages3_t* storage, const char* data, char* result);
-char* __storages3_create_uri(storages3_t* storage, const char* path);
-char* __storages3_create_url(storages3_t* storage, const char* uri);
-char* __storages3_create_date();
-char* __storages3_create_signdata(const char* method, const char* mimetype, const char* date, const char* uri);
-char* __storages3_create_authtoken(storages3_t* storage, const char* method, const char* mimetype, const char* date, const char* uri);
+#include "log.h"
+#include "appconfig.h"
+#include "base64.h"
+#include "helpers.h"
+#include "mimetype.h"
+#include "storages3.h"
+#include "httpclient.h"
+
+static void __storages3_free(void* storage);
+static file_t __storages3_file_get(void* storage, const char* path);
+static int __storages3_file_put(void* storage, const file_t* file, const char* path);
+static int __storages3_file_content_put(void* storage, const file_content_t* file_content, const char* path);
+static int __storages3_file_remove(void* storage, const char* path);
+static int __storages3_file_exist(void* storage, const char* path);
+static array_t* __storages3_file_list(void* storage, const char* path);
+static int __storages3_create_signature(storages3_t* storage, const char* data, char* result);
+static char* __storages3_create_uri(storages3_t* storage, const char* path_format, ...);
+static char* __storages3_create_url(storages3_t* storage, const char* uri);
+static char* __storages3_create_date();
+static char* __storages3_create_signdata(const char* method, const char* mimetype, const char* date, const char* uri);
+static char* __storages3_create_authtoken(storages3_t* storage, const char* method, const char* mimetype, const char* date, const char* uri);
+static char* __storages3_create_authtoken2(storages3_t* storage, httpclient_t* client, const char* method, const char* date, const char* payload_hash);
+static int __host_str(storages3_t* storage, char* string);
+static void __get_amz_date(char* date_str, size_t date_size);
+static void __get_short_date(char* short_date, size_t short_date_size);
+static int __file_sha256(const int fd, unsigned char* hash);
 
 storages3_t* storage_create_s3(const char* storage_name, const char* access_id, const char* access_secret, const char* protocol, const char* host, const char* port, const char* bucket) {
     storages3_t* storage = malloc(sizeof * storage);
@@ -42,6 +51,7 @@ storages3_t* storage_create_s3(const char* storage_name, const char* access_id, 
     storage->base.file_content_put = __storages3_file_content_put;
     storage->base.file_remove = __storages3_file_remove;
     storage->base.file_exist = __storages3_file_exist;
+    storage->base.file_list = __storages3_file_list;
 
     return storage;
 }
@@ -55,10 +65,9 @@ file_t __storages3_file_get(void* storage, const char* path) {
     file_t result = file_alloc();
 
     const char* method = "GET";
-    const char* mimetype = "";
     char* uri = NULL;
     char* url = NULL;
-    char* date = NULL;
+    // char* date = NULL;
     char* authorization = NULL;
     httpclient_t* client = NULL;
 
@@ -68,11 +77,11 @@ file_t __storages3_file_get(void* storage, const char* path) {
     url = __storages3_create_url(s, uri);
     if (url == NULL) goto failed;
 
-    date = __storages3_create_date();
-    if (date == NULL) goto failed;
+    // date = __storages3_create_date();
+    // if (date == NULL) goto failed;
 
-    authorization = __storages3_create_authtoken(s, method, mimetype, date, uri);
-    if (authorization == NULL) goto failed;
+    // authorization = __storages3_create_authtoken(s, method, mimetype, date, uri);
+    // if (authorization == NULL) goto failed;
 
     const int timeout = 3;
     client = httpclient_init(ROUTE_GET, url, timeout);
@@ -80,8 +89,19 @@ file_t __storages3_file_get(void* storage, const char* path) {
         goto failed;
 
     http1request_t* req = client->request;
-    req->header_add(req, "Date", date);
+
+    const char* payload_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    char amz_date[64];
+    __get_amz_date(amz_date, sizeof(amz_date));
+    authorization = __storages3_create_authtoken2(s, client, method, amz_date, payload_hash);
+    if (authorization == NULL) goto failed;
+
     req->header_add(req, "Authorization", authorization);
+    req->header_add(req, "x-amz-content-sha256", payload_hash);
+    req->header_add(req, "x-amz-date", amz_date);
+
+    // req->header_add(req, "Date", date);
+    // req->header_add(req, "Authorization", authorization);
 
     http1response_t* res = client->send(client);
     if (!res)
@@ -106,7 +126,7 @@ file_t __storages3_file_get(void* storage, const char* path) {
 
     if (uri != NULL) free(uri);
     if (url != NULL) free(url);
-    if (date != NULL) free(date);
+    // if (date != NULL) free(date);
     if (authorization != NULL) free(authorization);
     if (client != NULL) client->free(client);
 
@@ -135,7 +155,7 @@ int __storages3_file_content_put(void* storage, const file_content_t* file_conte
 
     char* uri = NULL;
     char* url = NULL;
-    char* date = NULL;
+    // char* date = NULL;
     char* authorization = NULL;
     httpclient_t* client =  NULL;
 
@@ -145,11 +165,11 @@ int __storages3_file_content_put(void* storage, const file_content_t* file_conte
     url = __storages3_create_url(s, uri);
     if (url == NULL) goto failed;
 
-    date = __storages3_create_date();
-    if (date == NULL) goto failed;
+    // date = __storages3_create_date();
+    // if (date == NULL) goto failed;
 
-    authorization = __storages3_create_authtoken(s, method, mimetype, date, uri);
-    if (authorization == NULL) goto failed;
+    // authorization = __storages3_create_authtoken(s, method, mimetype, date, uri);
+    // if (authorization == NULL) goto failed;
 
     const int timeout = 3;
     client = httpclient_init(ROUTE_PUT, url, timeout);
@@ -158,11 +178,28 @@ int __storages3_file_content_put(void* storage, const file_content_t* file_conte
 
     http1request_t* req = client->request;
 
+    unsigned char file_content_hash[SHA256_DIGEST_LENGTH];
+    char payload_hash[SHA256_DIGEST_LENGTH * 2 + 1];
+
+    if (!__file_sha256(file_content->fd, file_content_hash))
+        goto failed;
+
+    bytes_to_hex(file_content_hash, SHA256_DIGEST_LENGTH, payload_hash);
+
+    char amz_date[64];
+    __get_amz_date(amz_date, sizeof(amz_date));
+    authorization = __storages3_create_authtoken2(s, client, method, amz_date, payload_hash);
+    if (authorization == NULL) goto failed;
+
+    req->header_add(req, "Authorization", authorization);
+    req->header_add(req, "x-amz-content-sha256", payload_hash);
+    req->header_add(req, "x-amz-date", amz_date);
+
     char content_disposition[512];
     snprintf(content_disposition, sizeof(content_disposition), "attachment; filename=%s", file_content->filename);
     req->header_add(req, "Content-Disposition", content_disposition);
-    req->header_add(req, "Date", date);
-    req->header_add(req, "Authorization", authorization);
+    // req->header_add(req, "Date", date);
+    // req->header_add(req, "Authorization", authorization);
     req->header_add(req, "Content-Type", mimetype);
 
     char filesize[32];
@@ -183,7 +220,7 @@ int __storages3_file_content_put(void* storage, const file_content_t* file_conte
 
     if (uri != NULL) free(uri);
     if (url != NULL) free(url);
-    if (date != NULL) free(date);
+    // if (date != NULL) free(date);
     if (authorization != NULL) free(authorization);
     if (client != NULL) client->free(client);
 
@@ -294,6 +331,70 @@ int __storages3_file_exist(void* storage, const char* path) {
     return result;
 }
 
+array_t* __storages3_file_list(void* storage, const char* path) {
+    storages3_t* s = storage;
+
+    const char* method = "GET";
+    char* uri = NULL;
+    char* url = NULL;
+    char* date = NULL;
+    char* authorization = NULL;
+    httpclient_t* client = NULL;
+    array_t* list = NULL;
+
+    uri = __storages3_create_uri(s, "?delimiter=/&max-keys=1000&prefix=%s", path);
+    if (uri == NULL) goto failed;
+
+    url = __storages3_create_url(s, uri);
+    if (url == NULL) goto failed;
+
+    date = __storages3_create_date();
+    if (date == NULL) goto failed;
+
+    const int timeout = 3;
+    client = httpclient_init(ROUTE_GET, url, timeout);
+    if (client == NULL) goto failed;
+
+    http1request_t* req = client->request;
+
+    const char* payload_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    char amz_date[64];
+    __get_amz_date(amz_date, sizeof(amz_date));
+    authorization = __storages3_create_authtoken2(s, client, method, amz_date, payload_hash);
+    if (authorization == NULL) goto failed;
+
+    req->header_add(req, "Authorization", authorization);
+    req->header_add(req, "x-amz-content-sha256", payload_hash);
+    req->header_add(req, "x-amz-date", amz_date);
+
+    http1response_t* res = client->send(client);
+    if (!res)
+        goto failed;
+    if (res->status_code != 200)
+        goto failed;
+
+    list = array_create();
+    if (list == NULL) goto failed;
+
+    char* payload = res->payload(res);
+
+    if (!parse_s3_response(payload)) {
+        goto failed;
+    }
+
+    // parse file list
+
+    failed:
+
+    if (uri != NULL) free(uri);
+    if (url != NULL) free(url);
+    if (date != NULL) free(date);
+    if (authorization != NULL) free(authorization);
+    if (client != NULL) client->free(client);
+
+    return list;
+}
+
 int __storages3_create_signature(storages3_t* storage, const char* data, char* result) {
     unsigned char out[EVP_MAX_MD_SIZE];
     unsigned int out_len = 0;
@@ -305,7 +406,13 @@ int __storages3_create_signature(storages3_t* storage, const char* data, char* r
     return base64_encode(result, (const char*)out, out_len);
 }
 
-char* __storages3_create_uri(storages3_t* storage, const char* path) {
+char* __storages3_create_uri(storages3_t* storage, const char* path_format, ...) {
+    char path[PATH_MAX];
+    va_list args;
+    va_start(args, path_format);
+    vsnprintf(path, sizeof(path), path_format, args);
+    va_end(args);
+
     size_t uri_length = strlen(storage->bucket) + strlen(path) + 2;
     char* uri = malloc(uri_length + 1);
     if (uri == NULL) return NULL;
@@ -331,6 +438,14 @@ char* __storages3_create_url(storages3_t* storage, const char* uri) {
     return url;
 }
 
+/**
+ * Creates a date string in the format "Day, DD Mon YYYY HH:MM:SS ±HHMM".
+ * The function allocates memory for the date string, which must be freed
+ * by the caller. The date string includes the current local time with
+ * an appended timezone offset.
+ *
+ * @return A pointer to the allocated date string, or NULL if memory allocation fails.
+ */
 char* __storages3_create_date() {
     char* date = malloc(sizeof * date * 32);
     if (date == NULL) return NULL;
@@ -382,4 +497,261 @@ char* __storages3_create_authtoken(storages3_t* storage, const char* method, con
     free(data);
 
     return result;
+}
+
+
+
+int __host_str(storages3_t* storage, char* string) {
+    if (strlen(storage->host) + strlen(storage->port) > NAME_MAX - 2)
+        return 0;
+
+    strcpy(string, storage->host);
+
+    if (storage->port[0] != 0) {
+        strcat(string, ":");
+        strcat(string, storage->port);
+    }
+
+    return 1;
+}
+
+void __get_amz_date(char* date_str, size_t date_size) {
+    time_t now = time(NULL);
+    strftime(date_str, date_size, "%Y%m%dT%H%M%SZ", gmtime(&now));
+}
+
+void __get_short_date(char* short_date, size_t short_date_size) {
+    time_t now = time(NULL);
+    strftime(short_date, short_date_size, "%Y%m%d", gmtime(&now));
+}
+
+void calculate_signing_key(const char* secret_key, const char* short_date, const char *region, const char *service, unsigned char* signing_key) {
+    unsigned char k_date[SHA256_DIGEST_LENGTH];
+    unsigned char k_region[SHA256_DIGEST_LENGTH];
+    unsigned char k_service[SHA256_DIGEST_LENGTH];
+    unsigned char k_signing[SHA256_DIGEST_LENGTH];
+
+    char _signing_key[264] = "AWS4";
+    strncat(_signing_key, secret_key, sizeof(_signing_key) - strlen(_signing_key) - 1);
+
+    HMAC(EVP_sha256(), 
+         (unsigned char *)(_signing_key), 
+         strlen(_signing_key), 
+         (unsigned char *)short_date, 
+         strlen(short_date), 
+         (unsigned char *)k_date, NULL);
+    
+    // k_region
+    HMAC(EVP_sha256(), 
+         (unsigned char *)k_date, 
+         SHA256_DIGEST_LENGTH, 
+         (unsigned char *)region, 
+         strlen(region), 
+         (unsigned char *)k_region, NULL);
+    
+    // k_service
+    HMAC(EVP_sha256(), 
+         (unsigned char *)k_region, 
+         SHA256_DIGEST_LENGTH, 
+         (unsigned char *)service, 
+         strlen(service), 
+         (unsigned char *)k_service, NULL);
+    
+    // k_signing
+    HMAC(EVP_sha256(), 
+         (unsigned char *)k_service, 
+         SHA256_DIGEST_LENGTH, 
+         (unsigned char *)"aws4_request", 
+         strlen("aws4_request"), 
+         (unsigned char *)k_signing, NULL);
+    
+    memcpy(signing_key, k_signing, SHA256_DIGEST_LENGTH);
+}
+
+void calculate_signature(const unsigned char* signing_key,const char* string_to_sign,char* signature) {
+    unsigned char signature_bytes[SHA256_DIGEST_LENGTH];
+    
+    HMAC(EVP_sha256(),
+         signing_key,
+         SHA256_DIGEST_LENGTH,
+         (unsigned char*)string_to_sign,
+         strlen(string_to_sign),
+         signature_bytes, NULL);
+    
+    bytes_to_hex(signature_bytes, SHA256_DIGEST_LENGTH, signature);
+}
+
+char* __storages3_create_authtoken2(storages3_t* storage, httpclient_t* client, const char* method, const char* date, const char* payload_hash) {
+    char short_date[64];
+    __get_short_date(short_date, sizeof(short_date));
+    const char *region = "us-east-1";
+    const char *service = "s3";
+
+    char host[NAME_MAX] = {0};
+    if (!__host_str(storage, host)) return NULL;
+
+    char canonical_headers[350];
+    snprintf(canonical_headers, sizeof(canonical_headers), 
+        "host:%s\nx-amz-content-sha256:%s\nx-amz-date:%s\n",
+        host,
+        payload_hash,
+        date
+    );
+
+    const char *signed_headers = "host;x-amz-content-sha256;x-amz-date";
+    httpclientparser_t* parser = client->parser;
+
+    char* query_str = http1_query_str(parser->query);
+
+    char canonical_request[1024];
+    snprintf(canonical_request, 1024, 
+        "%s\n%s\n%s\n%s\n%s\n%s",
+        method,
+        parser->path,
+        query_str != NULL ? query_str : "",
+        canonical_headers,
+        signed_headers,
+        payload_hash
+    );
+
+    if (query_str != NULL)
+        free(query_str);
+
+    unsigned char canonical_request_hash[SHA256_DIGEST_LENGTH];
+    char canonical_request_hash_hex[SHA256_DIGEST_LENGTH * 2 + 1];
+    SHA256((unsigned char *)canonical_request, strlen(canonical_request), canonical_request_hash);
+    bytes_to_hex(canonical_request_hash, SHA256_DIGEST_LENGTH, canonical_request_hash_hex);
+
+    char string_to_sign[1024];
+    snprintf(string_to_sign, 1024,
+        "AWS4-HMAC-SHA256\n%s\n%s/%s/%s/aws4_request\n%s",
+        date,
+        short_date,
+        region,
+        service,
+        canonical_request_hash_hex
+    );
+
+    unsigned char signing_key[SHA256_DIGEST_LENGTH];
+    calculate_signing_key(
+        storage->access_secret,
+        short_date,
+        region,
+        service,
+        signing_key
+    );
+
+    char signature[SHA256_DIGEST_LENGTH * 2 + 1];
+    calculate_signature(
+        signing_key,
+        string_to_sign,
+        signature
+    );
+
+    char* authorization_header = malloc(512);
+    if (authorization_header == NULL) return NULL;
+
+    snprintf(authorization_header, 512, 
+        "AWS4-HMAC-SHA256 Credential=%s/%s/%s/%s/aws4_request,SignedHeaders=%s,Signature=%s", 
+        storage->access_id, 
+        short_date,
+        region,
+        service,
+        signed_headers, 
+        signature
+    );
+
+    return authorization_header;
+}
+
+int __file_sha256(const int fd, unsigned char* hash) {
+    SHA256_CTX sha256;
+    unsigned char buffer[4096];
+    ssize_t bytes_read = 0;
+    int result = 0;
+
+    if (fd == -1) {
+        log_error("__file_sha256: Error opening file fd %d: %s\n", fd, strerror(errno));
+        goto failed;
+    }
+
+    if (SHA256_Init(&sha256) != 1) {
+        log_error("__file_sha256: SHA256 initialization failed\n");
+        goto failed;
+    }
+
+    while ((bytes_read = read(fd, buffer, sizeof(buffer))) > 0) {
+        if (SHA256_Update(&sha256, buffer, bytes_read) != 1) {
+            log_error("__file_sha256: SHA256 update failed\n");
+            goto failed;
+        }
+    }
+
+    if (bytes_read == -1) {
+        log_error("__file_sha256: Error reading file fd %d: %s\n", fd, strerror(errno));
+        goto failed;
+    }
+
+    if (SHA256_Final(hash, &sha256) != 1) {
+        log_error("__file_sha256: SHA256 finalization failed\n");
+        goto failed;
+    }
+
+    result = 1;
+
+    failed:
+
+    lseek(fd, 0, SEEK_SET);
+
+    return result;
+}
+
+int parse_s3_response(const char* response) {
+    // xmlParserCtxtPtr parser = xmlNewParserCtxt();
+    // if (parser == NULL) {
+    //     log_error("Failed to create xml parser\n");
+    //     return 0;
+    // }
+
+    // Parse the response string
+    xmlDocPtr doc = xmlParseMemory(response, strlen(response));
+    if (doc == NULL) {
+        // Handle error
+    }
+
+    // Get the root element
+    xmlNodePtr root = xmlDocGetRootElement(doc);
+    if (root == NULL) {
+        // Handle error
+    }
+
+    // Iterate over the elements
+    xmlNodePtr node = root->children;
+    while (node != NULL) {
+        // Get the element name
+        const char *name = node->name;
+
+        printf("Node key: %s\n", name);
+
+        // Check if the element is a "Contents" element
+        if (strcmp(name, "Contents") == 0) {
+            // Get the "Key" element
+            xmlNodePtr key_node = node->children;
+            while (key_node != NULL) {
+                if (strcmp(key_node->name, "Key") == 0) {
+                    // Get the key value
+                    const char *key = xmlNodeGetContent(key_node);
+                    printf("Key: %s\n", key);
+                    xmlFree(key);
+                }
+                key_node = key_node->next;
+            }
+        }
+
+        node = node->next;
+    }
+
+    // Clean up
+    xmlFreeDoc(doc);
+    // xmlFreeParserCtxt(parser);
 }

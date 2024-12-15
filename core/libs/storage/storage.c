@@ -89,6 +89,17 @@ int storage_file_duplicate(const char* from_storage_name, const char* to_storage
     return result;
 }
 
+array_t* storage_file_list(const char* storage_name, const char* path_format, ...) {
+    storage_t* storage = __storage_find(storage_name);
+    if (storage == NULL)
+        return 0;
+
+    char path[PATH_MAX];
+    STORAGE_BUILD_PATH(path);
+
+    return storage->file_list(storage, path);
+}
+
 void storages_free(storage_t* storage) {
     while (storage != NULL) {
         storage_t* next = storage->next;

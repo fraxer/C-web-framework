@@ -18,6 +18,7 @@
 #include "websockets.h"
 #include "openssl.h"
 #include "mimetype.h"
+#include "session.h"
 #include "storagefs.h"
 #include "storages3.h"
 #include "viewstore.h"
@@ -47,6 +48,7 @@ static int __module_loader_databases_load(appconfig_t* config, const jsontok_t* 
 static int __module_loader_storages_load(appconfig_t* config, const jsontok_t* storages);
 static int __module_loader_mimetype_load(appconfig_t* config, const jsontok_t* mimetypes);
 static int __module_loader_viewstore_load(appconfig_t* config);
+static int __module_loader_sessionconfig_load(appconfig_t* config, const jsontok_t* sessionconfig);
 
 static int __module_loader_http_routes_load(routeloader_lib_t** first_lib, const jsontok_t* token_object, route_t** route);
 static int __module_loader_set_http_route(routeloader_lib_t** first_lib, routeloader_lib_t** last_lib, route_t* route, const jsontok_t* token_object);
@@ -398,6 +400,8 @@ int module_loader_config_load(appconfig_t* config, jsondoc_t* document) {
     if (!__module_loader_mimetype_load(config, json_object_get(root, "mimetypes")))
         return 0;
     if (!__module_loader_viewstore_load(config))
+        return 0;
+    if (!__module_loader_sessionconfig_load(config, json_object_get(root, "sessions")))
         return 0;
 
 
@@ -994,6 +998,98 @@ int __module_loader_viewstore_load(appconfig_t* config) {
     }
 
     return 1;
+}
+
+int __module_loader_sessionconfig_load(appconfig_t* config, const jsontok_t* token_sessions) {
+    if (token_sessions == NULL) return 1;
+    if (!json_is_object(token_sessions)) {
+        log_error("__module_loader_sessionconfig_load: sessions must be object\n");
+        return 0;
+    }
+
+    int result = 0;
+    jsontok_t* token_driver = json_object_get(token_sessions, "driver");
+    if (!json_is_string(token_driver)) {
+        log_error("__module_loader_sessionconfig_load: field driver must be string in sessions section\n");
+        goto failed;
+    }
+
+    const char* driver = json_string(token_driver);
+    if (strcmp(driver, "storage") == 0) {
+        config->sessionconfig.driver = SESSION_TYPE_FS;
+
+        config->sessionconfig.session = sessionfile_init();
+        if (config->sessionconfig.session == NULL) {
+            log_error("__module_loader_sessionconfig_load: can't create sessionfile\n");
+            goto failed;
+        }
+
+        jsontok_t* token_storage_name = json_object_get(token_sessions, "storage_name");
+        if (!json_is_string(token_storage_name)) {
+            log_error("__module_loader_sessionconfig_load: field storage_name must be string in sessions section\n");
+            goto failed;
+        }
+
+        const char* storage_name = json_string(token_storage_name);
+        if (strlen(storage_name) == 0) {
+            log_error("__module_loader_sessionconfig_load: field storage_name must be not empty in sessions section\n");
+            goto failed;
+        }
+
+        strcpy(config->sessionconfig.storage_name, storage_name);
+    }
+    else if (strcmp(driver, "redis") == 0) {
+        config->sessionconfig.driver = SESSION_TYPE_REDIS;
+
+        config->sessionconfig.session = sessionredis_init();
+        if (config->sessionconfig.session == NULL) {
+            log_error("__module_loader_sessionconfig_load: can't create sessionredis\n");
+            goto failed;
+        }
+
+        jsontok_t* token_host_id = json_object_get(token_sessions, "host_id");
+        if (!json_is_string(token_host_id)) {
+            log_error("__module_loader_sessionconfig_load: field host_id must be string in sessions section\n");
+            goto failed;
+        }
+
+        const char* host_id = json_string(token_host_id);
+        if (strlen(host_id) == 0) {
+            log_error("__module_loader_sessionconfig_load: field host_id must be not empty in sessions section\n");
+            goto failed;
+        }
+
+        strcpy(config->sessionconfig.host_id, host_id);
+    }
+    else {
+        log_error("__module_loader_sessionconfig_load: field driver not found in sessions section\n");
+        goto failed;
+    }
+
+    jsontok_t* token_lifetime = json_object_get(token_sessions, "lifetime");
+    if (token_lifetime == NULL) {
+        log_error("__module_loader_sessionconfig_load: field lifetime not found in sessions section\n");
+        goto failed;
+    }
+    if (!json_is_int(token_lifetime)) {
+        log_error("__module_loader_sessionconfig_load: field lifetime must be int in sessions section\n");
+        goto failed;
+    }
+    if (json_int(token_lifetime) <= 0) {
+        log_error("__module_loader_sessionconfig_load: field lifetime must be positive in sessions section\n");
+        goto failed;
+    }
+
+    config->sessionconfig.lifetime = json_int(token_lifetime);
+
+    result = 1;
+
+    failed:
+
+    if (result == 0)
+        sessionconfig_clear(&config->sessionconfig);
+
+    return result;
 }
 
 int __module_loader_http_routes_load(routeloader_lib_t** first_lib, const jsontok_t* token_object, route_t** route) {

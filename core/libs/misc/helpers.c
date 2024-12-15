@@ -10,6 +10,8 @@
 #include "helpers.h"
 
 static int __hex_char_to_int(char c);
+static char __hex_to_byte(char);
+static char __byte_to_hex(char);
 
 int helpers_mkdir(const char* path) {
     if (path == NULL) return 0;
@@ -161,7 +163,7 @@ int __hex_char_to_int(char c) {
     return -1;
 }
 
-int hex_to_raw(const char* hex, unsigned char* raw) {
+int hex_to_bytes(const char* hex, unsigned char* raw) {
     int len = strlen(hex);
     if (len % 2 != 0) {
         log_error("Error: Hex string length must be even\n");
@@ -183,15 +185,87 @@ int hex_to_raw(const char* hex, unsigned char* raw) {
     return 1;
 }
 
-void raw_to_hex(const unsigned char* raw, char* hex) {
+void bytes_to_hex(const unsigned char* raw, size_t raw_length, char* hex) {
     const char* hexChars = "0123456789abcdef";
-    int i = 0;
-
-    while (raw[i] != '\0') {
+    for (size_t i = 0; i < raw_length; i++) {
         // Convert each byte to two hexadecimal characters
         hex[i * 2] = hexChars[(raw[i] >> 4) & 0xF]; // High nibble
         hex[i * 2 + 1] = hexChars[raw[i] & 0xF];    // Low nibble
-        i++;
     }
-    hex[i * 2] = '\0'; // Null-terminate the hex string
+    hex[raw_length * 2] = '\0'; // Null-terminate the hex string
+}
+
+char* urlencode(const char* string, size_t length) {
+    return urlencodel(string, length, NULL);
+}
+
+char* urlencodel(const char* string, size_t length, size_t* output_length) {
+    if (string == NULL) return NULL;
+
+    char* buffer = malloc(length * 3 + 1);
+    if (buffer == NULL) return NULL;
+
+    char* pbuffer = buffer;
+    for (size_t i = 0; i < length; i++) {
+        char ch = string[i];
+
+        if (isalnum(ch) || ch == '-' || ch == '_' || ch == '.' || ch == '~')
+            *pbuffer++ = ch;
+        else if (ch == ' ')
+            *pbuffer++ = '+';
+        else {
+            *pbuffer++ = '%';
+            *pbuffer++ = __byte_to_hex(ch >> 4);
+            *pbuffer++ = __byte_to_hex(ch & 15);
+        }
+    }
+
+    *pbuffer = 0;
+
+    if (output_length != NULL)
+        *output_length = pbuffer - buffer;
+
+    return buffer;
+}
+
+char* urldecode(const char* string, size_t length) {
+    return urldecodel(string, length, NULL);
+}
+
+char* urldecodel(const char* string, size_t length, size_t* output_length) {
+    char* buffer = malloc(length + 1);
+    if (buffer == NULL) return NULL;
+
+    char* pbuffer = buffer;
+    for (size_t i = 0; i < length; i++) {
+        char ch = string[i];
+        if (ch == '%') {
+            if (string[i + 1] && string[i + 2]) {
+                *pbuffer++ = __hex_to_byte(string[i + 1]) << 4 | __hex_to_byte(string[i + 2]);
+                i += 2;
+            }
+        } else if (ch == '+') { 
+            *pbuffer++ = ' ';
+        } else {
+            *pbuffer++ = ch;
+        }
+    }
+
+    *pbuffer = 0;
+
+    if (output_length != NULL)
+        *output_length = pbuffer - buffer;
+
+    return buffer;
+}
+
+char __hex_to_byte(char hex) {
+    return hex <= '9' ? hex - '0' : 
+           hex <= 'F' ? hex - 'A' + 10 : 
+           hex - 'a' + 10;
+}
+
+char __byte_to_hex(char code) {
+    static char hex[] = "0123456789ABCDEF";
+    return hex[code & 0x0F];
 }

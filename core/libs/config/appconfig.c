@@ -48,6 +48,7 @@ appconfig_t* appconfig_create(const char* path) {
     config->storages = NULL;
     config->viewstore = NULL;
     config->server_chain = NULL;
+    memset(&config->sessionconfig, 0, sizeof(config->sessionconfig));
     config->path = strdup(path);
     if (config->path == NULL) {
         log_print("Usage: -c <path to config file>\n", "");
@@ -95,6 +96,8 @@ void appconfig_clear(appconfig_t* config) {
 
     server_chain_destroy(config->server_chain);
     config->server_chain = NULL;
+
+    sessionconfig_clear(&config->sessionconfig);
 }
 
 void appconfig_free(appconfig_t* config) {

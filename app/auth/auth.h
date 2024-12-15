@@ -8,7 +8,7 @@
 
 #define SALT_SIZE 16
 #define HASH_SIZE 32
-#define ITERATIONS 260000
+#define ITERATIONS 140000
 
 int password_hash(const char* password, unsigned char* salt, int salt_size, unsigned char* hash);
 int generate_salt(unsigned char* salt, int size);

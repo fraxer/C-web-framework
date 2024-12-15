@@ -1,21 +1,24 @@
 #define _GNU_SOURCE
 #include <sys/stat.h>
 #include <dirent.h>
+#include <glob.h>
 
-#include "storagefs.h"
+#include "array.h"
 #include "log.h"
+#include "storagefs.h"
 
-void __storagefs_free(void* storage);
-
-file_t __storagefs_file_get(void* storage, const char* path);
-int __storagefs_file_put(void* storage, const file_t* file, const char* path);
-int __storagefs_file_content_put(void* storage, const file_content_t* file_content, const char* path);
-int __storagefs_file_remove(void* storage, const char* path);
-int __storagefs_file_exist(void* storage, const char* path);
-int __storagefs_prepare_fullpath(storagefs_t* storage, const char* relpath, char* fullpath);
-int __storagefs_create_fullpath(const char* path);
-int __storagefs_dir_empty(const char* path);
-int __storagefs_remove_empty_dirs(const char* basepath, const char* path);
+static void __storagefs_free(void* storage);
+static file_t __storagefs_file_get(void* storage, const char* path);
+static int __storagefs_file_put(void* storage, const file_t* file, const char* path);
+static int __storagefs_file_content_put(void* storage, const file_content_t* file_content, const char* path);
+static int __storagefs_file_remove(void* storage, const char* path);
+static int __storagefs_file_exist(void* storage, const char* path);
+static array_t* __storagefs_file_list(void* storage, const char* path);
+static int __storagefs_prepare_fullpath(storagefs_t* storage, const char* relpath, char* fullpath);
+static int __storagefs_create_fullpath(const char* path);
+static int __storagefs_dir_empty(const char* path);
+static int __storagefs_remove_empty_dirs(const char* basepath, const char* path);
+static int __storagefs_pattern_in(const char* path);
 
 storagefs_t* storage_create_fs(const char* storage_name, const char* root) {
     storagefs_t* storage = malloc(sizeof * storage);
@@ -33,6 +36,7 @@ storagefs_t* storage_create_fs(const char* storage_name, const char* root) {
     storage->base.file_content_put = __storagefs_file_content_put;
     storage->base.file_remove = __storagefs_file_remove;
     storage->base.file_exist = __storagefs_file_exist;
+    storage->base.file_list = __storagefs_file_list;
 
     return storage;
 }
@@ -54,6 +58,19 @@ file_t __storagefs_file_get(void* storage, const char* path) {
 
     if (!__storagefs_prepare_fullpath(s, path, fullpath))
         return file_alloc();
+
+    if (__storagefs_pattern_in(path)) {
+        glob_t glob_result;
+        glob_result.gl_pathc = 0;
+        glob_result.gl_pathv = NULL;
+
+        if (glob(fullpath, GLOB_TILDE, NULL, &glob_result) == 0) {
+            if (glob_result.gl_pathc > 0)
+                strcpy(fullpath, glob_result.gl_pathv[0]);
+
+            globfree(&glob_result);
+        }
+    }
 
     return file_open(fullpath, O_RDONLY);
 }
@@ -94,6 +111,9 @@ int __storagefs_file_content_put(void* storage, const file_content_t* file_conte
         unlink(fullpath);
         return 0;
     }
+    if (file_content->size < target_file.size)
+        ftruncate(target_file.fd, file_content->size);
+
     lseek(file_content->fd, 0, SEEK_SET);
 
     target_file.close(&target_file);
@@ -144,6 +164,51 @@ int __storagefs_file_exist(void* storage, const char* path) {
 
     struct stat buffer;   
     return stat(fullpath, &buffer) == 0;
+}
+array_t* __storagefs_file_list(void* storage, const char* path) {
+    if (storage == NULL) return NULL;
+    if (path == NULL) return NULL;
+    if (path[0] == 0) {
+        log_error("Storage fs empty path\n");
+        return NULL;
+    }
+
+    storagefs_t* s = storage;
+    char fullpath[PATH_MAX];
+
+    if (!__storagefs_prepare_fullpath(s, path, fullpath))
+        return NULL;
+
+    DIR* dir = opendir(fullpath);
+    if (dir == NULL) {
+        fprintf(stderr, "Error opening directory %s: %s\n", fullpath, strerror(errno));
+        return NULL;
+    }
+
+    rewinddir(dir);
+
+    array_t* list = array_create();
+    if (list == NULL) {
+        closedir(dir);
+        return NULL;
+    }
+
+    struct dirent* entry = NULL;
+    char rel_filename[PATH_MAX];
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+        
+        const int rel_filename_len = snprintf(rel_filename, sizeof(rel_filename), "%s/%s", path, entry->d_name);
+        if (rel_filename_len < 1)
+            continue;
+
+        array_push_back(list, array_create_stringn(rel_filename, rel_filename_len));
+    }
+
+    closedir(dir);
+
+    return list;
 }
 
 int __storagefs_prepare_fullpath(storagefs_t* storage, const char* relpath, char* fullpath) {
@@ -213,4 +278,8 @@ int __storagefs_remove_empty_dirs(const char* basepath, const char* path) {
     strcpy(_fullpath, path);
 
     return __storagefs_remove_empty_dirs(basepath, dirname(_fullpath));
+}
+
+int __storagefs_pattern_in(const char* path) {
+    return strchr(path, '*') != NULL;
 }

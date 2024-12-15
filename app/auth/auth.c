@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
-#include <openssl/evp.h>  // For PKCS5_PBKDF2_HMAC
-#include <openssl/rand.h> // For generating salt
+#include <openssl/evp.h>
+#include <openssl/rand.h>
 
 #include "helpers.h"
 #include "auth.h"
@@ -41,7 +41,7 @@ int password_hash(const char* password, unsigned char* salt, int salt_size, unsi
  * @return 1 on success, 0 on failure.
  */
 int generate_salt(unsigned char* salt, int size) {
-    return RAND_bytes(salt, size);
+    return RAND_bytes(salt, size) == 1;
 }
 
 /**
@@ -64,10 +64,13 @@ str_t* generate_secret(const char* password) {
     if (!password_hash(password, salt, SALT_SIZE, hash))
         return NULL;
 
-    char hash_hex[HASH_SIZE * 2 + 1];
-    raw_to_hex(hash, hash_hex);
+    char salt_hex[SALT_SIZE * 2 + 1];
+    bytes_to_hex(salt, SALT_SIZE, salt_hex);
 
-    str_t* secret = create_secret(ITERATIONS, hash_hex, (char*)salt);
+    char hash_hex[HASH_SIZE * 2 + 1];
+    bytes_to_hex(hash, HASH_SIZE, hash_hex);
+
+    str_t* secret = create_secret(ITERATIONS, hash_hex, salt_hex);
     if (secret == NULL)
         return NULL;
 
@@ -82,12 +85,12 @@ str_t* generate_secret(const char* password) {
  * separated by the '$' character.
  *
  * @param iterations The number of hash iterations.
- * @param password_hex The password hash in hexadecimal format.
+ * @param hash_hex The password hash in hexadecimal format.
  * @param salt_hex The salt in hexadecimal format.
  *
  * @return A pointer to the created secret string or NULL if an error occurs.
  */
-str_t* create_secret(int iterations, const char* password_hex, const char* salt_hex) {
+str_t* create_secret(int iterations, const char* hash_hex, const char* salt_hex) {
     char str[12] = {0};
     ssize_t size = snprintf(str, sizeof(str), "%d", iterations);
     if (size < 0) return NULL;
@@ -97,9 +100,9 @@ str_t* create_secret(int iterations, const char* password_hex, const char* salt_
 
     str_append(secret, str, size);
     str_appendc(secret, '$');
-    str_append(secret, password_hex, strlen(password_hex));
+    str_append(secret, salt_hex, SALT_SIZE * 2);
     str_appendc(secret, '$');
-    str_append(secret, salt_hex, strlen(salt_hex));
+    str_append(secret, hash_hex, HASH_SIZE * 2);
 
     return secret;
 }
@@ -129,15 +132,15 @@ user_t* authenticate(const char* email, const char* password) {
         return NULL;
 
     unsigned char salt[SALT_SIZE];
-    if (!hex_to_raw(user_salt(user), salt))
+    if (!hex_to_bytes(user_salt(user), salt))
         return NULL;
 
     unsigned char hash[HASH_SIZE];
     if (!password_hash(password, salt, SALT_SIZE, hash))
         return NULL;
 
-    char hash_hex[HASH_SIZE * 2];
-    raw_to_hex(hash, hash_hex);
+    char hash_hex[HASH_SIZE * 2 + 1];
+    bytes_to_hex(hash, HASH_SIZE, hash_hex);
 
     if (strcmp(user_hash(user), hash_hex) != 0)
         return NULL;

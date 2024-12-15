@@ -124,7 +124,7 @@ int validate_password(const char* password) {
     if (lowercase < MIN_LOWERCASE) return 0;
     if (digits < MIN_DIGITS) return 0;
     if (special < MIN_SPECIAL) return 0;
-    if (!__has_repeated_chars(password, 2)) return 0;
+    if (__has_repeated_chars(password, 2)) return 0;
 
     for (int i = 0; COMMON_PATTERNS[i]; i++)
         if (strstr(password, COMMON_PATTERNS[i]))

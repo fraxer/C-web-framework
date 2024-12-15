@@ -8,6 +8,8 @@
 #include "model.h"
 #include "helpers.h"
 #include "auth.h"
+#include "appconfig.h"
+#include "httpmiddlewares.h"
 
 void login(httpctx_t* ctx) {
     const char* email = ctx->request->query(ctx->request, "email");
@@ -24,19 +26,59 @@ void login(httpctx_t* ctx) {
         return;
     }
 
+    jsondoc_t* doc = json_init();
+    jsontok_t* object = json_create_object(doc);
+    json_object_set(object, "user_id", json_create_int(doc, model_int(&user->field.id)));
+
+    char* session_id = session_create(json_stringify(doc));
+    json_free(doc);
+
+    if (session_id == NULL) {
+        ctx->response->data(ctx->response, "Can't save session");
+        model_free(user);
+        return;
+    }
+
+    // char* session_data = session_get(session_id);
+    // if (session_data == NULL) {
+    //     ctx->response->data(ctx->response, "Can't get session data");
+    //     model_free(user);
+    //     return;
+    // }
+
     ctx->response->cookie_add(ctx->response, (cookie_t){
-        .name = "token",
-        .value = user_token(user),
-        .minutes = 60,
+        .name = "session_id",
+        .value = session_id,
+        .minutes = appconfig()->sessionconfig.lifetime / 60,
         .path = "/",
         .secure = 1,
         .http_only = 1,
         .same_site = "Lax"
     });
 
-    ctx->response->data(ctx->response, model_stringify(user));
+    // if (!session_update(session_id, "data")) {
+    //     log_error("Can't update session");
+    // }
+
+    // if (!session_destroy(session_id)) {
+    //     log_error("Can't destroy session");
+    // }
+
+    // free(session_data);
+    free(session_id);
+
+    char* data = model_stringify(user, display_fields("id", "email", "name", "created_at"));
+
+    ctx->response->header_add(ctx->response, "Content-Type", "application/json");
+    ctx->response->data(ctx->response, data);
+
+    // ctx->response->json(ctx->response, data);
+    // ctx->response->jsons(ctx->response, data);
+    // ctx->response->format(ctx->response, data);
+    // ctx->response->model(ctx->response, user, display_fields("id", "email", "name", "created_at"));
 
     model_free(user);
+    free(data);
 }
 
 void registration(httpctx_t* ctx) {
@@ -92,4 +134,12 @@ void registration(httpctx_t* ctx) {
     ctx->response->data(ctx->response, "done");
 
     model_free(user);
+}
+
+void secret_page(httpctx_t* ctx) {
+    middleware(
+        middleware_http_auth(ctx)
+    )
+
+    ctx->response->data(ctx->response, "done");
 }

@@ -14,6 +14,8 @@ void file_create_tmpfile(httpctx_t* ctx) {
 }
 
 void file_get_content(httpctx_t* ctx) {
+    storage_file_list("local_s3", "mypath/");
+
     file_t file = storage_file_get("local", "%s/%s", "/folder/", "/file.txt");
     if (!file.ok) {
         ctx->response->data(ctx->response, "error");
@@ -39,7 +41,7 @@ void file_put_storage(httpctx_t* ctx) {
     file.set_content(&file, str, strlen(str));
 
     const char* result = "done";
-    if (!storage_file_put("local", &file, "folder/%s", file.name))
+    if (!storage_file_put("local_s3", &file, "mypath/%s", file.name))
         result = "can't save file";
 
     ctx->response->data(ctx->response, result);

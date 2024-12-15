@@ -93,8 +93,8 @@ void userupdate(httpctx_t* ctx) {
     // user_set_id(user, 2);
     user_set_name(user, "Александр");
     user_set_email(user, "a@b.c");
-    user_set_enum(user, "V2");
-    user_set_ts(user, "2024-09-22 13:14:15");
+    // user_set_enum(user, "V2");
+    user_set_created_at(user, "2024-09-22 13:14:15");
 
     if (!user_update(user)) {
         ctx->response->status_code = 500;

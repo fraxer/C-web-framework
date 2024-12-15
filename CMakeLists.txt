@@ -20,6 +20,7 @@ find_package(Threads REQUIRED)
 find_package(PCRE REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(LibXml2 REQUIRED)
 
 if(INCLUDE_MYSQL STREQUAL yes)
 	find_package(MySQL)

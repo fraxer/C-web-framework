@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <sys/sendfile.h>
 
+#include "array.h"
 #include "file.h"
 #include "helpers.h"
 
@@ -27,6 +28,7 @@ typedef struct storage {
     int(*file_content_put)(void* storage, const file_content_t* file_content, const char* path);
     int(*file_remove)(void* storage, const char* path);
     int(*file_exist)(void* storage, const char* path);
+    array_t*(*file_list)(void* storage, const char* path);
 
     struct storage* next;
 } storage_t;
@@ -37,6 +39,7 @@ int storage_file_content_put(const char* storage_name, file_content_t* file_cont
 int storage_file_remove(const char* storage_name, const char* path_format, ...);
 int storage_file_exist(const char* storage_name, const char* path_format, ...);
 int storage_file_duplicate(const char* from_storage_name, const char* to_storage_name, const char* path_format, ...);
+array_t* storage_file_list(const char* storage_name, const char* path_format, ...);
 void storages_free(storage_t* storage);
 void storage_merge_slash(char* path);
 

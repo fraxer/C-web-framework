@@ -6,6 +6,6 @@ set(LIB_NAME storage)
 
 add_library(${LIB_NAME} STATIC ${SOURCES})
 
-target_include_directories(${LIB_NAME} PUBLIC .)
+target_include_directories(${LIB_NAME} PUBLIC . ${LIBXML2_INCLUDE_DIR})
 
-target_link_libraries(${LIB_NAME} client config log misc)
+target_link_libraries(${LIB_NAME} client config log misc ${LIBXML2_LIBRARIES})
