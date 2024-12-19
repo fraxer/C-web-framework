@@ -7,18 +7,19 @@
 #include "log.h"
 #include "storagefs.h"
 
-static void __storagefs_free(void* storage);
-static file_t __storagefs_file_get(void* storage, const char* path);
-static int __storagefs_file_put(void* storage, const file_t* file, const char* path);
-static int __storagefs_file_content_put(void* storage, const file_content_t* file_content, const char* path);
-static int __storagefs_file_remove(void* storage, const char* path);
-static int __storagefs_file_exist(void* storage, const char* path);
-static array_t* __storagefs_file_list(void* storage, const char* path);
-static int __storagefs_prepare_fullpath(storagefs_t* storage, const char* relpath, char* fullpath);
-static int __storagefs_create_fullpath(const char* path);
-static int __storagefs_dir_empty(const char* path);
-static int __storagefs_remove_empty_dirs(const char* basepath, const char* path);
-static int __storagefs_pattern_in(const char* path);
+static void __free(void* storage);
+static file_t __file_get(void* storage, const char* path);
+static int __file_put(void* storage, const file_t* file, const char* path);
+static int __file_content_put(void* storage, const file_content_t* file_content, const char* path);
+static int __file_data_put(void* storage, const char* data, const size_t data_size, const char* path);
+static int __file_remove(void* storage, const char* path);
+static int __file_exist(void* storage, const char* path);
+static array_t* __file_list(void* storage, const char* path);
+static int __prepare_fullpath(storagefs_t* storage, const char* relpath, char* fullpath);
+static int __create_fullpath(const char* path);
+static int __dir_empty(const char* path);
+static int __remove_empty_dirs(const char* basepath, const char* path);
+static int __pattern_in(const char* path);
 
 storagefs_t* storage_create_fs(const char* storage_name, const char* root) {
     storagefs_t* storage = malloc(sizeof * storage);
@@ -30,22 +31,23 @@ storagefs_t* storage_create_fs(const char* storage_name, const char* root) {
     strcpy(storage->base.name, storage_name);
     strcpy(storage->root, root);
 
-    storage->base.free = __storagefs_free;
-    storage->base.file_get = __storagefs_file_get;
-    storage->base.file_put = __storagefs_file_put;
-    storage->base.file_content_put = __storagefs_file_content_put;
-    storage->base.file_remove = __storagefs_file_remove;
-    storage->base.file_exist = __storagefs_file_exist;
-    storage->base.file_list = __storagefs_file_list;
+    storage->base.free = __free;
+    storage->base.file_get = __file_get;
+    storage->base.file_put = __file_put;
+    storage->base.file_content_put = __file_content_put;
+    storage->base.file_data_put = __file_data_put;
+    storage->base.file_remove = __file_remove;
+    storage->base.file_exist = __file_exist;
+    storage->base.file_list = __file_list;
 
     return storage;
 }
 
-void __storagefs_free(void* storage) {
+void __free(void* storage) {
     free(storage);
 }
 
-file_t __storagefs_file_get(void* storage, const char* path) {
+file_t __file_get(void* storage, const char* path) {
     if (storage == NULL) return file_alloc();
     if (path == NULL) return file_alloc();
     if (path[0] == 0) {
@@ -56,10 +58,10 @@ file_t __storagefs_file_get(void* storage, const char* path) {
     storagefs_t* s = storage;
     char fullpath[PATH_MAX];
 
-    if (!__storagefs_prepare_fullpath(s, path, fullpath))
+    if (!__prepare_fullpath(s, path, fullpath))
         return file_alloc();
 
-    if (__storagefs_pattern_in(path)) {
+    if (__pattern_in(path)) {
         glob_t glob_result;
         glob_result.gl_pathc = 0;
         glob_result.gl_pathv = NULL;
@@ -75,17 +77,17 @@ file_t __storagefs_file_get(void* storage, const char* path) {
     return file_open(fullpath, O_RDONLY);
 }
 
-int __storagefs_file_put(void* storage, const file_t* file, const char* path) {
+int __file_put(void* storage, const file_t* file, const char* path) {
     if (storage == NULL) return 0;
     if (file == NULL) return 0;
     if (path == NULL) return 0;
 
     file_content_t file_content = file_content_create(file->fd, file->name, 0, file->size);
 
-    return __storagefs_file_content_put(storage, &file_content, path);
+    return __file_content_put(storage, &file_content, path);
 }
 
-int __storagefs_file_content_put(void* storage, const file_content_t* file_content, const char* path) {
+int __file_content_put(void* storage, const file_content_t* file_content, const char* path) {
     if (path[0] == 0) {
         log_error("Storage fs empty path\n");
         return 0;
@@ -95,9 +97,9 @@ int __storagefs_file_content_put(void* storage, const file_content_t* file_conte
     storagefs_t* s = storage;
     char fullpath[PATH_MAX];
 
-    if (!__storagefs_prepare_fullpath(s, path, fullpath))
+    if (!__prepare_fullpath(s, path, fullpath))
         return 0;
-    if (!__storagefs_create_fullpath(fullpath))
+    if (!__create_fullpath(fullpath))
         return 0;
 
     file_t target_file = file_open(fullpath, O_CREAT | O_RDWR);
@@ -121,7 +123,35 @@ int __storagefs_file_content_put(void* storage, const file_content_t* file_conte
     return 1;
 }
 
-int __storagefs_file_remove(void* storage, const char* path) {
+int __file_data_put(void* storage, const char* data, const size_t data_size, const char* path) {
+    if (path[0] == 0) {
+        log_error("Storage fs empty path\n");
+        return 0;
+    }
+    storagefs_t* s = storage;
+    char fullpath[PATH_MAX];
+
+    if (!__prepare_fullpath(s, path, fullpath))
+        return 0;
+    if (!__create_fullpath(fullpath))
+        return 0;
+
+    file_t target_file = file_open(fullpath, O_CREAT | O_RDWR);
+    if (!target_file.ok) return 0;
+
+    if (!target_file.set_content(&target_file, data, data_size)) {
+        log_error("Storage %s write file %s error: %s\n", s->base.name, path, strerror(errno));
+        target_file.close(&target_file);
+        unlink(fullpath);
+        return 0;
+    }
+
+    target_file.close(&target_file);
+
+    return 1;
+}
+
+int __file_remove(void* storage, const char* path) {
     if (storage == NULL) return 0;
     if (path == NULL) return 0;
     if (path[0] == 0) {
@@ -132,7 +162,7 @@ int __storagefs_file_remove(void* storage, const char* path) {
     storagefs_t* s = storage;
     char fullpath[PATH_MAX];
 
-    if (!__storagefs_prepare_fullpath(s, path, fullpath))
+    if (!__prepare_fullpath(s, path, fullpath))
         return 0;
 
     int result = 1;
@@ -143,12 +173,12 @@ int __storagefs_file_remove(void* storage, const char* path) {
 
     char _fullpath[PATH_MAX];
     strcpy(_fullpath, fullpath);
-    __storagefs_remove_empty_dirs(s->root, dirname(_fullpath));
+    __remove_empty_dirs(s->root, dirname(_fullpath));
 
     return result;
 }
 
-int __storagefs_file_exist(void* storage, const char* path) {
+int __file_exist(void* storage, const char* path) {
     if (storage == NULL) return 0;
     if (path == NULL) return 0;
     if (path[0] == 0) {
@@ -159,13 +189,13 @@ int __storagefs_file_exist(void* storage, const char* path) {
     storagefs_t* s = storage;
     char fullpath[PATH_MAX];
 
-    if (!__storagefs_prepare_fullpath(s, path, fullpath))
+    if (!__prepare_fullpath(s, path, fullpath))
         return 0;
 
     struct stat buffer;   
     return stat(fullpath, &buffer) == 0;
 }
-array_t* __storagefs_file_list(void* storage, const char* path) {
+array_t* __file_list(void* storage, const char* path) {
     if (storage == NULL) return NULL;
     if (path == NULL) return NULL;
     if (path[0] == 0) {
@@ -176,7 +206,7 @@ array_t* __storagefs_file_list(void* storage, const char* path) {
     storagefs_t* s = storage;
     char fullpath[PATH_MAX];
 
-    if (!__storagefs_prepare_fullpath(s, path, fullpath))
+    if (!__prepare_fullpath(s, path, fullpath))
         return NULL;
 
     DIR* dir = opendir(fullpath);
@@ -211,7 +241,7 @@ array_t* __storagefs_file_list(void* storage, const char* path) {
     return list;
 }
 
-int __storagefs_prepare_fullpath(storagefs_t* storage, const char* relpath, char* fullpath) {
+int __prepare_fullpath(storagefs_t* storage, const char* relpath, char* fullpath) {
     if (cmpsubstr_lower(relpath, "/../")) {
         log_error("Storage %s restrict /../ in path %s\n", storage->base.name, relpath);
         return 0;
@@ -231,7 +261,7 @@ int __storagefs_prepare_fullpath(storagefs_t* storage, const char* relpath, char
     return 1;
 }
 
-int __storagefs_create_fullpath(const char* path) {
+int __create_fullpath(const char* path) {
     char fullpath[PATH_MAX];
     strcpy(fullpath, path);
 
@@ -244,7 +274,7 @@ int __storagefs_create_fullpath(const char* path) {
     return 1;
 }
 
-int __storagefs_dir_empty(const char* path) {
+int __dir_empty(const char* path) {
     if (path == NULL) return -1;
     if (path[0] == 0) return -1;
 
@@ -266,20 +296,20 @@ int __storagefs_dir_empty(const char* path) {
     return empty;
 }
 
-int __storagefs_remove_empty_dirs(const char* basepath, const char* path) {
+int __remove_empty_dirs(const char* basepath, const char* path) {
     if (path == NULL) return 0;
     if (path[0] == 0) return 0;
     if (strcmp(basepath, path) == 0) return 1;
-    if (!__storagefs_dir_empty(path)) return 1;
+    if (!__dir_empty(path)) return 1;
 
     remove(path);
 
     char _fullpath[PATH_MAX];
     strcpy(_fullpath, path);
 
-    return __storagefs_remove_empty_dirs(basepath, dirname(_fullpath));
+    return __remove_empty_dirs(basepath, dirname(_fullpath));
 }
 
-int __storagefs_pattern_in(const char* path) {
+int __pattern_in(const char* path) {
     return strchr(path, '*') != NULL;
 }

@@ -35,18 +35,8 @@ char* __create(const char* data) {
         return NULL;
     }
 
-    file_t file = file_create_tmp(session_id);
-    if (!file.ok) {
-        log_error("sessionfile__create: file_create_tmp failed\n");
-        return NULL;
-    }
-
-    file.set_content(&file, data, strlen(data));
-
-    if (!storage_file_put(appconfig()->sessionconfig.storage_name, &file, "%s/%s", __folder, session_id))
-        log_error("sessionfile__create: storage_file_put failed\n");
-
-    file.close(&file);
+    if (!storage_file_data_put(appconfig()->sessionconfig.storage_name, data, strlen(data), "%s/%s", __folder, session_id))
+        log_error("sessionfile__create: storage_file_data_put failed\n");
 
     return session_id;
 }
@@ -68,31 +58,19 @@ int __update(const char* session_id, const char* data) {
     file_t file = storage_file_get(appconfig()->sessionconfig.storage_name, "%s/%s", __folder, session_id);
     if (!file.ok) return 0;
 
-    int res = 0;
-    file_t tmp_file = file_create_tmp(session_id);
-    if (!tmp_file.ok) {
-        log_error("sessionfile__update: file_create_tmp failed\n");
-        goto failed;
-    }
+    const int expired = __expired(file.fd);
 
-    if (__expired(file.fd))
-        goto failed;
-
-    tmp_file.set_content(&tmp_file, data, strlen(data));
-
-    if (!storage_file_put(appconfig()->sessionconfig.storage_name, &tmp_file, "%s/%s", __folder, session_id)) {
-        log_error("sessionfile__update: storage_file_put failed\n");
-        goto failed;
-    }
-
-    res = 1;
-
-    failed:
-
-    tmp_file.close(&tmp_file);
     file.close(&file);
 
-    return res;
+    if (expired)
+        return 0;
+
+    if (!storage_file_data_put(appconfig()->sessionconfig.storage_name, data, strlen(data), "%s/%s", __folder, session_id)) {
+        log_error("sessionfile__update: storage_file_data_put failed\n");
+        return 0;
+    }
+
+    return 1;
 }
 
 int __destroy(const char* session_id) {

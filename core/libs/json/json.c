@@ -902,6 +902,12 @@ const char* json_stringify(jsondoc_t* document) {
     return str_get(&document->stringify.string);
 }
 
+size_t json_stringify_size(jsondoc_t* document) {
+    if (document == NULL) return 0;
+
+    return str_size(&document->stringify.string);
+}
+
 char* json_stringify_detach(jsondoc_t* document) {
     if (document == NULL) return NULL;
 
