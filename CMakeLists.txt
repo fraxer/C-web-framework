@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12.4)
 
 project(cpdy LANGUAGES C)
 
-set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/core/cmake)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/exec")
 
 add_compile_options(-fPIC)
