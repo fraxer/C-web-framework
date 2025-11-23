@@ -162,10 +162,12 @@ config.json                       # Application configuration
 
 ```c
 #include "http.h"
+#include "query.h"
 
 void my_handler(httpctx_t* ctx) {
     // Get query parameter
-    const char* name = ctx->request->query(ctx->request, "name");
+    int ok = 0;
+    const char* name = query_param_char(ctx->request, "name", &ok);
 
     // Get JSON from request body
     json_doc_t* doc = ctx->request->get_payload_json(ctx->request);

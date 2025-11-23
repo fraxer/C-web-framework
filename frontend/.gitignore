@@ -1,0 +1,13 @@
+.DS_Store
+.idea
+.temp
+.vite_opt_cache
+.vscode
+package-lock.json
+
+dist
+cache
+temp
+examples-temp
+node_modules
+pnpm-global
