@@ -1,6 +1,6 @@
 #include <linux/limits.h>
 
-#include "http1.h"
+#include "http.h"
 #include "websockets.h"
 #include "log.h"
 #include "json.h"
@@ -11,7 +11,7 @@
 #include "auth.h"
 
 void get(httpctx_t* ctx) {
-    ctx->response->cookie_add(ctx->response, (cookie_t){
+    ctx->response->add_cookie(ctx->response, (cookie_t){
         .name = "mytoken",
         .value = "token_value",
         .seconds = 3600,
@@ -21,51 +21,51 @@ void get(httpctx_t* ctx) {
         .same_site = "Lax"
     });
 
-    ctx->response->data(ctx->response, "done");
+    ctx->response->send_data(ctx->response, "done");
 }
 
 void post_urlencoded(httpctx_t* ctx) {
-    char* data = ctx->request->payloadf(ctx->request, "key1");
+    char* data = ctx->request->get_payloadf(ctx->request, "key1");
 
     if (data == NULL) {
-        ctx->response->data(ctx->response, "payload empty");
+        ctx->response->send_data(ctx->response, "payload empty");
         return;
     }
 
-    ctx->response->data(ctx->response, data);
+    ctx->response->send_data(ctx->response, data);
     free(data);
 }
 
 void post_formdata(httpctx_t* ctx) {
-    char* data = ctx->request->payloadf(ctx->request, "key");
+    char* data = ctx->request->get_payloadf(ctx->request, "key");
 
     if (data == NULL) {
-        ctx->response->data(ctx->response, "payload empty");
+        ctx->response->send_data(ctx->response, "payload empty");
         return;
     }
 
-    ctx->response->data(ctx->response, data);
+    ctx->response->send_data(ctx->response, data);
     free(data);
 }
 
 void post(httpctx_t* ctx) {
-    jsondoc_t* document = ctx->request->payload_json(ctx->request);
-    if (!json_ok(document)) {
-        ctx->response->data(ctx->response, json_error(document));
+    json_doc_t* document = ctx->request->get_payload_json(ctx->request);
+    if (document == NULL) {
+        ctx->response->send_data(ctx->response, "Payload invalid");
         json_free(document);
         return;
     }
 
-    jsontok_t* object = json_root(document);
+    json_token_t* object = json_root(document);
     if (!json_is_object(object)) {
-        ctx->response->data(ctx->response, "is not object");
+        ctx->response->send_data(ctx->response, "is not object");
         return;
     }
 
-    json_object_set(object, "mykey", json_create_string(document, "Hello"));
+    json_object_set(object, "mykey", json_create_string("Hello"));
 
-    ctx->response->header_add(ctx->response, "Content-Type", "application/json");
-    ctx->response->data(ctx->response, json_stringify(document));
+    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
+    ctx->response->send_data(ctx->response, json_stringify(document));
 
     json_free(document);
 }
@@ -75,18 +75,9 @@ void websocket(httpctx_t* ctx) {
 }
 
 void mysql(httpctx_t* ctx) {
-    dbinstance_t* dbinst = dbinstance("mysql");
-
-    if (dbinst == NULL) {
-        ctx->response->data(ctx->response, "db not found");
-        return;
-    }
-
-    dbresult_t* result = dbqueryf(dbinst, "select * from check_site ;select * from migration;", NULL);
-    dbinstance_free(dbinst);
-
+    dbresult_t* result = dbqueryf("mysql", "select * from check_site ;select * from migration;", NULL);
     if (!dbresult_ok(result)) {
-        ctx->response->data(ctx->response, "query error");
+        ctx->response->send_data(ctx->response, "query error");
         dbresult_free(result);
         return;
     }
@@ -150,18 +141,12 @@ void mysql(httpctx_t* ctx) {
         strcat(str, field->value);
     }
 
-    ctx->response->data(ctx->response, str);
+    ctx->response->send_data(ctx->response, str);
 
     dbresult_free(result);
 }
 
 void pg(httpctx_t* ctx) {
-    dbinstance_t* dbinst = dbinstance("postgresql");
-    if (dbinst == NULL) {
-        ctx->response->data(ctx->response, "db not found");
-        return;
-    }
-
     // mparams_create_array(arr,
     //     // mparam_int(id, 1235),
     //     mparam_text(name, "John' Doe 2"),
@@ -218,7 +203,13 @@ void pg(httpctx_t* ctx) {
 
     array_t* fields_arr = array_create_strings("id", "name", "email");
 
-    mparams_create_array(arr,
+    array_t* arr = array_create();
+    if (arr == NULL) {
+        ctx->response->status_code = 500;
+        ctx->response->send_data(ctx->response, "error");
+        return;
+    }
+    mparams_fill_array(arr,
         mparam_array(fields, fields_arr),
         mparam_text(scheme, "public"),
         mparam_text(table, "user"),
@@ -227,16 +218,14 @@ void pg(httpctx_t* ctx) {
         mparam_array(emails, email_arr)
     )
 
-    dbresult_t* result = dbquery(dbinst, "select @list__fields from @scheme.@table where id in (:list__id) AND email in (:list__emails)", arr);
+    dbresult_t* result = dbquery("postgresql", "select @list__fields from @scheme.@table where id in (:list__id) ", arr);
     array_free(arr);
     array_free(email_arr);
     array_free(id_arr);
     array_free(fields_arr);
 
-    dbinstance_free(dbinst);
-
     if (!dbresult_ok(result)) {
-        ctx->response->data(ctx->response, "query error");
+        ctx->response->send_data(ctx->response, "query error");
         dbresult_free(result);
         return;
     }
@@ -251,31 +240,22 @@ void pg(httpctx_t* ctx) {
         printf("\n");
     }
 
-    ctx->response->data(ctx->response, "done");
+    ctx->response->send_data(ctx->response, "done");
 
     dbresult_free(result);
 }
 
 void redis(httpctx_t* ctx) {
-    dbinstance_t* dbinst = dbinstance("redis.r1");
-    if (dbinst == NULL) {
-        ctx->response->data(ctx->response, "db not found");
-        return;
-    }
-
-    // dbresult_t* result = dbqueryf(dbinst, "SET testkey123 123456");
-    dbresult_t* result = dbqueryf(dbinst, "GET testkey123");
-
-    dbinstance_free(dbinst);
-
+    // dbresult_t* result = dbqueryf("redis.r1", "SET testkey123 123456");
+    dbresult_t* result = dbqueryf("redis.r1", "GET testkey123");
     if (!dbresult_ok(result)) {
-        ctx->response->data(ctx->response, "error");
+        ctx->response->send_data(ctx->response, "error");
         goto failed;
     }
 
     const db_table_cell_t* field = dbresult_field(result, NULL);
 
-    ctx->response->data(ctx->response, field->value);
+    ctx->response->send_data(ctx->response, field->value);
 
     failed:
 
@@ -283,33 +263,33 @@ void redis(httpctx_t* ctx) {
 }
 
 void payload(httpctx_t* ctx) {
-    char* payload = ctx->request->payload(ctx->request);
+    char* payload = ctx->request->get_payload(ctx->request);
 
     if (payload == NULL) {
-        ctx->response->data(ctx->response, "Payload not found");
+        ctx->response->send_data(ctx->response, "Payload not found");
         return;
     }
 
-    ctx->response->data(ctx->response, payload);
+    ctx->response->send_data(ctx->response, payload);
 
     free(payload);
 }
 
 void payloadf(httpctx_t* ctx) {
-    char* data = ctx->request->payloadf(ctx->request, "mydata");
-    char* text = ctx->request->payloadf(ctx->request, "mytext");
+    char* data = ctx->request->get_payloadf(ctx->request, "mydata");
+    char* text = ctx->request->get_payloadf(ctx->request, "mytext");
 
     if (data == NULL) {
-        ctx->response->data(ctx->response, "Data not found");
+        ctx->response->send_data(ctx->response, "Data not found");
         goto failed;
     }
 
     if (text == NULL) {
-        ctx->response->data(ctx->response, "Text not found");
+        ctx->response->send_data(ctx->response, "Text not found");
         goto failed;
     }
 
-    ctx->response->data(ctx->response, text);
+    ctx->response->send_data(ctx->response, text);
 
     failed:
 
@@ -318,18 +298,20 @@ void payloadf(httpctx_t* ctx) {
 }
 
 void payload_file(httpctx_t* ctx) {
-    file_content_t payload_content = ctx->request->payload_file(ctx->request);
+    file_content_t payload_content = ctx->request->get_payload_file(ctx->request);
     if (!payload_content.ok) {
-        ctx->response->data(ctx->response, "file not found");
+        ctx->response->send_data(ctx->response, "file not found");
         return;
     }
 
+    connection_server_ctx_t* conn_ctx = ctx->request->connection->ctx;
+
     const char* filename = NULL;
     char fullpath[PATH_MAX] = {0};
-    snprintf(fullpath, sizeof(fullpath), "%s/%s", ctx->request->connection->server->root, "testdir");
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", conn_ctx->server->root, "testdir");
     file_t payload_file = payload_content.make_file(&payload_content, fullpath, filename);
     if (!payload_file.ok) {
-        ctx->response->data(ctx->response, "Error save file");
+        ctx->response->send_data(ctx->response, "Error save file");
         return;
     }
 
@@ -337,24 +319,26 @@ void payload_file(httpctx_t* ctx) {
 
     payload_file.close(&payload_file);
 
-    ctx->response->data(ctx->response, data);
+    ctx->response->send_data(ctx->response, data);
 
     free(data);
 }
 
 void payload_filef(httpctx_t* ctx) {
-    file_content_t payload_content = ctx->request->payload_filef(ctx->request, "myfile");
+    file_content_t payload_content = ctx->request->get_payload_filef(ctx->request, "myfile");
     if (!payload_content.ok) {
-        ctx->response->data(ctx->response, "file not found");
+        ctx->response->send_data(ctx->response, "file not found");
         return;
     }
 
+    connection_server_ctx_t* conn_ctx = ctx->request->connection->ctx;
+
     const char* filename = NULL;
     char fullpath[PATH_MAX] = {0};
-    snprintf(fullpath, sizeof(fullpath), "%s/%s", ctx->request->connection->server->root, "testdir");
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", conn_ctx->server->root, "testdir");
     file_t payload_file = payload_content.make_file(&payload_content, fullpath, filename);
     if (!payload_file.ok) {
-        ctx->response->data(ctx->response, "Error save file");
+        ctx->response->send_data(ctx->response, "Error save file");
         return;
     }
 
@@ -362,31 +346,30 @@ void payload_filef(httpctx_t* ctx) {
 
     payload_file.close(&payload_file);
 
-    ctx->response->data(ctx->response, data);
+    ctx->response->send_data(ctx->response, data);
 
     free(data);
 }
 
 void payload_jsonf(httpctx_t* ctx) {
-    jsondoc_t* document = ctx->request->payload_jsonf(ctx->request, "myjson");
-
-    if (!json_ok(document)) {
-        ctx->response->data(ctx->response, json_error(document));
+    json_doc_t* document = ctx->request->get_payload_jsonf(ctx->request, "myjson");
+    if (document == NULL) {
+        ctx->response->send_data(ctx->response, "Payload invalid");
         json_free(document);
         return;
     }
 
-    jsontok_t* object = json_root(document);
+    json_token_t* object = json_root(document);
     if (!json_is_object(object)) {
-        ctx->response->data(ctx->response, "is not object");
+        ctx->response->send_data(ctx->response, "is not object");
         return;
     }
 
-    json_object_set(object, "mykey", json_create_string(document, "Hello"));
+    json_object_set(object, "mykey", json_create_string("Hello"));
 
-    ctx->response->header_add(ctx->response, "Content-Type", "application/json");
+    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
 
-    ctx->response->data(ctx->response, json_stringify(document));
+    ctx->response->send_data(ctx->response, json_stringify(document));
 
     json_free(document);
 }
@@ -394,35 +377,29 @@ void payload_jsonf(httpctx_t* ctx) {
 void template_engine(httpctx_t* ctx) {
     file_t file = storage_file_get("views", "/json.txt");
     if (!file.ok) {
-        ctx->response->data(ctx->response, "Error read json file");
+        ctx->response->send_data(ctx->response, "Error read json file");
         return;
     }
 
     char* data = file.content(&file);
     file.close(&file);
 
-    jsondoc_t* document = json_init();
+    json_doc_t* document = json_parse(data);
     if (document == NULL) {
-        ctx->response->data(ctx->response, "Json init error");
-        free(data);
-        return;
-    }
-
-    if (!json_parse(document, data)) {
-        ctx->response->data(ctx->response, "Json parse error");
+        ctx->response->send_data(ctx->response, "Json parse error");
         free(data);
         return;
     }
 
     free(data);
 
-    jsontok_t* object = json_root(document);
+    json_token_t* object = json_root(document);
     if (!json_is_object(object)) {
-        ctx->response->data(ctx->response, "Document is not object");
+        ctx->response->send_data(ctx->response, "Document is not object");
         return;
     }
 
-    ctx->response->view(ctx->response, document, "views", "/index.tpl");
+    ctx->response->send_view(ctx->response, document, "views", "/index.tpl");
 
     json_free(document);
 }

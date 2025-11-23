@@ -1,4 +1,4 @@
-#include "http1.h"
+#include "http.h"
 #include "log.h"
 #include "model.h"
 #include "auth.h"
@@ -7,28 +7,28 @@
 void session(httpctx_t* ctx) {
     const int user_id = 12;
 
-    jsondoc_t* doc = json_init();
-    jsontok_t* object = json_create_object(doc);
-    json_object_set(object, "user_id", json_create_int(doc, user_id));
+    json_doc_t* doc = json_root_create_object();
+    json_token_t* object = json_root(doc);
+    json_object_set(object, "user_id", json_create_number(user_id));
 
     char* session_id = session_create(json_stringify(doc));
     json_free(doc);
 
     if (session_id == NULL) {
-        ctx->response->data(ctx->response, "Can't create session");
+        ctx->response->send_data(ctx->response, "Can't create session");
         return;
     }
 
     char* session_data = session_get(session_id);
     if (session_data == NULL) {
         free(session_id);
-        ctx->response->data(ctx->response, "Can't get session data");
+        ctx->response->send_data(ctx->response, "Can't get session data");
         return;
     }
 
     free(session_data);
 
-    ctx->response->cookie_add(ctx->response, (cookie_t){
+    ctx->response->add_cookie(ctx->response, (cookie_t){
         .name = "session_id",
         .value = session_id,
         .seconds = appconfig()->sessionconfig.lifetime,
@@ -48,5 +48,5 @@ void session(httpctx_t* ctx) {
 
     free(session_id);
 
-    ctx->response->data(ctx->response, "done");
+    ctx->response->send_data(ctx->response, "done");
 }

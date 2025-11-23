@@ -3,7 +3,7 @@
 
 #include "email_validator.h"
 #include "password_validator.h"
-#include "http1.h"
+#include "http.h"
 #include "user.h"
 
 #define SALT_SIZE 16
