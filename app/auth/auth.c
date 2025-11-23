@@ -95,7 +95,7 @@ str_t* create_secret(int iterations, const char* hash_hex, const char* salt_hex)
     ssize_t size = snprintf(str, sizeof(str), "%d", iterations);
     if (size < 0) return NULL;
 
-    str_t* secret = str_create_empty();
+    str_t* secret = str_create_empty(256);
     if (secret == NULL) return NULL;
 
     str_append(secret, str, size);
@@ -122,7 +122,11 @@ user_t* authenticate(const char* email, const char* password) {
     if (!validate_password(password))
         return NULL;
 
-    mparams_create_array(params,
+    array_t* params = array_create();
+    if (params == NULL)
+        return NULL;
+
+    mparams_fill_array(params,
         mparam_text(email, email)
     );
     user_t* user = user_get(params);
@@ -156,11 +160,15 @@ user_t* authenticate(const char* email, const char* password) {
  * @return User object if authentication is successful, otherwise NULL.
  */
 user_t* authenticate_by_cookie(httpctx_t* ctx) {
-    const char* token = ctx->request->cookie(ctx->request, "token");
+    const char* token = ctx->request->get_cookie(ctx->request, "token");
     if (token == NULL)
         return NULL;
 
-    mparams_create_array(params,
+    array_t* params = array_create();
+    if (params == NULL)
+        return NULL;
+
+    mparams_fill_array(params,
         mparam_text(token, token)
     );
     user_t* user = user_get(params);

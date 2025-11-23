@@ -12,6 +12,7 @@ typedef struct {
         mfield_t id;
         mfield_t email;
         mfield_t name;
+        // mfield_t enm;
         mfield_t created_at;
         mfield_t secret;
     } field;
@@ -27,6 +28,7 @@ user_t* user_get(array_t* params);
 int user_create(user_t* user);
 int user_update(user_t* user);
 int user_delete(user_t* user);
+void user_free(user_t* user);
 
 user_t* user_create_anonymous(void);
 

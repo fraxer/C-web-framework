@@ -1,22 +1,15 @@
 #include "httpcontext.h"
 
-httpctx_t* httpctx_create(void* request, void* response) {
-    httpctx_t* ctx = malloc(sizeof * ctx);
-    if (ctx == NULL) return NULL;
-
+void httpctx_init(httpctx_t* ctx, void* request, void* response) {
     ctx->request = request;
     ctx->response = response;
-    ctx->free = httpctx_free;
-
-    return ctx;
+    ctx->user = NULL;
 }
 
 void httpctx_set_user(httpctx_t* ctx, user_t* user) {
     ctx->user = user;
 }
 
-void httpctx_free(httpctx_t* ctx) {
-    if (ctx == NULL) return;
-
-    free(ctx);
+void httpctx_clear(httpctx_t* ctx) {
+    model_free(ctx->user);
 }

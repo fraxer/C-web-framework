@@ -4,8 +4,6 @@
 #include "db.h"
 #include "userview.h"
 
-static const char* __dbid = "postgresql";
-
 static mfield_t* __first_field(void* arg);
 static int __fields_count(void* arg);
 
@@ -32,7 +30,7 @@ void* userview_instance(void) {
 }
 
 userview_t* userview_get(array_t* params) {
-    return model_one(__dbid, userview_instance, 
+    return model_one(POSTGRESQL, userview_instance, 
         "SELECT "
             "id, "
             "name, "
@@ -47,7 +45,7 @@ userview_t* userview_get(array_t* params) {
 }
 
 array_t* userview_list() {
-    return model_list(__dbid, userview_instance,
+    return model_list(POSTGRESQL, userview_instance,
         "SELECT "
             "id, "
             "name, "
@@ -61,7 +59,7 @@ array_t* userview_list() {
 }
 
 int userview_execute(array_t* params) {
-    const int result = model_execute(__dbid,
+    const int result = dbexec(POSTGRESQL,
         "UPDATE "
             "\"user\" "
         "SET"

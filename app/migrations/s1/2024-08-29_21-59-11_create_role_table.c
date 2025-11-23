@@ -4,24 +4,14 @@
 #include "dbquery.h"
 #include "dbresult.h"
 
-int up(dbinstance_t* dbinst) {
-    dbresult_t* result = dbqueryf(dbinst,
+int up(const char* dbid) {
+    dbresult_t* result = dbqueryf(dbid,
         "CREATE TABLE public.role"
         "("
             "id    bigserial    NOT NULL PRIMARY KEY,"
             "name  varchar(100) NOT NULL DEFAULT ''"
         ")"
     );
-
-    int res = dbresult_ok(result);
-
-    dbresult_free(result);
-
-    return res;
-}
-
-int down(dbinstance_t* dbinst) {
-    dbresult_t* result = dbqueryf(dbinst, "DROP TABLE public.role");
 
     int res = dbresult_ok(result);
 

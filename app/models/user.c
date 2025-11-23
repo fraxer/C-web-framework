@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <string.h>
 
@@ -29,8 +30,8 @@ void* user_instance(void) {
             mfield_text(email, NULL),
             mfield_text(name, NULL),
             // mfield_enum(enm, NULL, "V1", "V2", "V3"),
-            mfield_timestamp(created_at, NULL),
-            mfield_text(secret, NULL)
+            mfield_timestamp(created_at, (tm_t){0}),
+            mfield_text(secret, NULL),
         },
         .table = "\"user\"",
         .primary_key = {
@@ -59,6 +60,16 @@ int user_delete(user_t* user) {
     return model_delete(__dbid, user);
 }
 
+void user_free(user_t* user) {
+    if (user == NULL) return;
+
+    // Wipe sensitive data before model_free
+    explicit_bzero(user->salt, sizeof(user->salt));
+    explicit_bzero(user->hash, sizeof(user->hash));
+    explicit_bzero(user->table, sizeof(user->table));
+
+    model_free(user);
+}
 
 user_t* user_create_anonymous(void) {
     return NULL;

@@ -35,7 +35,7 @@ void mybroadcast_id_free(void* id) {
 
 void mybroadcast_send_data(response_t* response, const char* data, size_t size) {
     websocketsresponse_t* wsresponse = (websocketsresponse_t*)response;
-    wsresponse->textn(wsresponse, data, size);
+    wsresponse->send_textn(wsresponse, data, size);
 }
 
 int mybroadcast_compare(void* sourceStruct, void* targetStruct) {
