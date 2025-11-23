@@ -18,6 +18,7 @@
     "servers": {
         "s1": {
             "domains": [
+                "192.168.1.100",
                 "www.example1.com",
                 "*.example1.com",
                 "(a1|a2|a3).example1.com",
@@ -28,57 +29,71 @@
             "port": 80,
             "root": "/var/www/www.example1.com/web",
             "index": "index.html",
-            "http": {
-                "routes": {
-                    "/": {
-                        "GET": ["<project directory path>/build/exec/handlers/index/libindex.so", "get"]
-                    },
-                    "/wss": {
-                        "GET": ["<project directory path>/build/exec/handlers/index/libindex.so", "websocket"]
-                    },
-                    "/login": {
-                        "GET": ["/home/alex/development/server/build/exec/handlers/auth/lib_auth.so", "login"]
-                    },
-                    "/registration": {
-                        "GET": ["/home/alex/development/server/build/exec/handlers/auth/lib_auth.so", "registration"]
-                    },
-                    "/secret_page": {
-                        "GET": ["/home/alex/development/server/build/exec/handlers/auth/lib_auth.so", "secret_page"]
-                    },
-                    "/file_create_tmpfile": {
-                        "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_create_tmpfile"]
-                    },
-                    "/file_get_content": {
-                        "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_get_content"]
-                    },
-                    "/file_put_storage": {
-                        "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_put_storage"]
-                    },
-                    "/file_get_file_list": {
-                        "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_get_file_list"]
-                    },
-                    "/file_remove_storage": {
-                        "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_remove_storage"]
-                    },
-                    "/file_upload_and_put_storage": {
-                        "POST": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_upload_and_put_storage"]
-                    },
-                    "/file_duplicate_to_storage": {
-                        "GET": ["<project directory path>/build/exec/handlers/files/libfiles.so", "file_duplicate_to_storage"]
-                    }
+            "ratelimits": {
+                "one": {
+                    "burst": 1,
+                    "rate": 0
                 },
+                "two": {
+                    "burst": 15,
+                    "rate": 15
+                }
+            },
+            "http": {
+                "ratelimit": "one",
+                "middlewares": [
+                    "middleware_http_test_header"
+                ],
                 "redirects": {
                     "/section1/(\\d+)/section2/(\\d+)/section3": "/one/{1}/two/{2}/three",
                     "/one/\\d+/two/\\d+/three": "/",
                     "/user": "/persons",
                     "/user(.*)/(\\d)": "/user-{1}-{2}"
+                },
+                "routes": {
+                    "/": {
+                        "GET": { "file": "<project directory path>/build/exec/handlers/index/libindex.so", "function": "get", "ratelimit": "one" }
+                    },
+                    "/wss": {
+                        "GET": { "file": "<project directory path>/build/exec/handlers/index/libindex.so", "function": "websocket" }
+                    },
+                    "/login": {
+                        "GET": { "file": "/home/alex/development/server/build/exec/handlers/auth/lib_auth.so", "function": "login" }
+                    },
+                    "/registration": {
+                        "GET": { "file": "/home/alex/development/server/build/exec/handlers/auth/lib_auth.so", "function": "registration" }
+                    },
+                    "/secret_page": {
+                        "GET": { "file": "/home/alex/development/server/build/exec/handlers/auth/lib_auth.so", "function": "secret_page" }
+                    },
+                    "/file_create_tmpfile": {
+                        "GET": { "file": "<project directory path>/build/exec/handlers/files/libfiles.so", "function": "file_create_tmpfile" }
+                    },
+                    "/file_get_content": {
+                        "GET": { "file": "<project directory path>/build/exec/handlers/files/libfiles.so", "function": "file_get_content" }
+                    },
+                    "/file_put_storage": {
+                        "GET": { "file": "<project directory path>/build/exec/handlers/files/libfiles.so", "function": "file_put_storage" }
+                    },
+                    "/file_get_file_list": {
+                        "GET": { "file": "<project directory path>/build/exec/handlers/files/libfiles.so", "function": "file_get_file_list" }
+                    },
+                    "/file_remove_storage": {
+                        "GET": { "file": "<project directory path>/build/exec/handlers/files/libfiles.so", "function": "file_remove_storage" }
+                    },
+                    "/file_upload_and_put_storage": {
+                        "POST": { "file": "<project directory path>/build/exec/handlers/files/libfiles.so", "function": "file_upload_and_put_storage" }
+                    },
+                    "/file_duplicate_to_storage": {
+                        "GET": { "file": "<project directory path>/build/exec/handlers/files/libfiles.so", "function": "file_duplicate_to_storage" }
+                    }
                 }
             },
             "websockets": {
-                "default": ["<project directory path>/build/exec/handlers/ws/libwsindex.so", "default_"],
+                "default": { "file": "<project directory path>/build/exec/handlers/ws/libwsindex.so", "function": "default_" },
                 "routes": {
                     "/": {
-                        "GET": ["<project directory path>/build/exec/handlers/ws/libwsindex.so", "echo"]
+                        "GET": { "file": "<project directory path>/build/exec/handlers/ws/libwsindex.so", "function": "echo" }
                     }
                 }
             },
@@ -99,7 +114,7 @@
             "http": {
                 "routes": {
                     "/": {
-                        "GET": ["<project directory path>/build/exec/handlers/index/libindex.so", "index"]
+                        "GET": { "file": "<project directory path>/build/exec/handlers/index/libindex.so", "function": "index" }
                     }
                 }
             }
