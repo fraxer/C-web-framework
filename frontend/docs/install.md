@@ -148,6 +148,54 @@ make install
 sudo apt install openssl libssl-dev
 ```
 
+## LibXml2
+
+### Менеджер пакетов
+
+Установка libxml2 из официальных репозиториев выполняется командой:
+
+```bash
+sudo apt install libxml2-dev
+```
+
+### Сборка из исходных файлов
+
+Скачайте архив с официального сайта:
+
+```bash
+wget https://github.com/GNOME/libxml2/releases/download/v2.9.13/libxml2-2.9.13.tar.gz
+```
+
+Распакуйте:
+
+```bash
+tar -zxvf libxml2-2.9.13.tar.gz
+```
+
+Перейдите в распакованную директорию:
+
+```bash
+cd libxml2-2.9.13
+```
+
+Запустите процесс сборки
+
+```bash
+./configure
+```
+
+Запустите процесс установки
+
+```bash
+make
+```
+
+Скопируйте скомпилированные файлы в соответствующие места
+
+```bash
+make install
+```
+
 ## MySQL
 
 ```bash

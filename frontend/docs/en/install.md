@@ -148,6 +148,54 @@ Installing openssl from the official repositories is done with the command:
 sudo apt install openssl libssl-dev
 ```
 
+## LibXml2
+
+### Package Manager
+
+Installing libxml2 from the official repositories is done with the command:
+
+```bash
+sudo apt install libxml2-dev
+```
+
+### Building from source files
+
+Download the archive from the official site:
+
+```bash
+wget https://github.com/GNOME/libxml2/releases/download/v2.9.13/libxml2-2.9.13.tar.gz
+```
+
+Unpack:
+
+```bash
+tar -zxvf libxml2-2.9.13.tar.gz
+```
+
+Change to the unpacked directory:
+
+```bash
+cd libxml2-2.9.13
+```
+
+Start the build process
+
+```bash
+./configure
+```
+
+Start the installation process
+
+```bash
+make
+```
+
+Copy the compiled files to the appropriate locations
+
+```bash
+make install
+```
+
 ## MySQL
 
 ```bash
