@@ -42,6 +42,41 @@ Path to temporary files directory.
 
 List of MIME types for automatic compression. Leave empty if compression is not required.
 
+### log <Badge type="info" text="object"/>
+
+Logging system settings:
+
+```json
+"log": {
+    "enabled": true,
+    "level": "info"
+}
+```
+
+#### enabled <Badge type="info" text="boolean"/>
+
+Enables or disables logging. When `false`, all logging functions will be ignored.
+
+#### level <Badge type="info" text="string"/>
+
+Minimum logging level. Messages with lower priority will be filtered out.
+
+Valid values (from most critical to least critical):
+- `emerg` — system is unusable (priority 0)
+- `alert` — action must be taken immediately (priority 1)
+- `crit` — critical conditions (priority 2)
+- `err` or `error` — error conditions (priority 3)
+- `warning` or `warn` — warning conditions (priority 4)
+- `notice` — normal but significant condition (priority 5)
+- `info` — informational messages (priority 6)
+- `debug` — debug-level messages (priority 7)
+
+::: tip Recommendations
+- **Production:** use `info` or `notice` for balance between useful information and performance
+- **Development:** use `debug` for maximum detailed logging
+- **Critical systems:** use `warning` or `error` for minimal logging of important events only
+:::
+
 ## Section migrations
 
 ### source_directory <Badge type="info" text="string"/>
@@ -308,7 +343,11 @@ MIME type to file extension mapping:
         "buffer_size": 16384,
         "client_max_body_size": 110485760,
         "tmp": "/tmp",
-        "gzip": ["text/html", "text/css", "application/json", "application/javascript"]
+        "gzip": ["text/html", "text/css", "application/json", "application/javascript"],
+        "log": {
+            "enabled": true,
+            "level": "info"
+        }
     },
     "migrations": {
         "source_directory": "/path/to/migrations"

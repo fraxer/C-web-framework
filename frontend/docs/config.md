@@ -42,6 +42,41 @@ description: Полное описание конфигурации C Web Framew
 
 Список MIME-типов для автоматического сжатия. Оставьте пустым, если сжатие не требуется.
 
+### log <Badge type="info" text="объект"/>
+
+Настройки системы логирования:
+
+```json
+"log": {
+    "enabled": true,
+    "level": "info"
+}
+```
+
+#### enabled <Badge type="info" text="boolean"/>
+
+Включает или отключает логирование. При `false` все функции логирования будут игнорироваться.
+
+#### level <Badge type="info" text="string"/>
+
+Минимальный уровень логирования. Сообщения с более низким приоритетом будут отфильтрованы.
+
+Допустимые значения (от наиболее критичных к наименее критичным):
+- `emerg` — система неработоспособна (приоритет 0)
+- `alert` — требуется немедленное действие (приоритет 1)
+- `crit` — критическое состояние (приоритет 2)
+- `err` или `error` — ошибки (приоритет 3)
+- `warning` или `warn` — предупреждения (приоритет 4)
+- `notice` — важные уведомления (приоритет 5)
+- `info` — информационные сообщения (приоритет 6)
+- `debug` — отладочные сообщения (приоритет 7)
+
+::: tip Рекомендации
+- **Production:** используйте `info` или `notice` для баланса между полезной информацией и производительностью
+- **Development:** используйте `debug` для максимально детального логирования
+- **Critical systems:** используйте `warning` или `error` для минимального логирования только важных событий
+:::
+
 ## Секция migrations
 
 ### source_directory <Badge type="info" text="строка"/>
@@ -308,7 +343,11 @@ IP-адрес для прослушивания, например `127.0.0.1`.
         "buffer_size": 16384,
         "client_max_body_size": 110485760,
         "tmp": "/tmp",
-        "gzip": ["text/html", "text/css", "application/json", "application/javascript"]
+        "gzip": ["text/html", "text/css", "application/json", "application/javascript"],
+        "log": {
+            "enabled": true,
+            "level": "info"
+        }
     },
     "migrations": {
         "source_directory": "/path/to/migrations"
