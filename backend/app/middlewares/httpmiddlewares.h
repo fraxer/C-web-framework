@@ -1,7 +1,7 @@
 #ifndef __HTTPMIDDLEWARES__
 #define __HTTPMIDDLEWARES__
 
-#include "httpcontext.h"
+#include "httpctx.h"
 #include "middleware.h"
 
 /**
@@ -34,7 +34,7 @@ int middleware_http_query_param_required(httpctx_t* ctx, char** keys, int size);
  * Authentication middleware.
  * Validates session cookie and loads user data into context.
  * Checks: session_id cookie exists, session is valid, user_id in session, user exists in database.
- * On success, user is available via ctx->user.
+ * On success, user is available via ctx->user_data (cast to user_t*).
  * @param ctx  HTTP context
  * @return 1 if authenticated, 0 on auth failure (stops chain)
  */

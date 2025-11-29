@@ -1,7 +1,7 @@
 #ifndef __WSMIDDLEWARES__
 #define __WSMIDDLEWARES__
 
-#include "wscontext.h"
+#include "wsctx.h"
 #include "middleware.h"
 
 /**
