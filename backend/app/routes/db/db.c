@@ -70,7 +70,7 @@ void prepared_query(httpctx_t* ctx) {
         return;
     }
     mparams_fill_array(params,
-        mparam_int(id, 1),
+        mparam_int(id, user_id),
         mparam_text(email, "admin@admin.admin")
     )
 
