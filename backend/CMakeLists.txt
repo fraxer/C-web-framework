@@ -43,5 +43,11 @@ if(Redis_FOUND AND INCLUDE_REDIS STREQUAL yes)
 	add_definitions(-DRedis_FOUND)
 endif()
 
+# Enable testing support
+option(BUILD_TESTS "Build tests" ON)
+if(BUILD_TESTS)
+    enable_testing()
+endif()
+
 add_subdirectory(core)
 add_subdirectory(app)
