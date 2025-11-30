@@ -1,8 +1,9 @@
 #include "http.h"
 #include "storage.h"
+#include "appconfig.h"
 
 void file_create_tmpfile(httpctx_t* ctx) {
-    file_t file = file_create_tmp("mytmp.txt");
+    file_t file = file_create_tmp("mytmp.txt", env()->main.tmp);
     if (!file.ok) {
         ctx->response->send_data(ctx->response, "error");
         return;
@@ -43,7 +44,7 @@ void file_get_file_list(httpctx_t* ctx) {
 }
 
 void file_put_storage(httpctx_t* ctx) {
-    file_t file = file_create_tmp("file.txt");
+    file_t file = file_create_tmp("file.txt", env()->main.tmp);
     if (!file.ok) {
         ctx->response->send_data(ctx->response, "error");
         return;
