@@ -51,3 +51,29 @@ endif()
 
 add_subdirectory(core)
 add_subdirectory(app)
+
+# Installing executable files and libraries
+install(PROGRAMS
+	${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/cpdy
+	${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/migrate
+	DESTINATION bin
+)
+
+# Installing handlers (.so libraries)
+install(DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/handlers
+	DESTINATION lib/cpdy
+	USE_SOURCE_PERMISSIONS
+	FILES_MATCHING PATTERN "*.so"
+)
+
+# Installing migrations
+install(DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/migrations
+	DESTINATION share/cpdy
+	USE_SOURCE_PERMISSIONS
+)
+
+include(CPack)
+set(CPACK_PACKAGE_NAME "C web framework")
+set(CPACK_PACKAGE_VERSION "1.0.0")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "High-performance C web framework with HTTP/WebSocket support, database integration, and dynamic module loading")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
