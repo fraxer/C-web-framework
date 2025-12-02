@@ -43,9 +43,7 @@ if(Redis_FOUND AND INCLUDE_REDIS STREQUAL yes)
 	add_definitions(-DRedis_FOUND)
 endif()
 
-# Enable testing support
-option(BUILD_TESTS "Build tests" ON)
-if(BUILD_TESTS)
+if(BUILD_TESTS STREQUAL yes)
     enable_testing()
 endif()
 
