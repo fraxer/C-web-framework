@@ -98,6 +98,7 @@ export default defineConfig({
               { text: 'Логирование', link: '/logging' },
               { text: 'SSL-сертификаты', link: '/ssl-certs' },
               { text: 'Горячая перезагрузка', link: '/hot-reload' },
+              { text: 'Планировщик задач', link: '/task-manager' },
             ]
           },
           {
@@ -198,6 +199,7 @@ export default defineConfig({
               { text: 'Logging', link: '/en/logging' },
               { text: 'SSL-certificates', link: '/en/ssl-certs' },
               { text: 'Hot reload', link: '/en/hot-reload' },
+              { text: 'Task manager', link: '/en/task-manager' },
             ]
           },
           {
