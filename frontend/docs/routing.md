@@ -107,6 +107,54 @@ void get_post(httpctx_t* ctx) {
 }
 ```
 
+## Статические файлы
+
+Для маршрутов, которые должны отдавать статические файлы без обработки, используйте параметр `static_file` вместо `file` и `function`:
+
+```json
+"routes": {
+    "/": {
+        "GET": { "static_file": "public/index.html" }
+    },
+    "/favicon.ico": {
+        "GET": { "static_file": "public/favicon.ico" }
+    },
+    "/robots.txt": {
+        "GET": { "static_file": "public/robots.txt" }
+    }
+}
+```
+
+Путь к файлу указывается относительно директории `root` сервера.
+
+### Комбинирование с обработчиками
+
+Статические файлы и обработчики можно комбинировать в одном маршруте для разных методов:
+
+```json
+"/api/docs": {
+    "GET": { "static_file": "public/api-docs.html" },
+    "POST": { "file": "handlers/libapi.so", "function": "update_docs" }
+}
+```
+
+### Rate limiting для статических файлов
+
+К статическим файлам можно применять rate limiting:
+
+```json
+"/downloads/report.pdf": {
+    "GET": {
+        "static_file": "files/report.pdf",
+        "ratelimit": "downloads"
+    }
+}
+```
+
+::: tip Когда использовать static_file
+Используйте `static_file` для файлов, которые не требуют обработки: HTML-страницы, изображения, документы, favicon и т.д. Это эффективнее, чем создавать обработчик для каждого файла.
+:::
+
 ## Middleware
 
 Middleware выполняются перед обработчиком:

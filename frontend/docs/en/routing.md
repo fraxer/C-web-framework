@@ -107,6 +107,54 @@ Supported methods:
 }
 ```
 
+## Static files
+
+For routes that should serve static files without processing, use the `static_file` parameter instead of `file` and `function`:
+
+```json
+"routes": {
+    "/": {
+        "GET": { "static_file": "public/index.html" }
+    },
+    "/favicon.ico": {
+        "GET": { "static_file": "public/favicon.ico" }
+    },
+    "/robots.txt": {
+        "GET": { "static_file": "public/robots.txt" }
+    }
+}
+```
+
+The file path is relative to the server's `root` directory.
+
+### Combining with handlers
+
+Static files and handlers can be combined in the same route for different methods:
+
+```json
+"/api/docs": {
+    "GET": { "static_file": "public/api-docs.html" },
+    "POST": { "file": "handlers/libapi.so", "function": "update_docs" }
+}
+```
+
+### Rate limiting for static files
+
+Rate limiting can be applied to static files:
+
+```json
+"/downloads/report.pdf": {
+    "GET": {
+        "static_file": "files/report.pdf",
+        "ratelimit": "downloads"
+    }
+}
+```
+
+::: tip When to use static_file
+Use `static_file` for files that don't require processing: HTML pages, images, documents, favicon, etc. This is more efficient than creating a handler for each file.
+:::
+
 ## Middleware
 
 Middleware are executed before the handler:
