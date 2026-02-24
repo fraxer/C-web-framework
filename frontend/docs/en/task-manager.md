@@ -27,23 +27,21 @@ Task Manager creates two dedicated threads:
 
 ## Configuration
 
-Tasks are configured in the `task_manager.schedule` section of `config.json`:
+Tasks are configured in the `task_manager` section of `config.json`:
 
 ### Interval Task
 
 ```json
 {
-    "task_manager": {
-        "schedule": [
-            {
-                "name": "cleanup_expired_tokens",
-                "type": "interval",
-                "interval": 5,
-                "file": "/path/to/libmy_tasks.so",
-                "function": "cleanup_task"
-            }
-        ]
-    }
+    "task_manager": [
+        {
+            "name": "cleanup_expired_tokens",
+            "type": "interval",
+            "interval": 5,
+            "file": "/path/to/libmy_tasks.so",
+            "function": "cleanup_task"
+        }
+    ]
 }
 ```
 

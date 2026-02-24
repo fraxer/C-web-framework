@@ -27,23 +27,21 @@ Task Manager создаёт два выделенных потока:
 
 ## Конфигурация
 
-Задачи настраиваются в секции `task_manager.schedule` файла `config.json`:
+Задачи настраиваются в секции `task_manager` файла `config.json`:
 
 ### Интервальная задача
 
 ```json
 {
-    "task_manager": {
-        "schedule": [
-            {
-                "name": "cleanup_expired_tokens",
-                "type": "interval",
-                "interval": 5,
-                "file": "/path/to/libmy_tasks.so",
-                "function": "cleanup_task"
-            }
-        ]
-    }
+    "task_manager": [
+        {
+            "name": "cleanup_expired_tokens",
+            "type": "interval",
+            "interval": 5,
+            "file": "/path/to/libmy_tasks.so",
+            "function": "cleanup_task"
+        }
+    ]
 }
 ```
 

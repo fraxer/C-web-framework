@@ -22,15 +22,15 @@ All of these tools are available through the migrate program, which is compiled 
 To create a new migration, run the following command:
 
 ```bash
-migrate s1 create create_users_table /path/config.json
+migrate create create_users_table /path/config.json ./migrations/s1
 ```
 
-* s1 is the name of the server to which the migration is being applied.
 * create - command to create a new migration.
 * create_users_table - migration name.
 * /path/config.json - path to the configuration file.
+* ./migrations/s1 - directory where the migration file will be created.
 
-The above command will create a new handler in the `migrations/s1` directory with the file name `2023-07-01_20-00-00_create_users_table.c`. The file contains a code template to apply the migration and rollback:
+The above command will create a new handler in the `./migrations/s1` directory with the file name `2023-07-01_20-00-00_create_users_table.c`. The file contains a code template to apply the migration and rollback:
 
 ```C
 #include <stdlib.h>
@@ -83,22 +83,23 @@ int up(const char* dbid) {
 To update the database to the latest structure, you must apply all new migrations using the following command:
 
 ```bash
-migrate s1 up /path/config.json
+migrate up /path/config.json postgresql.p1 s1
 
 # specify all to explicitly apply all migrations
-migrate s1 up all /path/config.json
+migrate up all /path/config.json postgresql.p1 s1
 ```
 
-* s1 is the name of the server to which the migration is being applied.
 * up - command to apply the migration.
-* all - the number of migrations to apply. In this case, everything.
 * /path/config.json - path to the configuration file.
+* postgresql.p1 - database host identifier from the configuration.
+* s1 - server identifier.
+* all - the number of migrations to apply. In this case, everything.
 
 You can apply migrations individually by explicitly specifying the number of migrations to run per call to `migrate`.
 
 ```bash
-migrate s1 up 1 /path/config.json;
-migrate s1 up 3 /path/config.json;
+migrate up 1 /path/config.json postgresql.p1 s1
+migrate up 3 /path/config.json postgresql.p1 s1
 ```
 
 For each migration that was successfully performed, this command will insert a row into the database table named migration, recording the successful migration. This allows the migration tool to identify which migrations have been applied and which have not.
