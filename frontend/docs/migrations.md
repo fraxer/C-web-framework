@@ -35,7 +35,7 @@ migrate create create_users_table /path/config.json ./migrations/s1
 ```C
 #include <stdlib.h>
 
-#include "dbqueryf.h"
+#include "dbquery.h"
 #include "dbresult.h"
 
 int up(const char* dbid) {
@@ -54,7 +54,7 @@ int up(const char* dbid) {
 ```C
 #include <stdlib.h>
 
-#include "dbqueryf.h"
+#include "dbquery.h"
 #include "dbresult.h"
 
 int up(const char* dbid) {
@@ -83,17 +83,18 @@ int up(const char* dbid) {
 Для обновления базы данных до последней структуры, вы должны применить все новые миграции, используя следующую команду:
 
 ```bash
-migrate up /path/config.json postgresql.p1 s1
-
-# укажите all для явного применения всех миграций
+# применить все новые миграции
 migrate up all /path/config.json postgresql.p1 s1
+
+# применить без указания количества (по умолчанию применяется 1 миграция)
+migrate up /path/config.json postgresql.p1 s1
 ```
 
 * up - команда на применение миграции.
+* all - количество миграций, которое нужно применить. В данном случае все.
 * /path/config.json - путь до конфигурационного файла.
 * postgresql.p1 - идентификатор хоста базы данных из конфигурации.
 * s1 - идентификатор сервера.
-* all - количество миграций, которое нужно применить. В данном случае все.
 
 Можно применять миграции по отдельности, указав явно количество миграций для выполнения за вызов `migrate`.
 
@@ -101,6 +102,8 @@ migrate up all /path/config.json postgresql.p1 s1
 migrate up 1 /path/config.json postgresql.p1 s1
 migrate up 3 /path/config.json postgresql.p1 s1
 ```
+
+> Если количество миграций не указано, по умолчанию будет применена 1 миграция.
 
 Для каждой миграции которая была успешно проведена, эта команда будет вставлять строку в таблицу базы данных с именем migration записав успешное проведение миграции. Это позволяет инструменту миграции выявлять какие миграции были применены, а какие - нет.
 

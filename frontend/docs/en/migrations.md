@@ -35,7 +35,7 @@ The above command will create a new handler in the `./migrations/s1` directory w
 ```C
 #include <stdlib.h>
 
-#include "dbqueryf.h"
+#include "dbquery.h"
 #include "dbresult.h"
 
 int up(const char* dbid) {
@@ -54,7 +54,7 @@ In the migration class, you must write code in the up() method when you make cha
 ```C
 #include <stdlib.h>
 
-#include "dbqueryf.h"
+#include "dbquery.h"
 #include "dbresult.h"
 
 int up(const char* dbid) {
@@ -83,17 +83,18 @@ int up(const char* dbid) {
 To update the database to the latest structure, you must apply all new migrations using the following command:
 
 ```bash
-migrate up /path/config.json postgresql.p1 s1
-
-# specify all to explicitly apply all migrations
+# apply all new migrations
 migrate up all /path/config.json postgresql.p1 s1
+
+# apply without specifying count (applies 1 migration by default)
+migrate up /path/config.json postgresql.p1 s1
 ```
 
 * up - command to apply the migration.
+* all - the number of migrations to apply. In this case, everything.
 * /path/config.json - path to the configuration file.
 * postgresql.p1 - database host identifier from the configuration.
 * s1 - server identifier.
-* all - the number of migrations to apply. In this case, everything.
 
 You can apply migrations individually by explicitly specifying the number of migrations to run per call to `migrate`.
 
@@ -101,6 +102,8 @@ You can apply migrations individually by explicitly specifying the number of mig
 migrate up 1 /path/config.json postgresql.p1 s1
 migrate up 3 /path/config.json postgresql.p1 s1
 ```
+
+> If the number of migrations is not specified, 1 migration will be applied by default.
 
 For each migration that was successfully performed, this command will insert a row into the database table named migration, recording the successful migration. This allows the migration tool to identify which migrations have been applied and which have not.
 
