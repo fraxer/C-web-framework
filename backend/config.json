@@ -10,11 +10,34 @@
             "text/html",
             "application/javascript",
             "application/json"
-        ]
+        ],
+        "log": {
+            "enabled": true,
+            "level": "info"
+        },
+        "env": {
+            "refresh_token_expiration": 15552000
+        }
     },
     "migrations": {
         "source_directory": "<project directory path>/app/migrations"
     },
+    "translations": [
+        {
+            "domain": "backend",
+            "path": "/backend/locale"
+        }
+    ],
+    "task_manager": [
+        {
+            "_comment": "Interval task - runs every N seconds",
+            "name": "cleanup_expired_tokens",
+            "type": "interval",
+            "interval": 60,
+            "file": "<project directory path>/build/exec/handlers/tasks/libtasks.so",
+            "function": "cleanup_authorization_codes"
+        }
+    ],
     "servers": {
         "s1": {
             "domains": [
@@ -169,9 +192,21 @@
         }
     },
     "sessions": {
-        "driver": "storage",
-        "storage_name": "sessions",
-        "lifetime": 60
+        "backend": {
+            "driver": "filesystem",
+            "storage_name": "sessions",
+            "secret": "secret"
+        },
+        "scheduler": {
+            "driver": "redis",
+            "host_id": "redis.r1",
+            "secret": "secret"
+        },
+        "doc-editor": {
+            "driver": "database",
+            "host_id": "postgresql.p1",
+            "secret": "secret"
+        }
     },
     "mail": {
         "dkim_private": "/home/alex/dkim_private.pem",

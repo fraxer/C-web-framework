@@ -22,7 +22,7 @@ int middleware_http_query_param_required(httpctx_t *ctx, char **keys, int size) 
     char message[256] = {0};
     int ok = 0;
     for (int i = 0; i < size; i++) {
-        const char* param = query_param_char(ctx->request, keys[i], &ok);
+        const char* param = query_param_char(ctx->request->query_, keys[i], &ok);
         if (!ok)
             return 0;
 
@@ -45,7 +45,7 @@ int middleware_http_auth(httpctx_t *ctx) {
 
     int result = 0;
     json_doc_t* document = NULL;
-    char* session_data = session_get(session_id);
+    char* session_data = session_get("backend", session_id);
     if (session_data == NULL) {
         ctx->response->send_data(ctx->response, "Session not found");
         return 0;
