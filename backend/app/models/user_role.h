@@ -4,13 +4,7 @@
 #include "model.h"
 
 typedef struct {
-    model_t base;
-    struct {
-        mfield_t user_id;
-        mfield_t role_id;
-    } field;
-    char table[64];
-    char* primary_key[2]; // remove or update by id (primary or unique key)
+    model_t record;
 } user_role_t;
 
 void* user_role_instance(void);

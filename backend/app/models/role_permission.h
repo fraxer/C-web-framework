@@ -4,13 +4,7 @@
 #include "model.h"
 
 typedef struct {
-    model_t base;
-    struct {
-        mfield_t role_id;
-        mfield_t permission_id;
-    } field;
-    char table[64];
-    char* primary_key[2]; // remove or update by id (primary or unique key)
+    model_t record;
 } role_permission_t;
 
 void* role_permission_instance(void);
@@ -21,7 +15,7 @@ int role_permission_update(role_permission_t* role_permission);
 int role_permission_delete(role_permission_t* role_permission);
 
 void role_permission_set_role_id(role_permission_t* role_permission, int role_id);
-void role_permission_set_permission_id(role_permission_t* role_permission, int user_id);
+void role_permission_set_permission_id(role_permission_t* role_permission, int permission_id);
 
 int role_permission_role_id(role_permission_t* role_permission);
 int role_permission_permission_id(role_permission_t* role_permission);

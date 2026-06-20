@@ -136,7 +136,7 @@ user_t* authenticate(const char* email, const char* password) {
         return NULL;
 
     unsigned char salt[SALT_SIZE];
-    if (!hex_to_bytes(user_salt(user), salt))
+    if (!hex_to_bytes(user_salt(user), salt, SALT_SIZE))
         return NULL;
 
     unsigned char hash[HASH_SIZE];

@@ -6,26 +6,35 @@
 
 static const char* __dbid = "postgresql";
 
-static mfield_t* __first_field(void* arg);
-static int __fields_count(void* arg);
+enum permissionview_column {
+    PERMISSIONVIEW_COL_ID = 0,
+    PERMISSIONVIEW_COL_NAME,
+    PERMISSIONVIEW_COLUMNS_COUNT
+};
+
+static const mcolumn_t __permissionview_columns[PERMISSIONVIEW_COLUMNS_COUNT] = {
+    [PERMISSIONVIEW_COL_ID]   = { .name = "id",   .type = MODEL_INT, .is_primary = 1 },
+    [PERMISSIONVIEW_COL_NAME] = { .name = "name", .type = MODEL_TEXT },
+};
+
+static const int __permissionview_primary_keys[] = { PERMISSIONVIEW_COL_ID };
+
+static const mschema_t __permissionview_schema = {
+    .table = "permission",
+    .columns = __permissionview_columns,
+    .columns_count = PERMISSIONVIEW_COLUMNS_COUNT,
+    .primary_keys = __permissionview_primary_keys,
+    .primary_keys_count = 1,
+};
 
 void* permissionview_instance(void) {
-    permissionview_t* permission = malloc(sizeof * permission);
-    if (permission == NULL)
+    permissionview_t* permission = calloc(1, sizeof * permission);
+    if (permission == NULL) return NULL;
+
+    if (!model_init(&permission->record, &__permissionview_schema)) {
+        free(permission);
         return NULL;
-
-    permissionview_t st = {
-        .base = {
-            .fields_count = __fields_count,
-            .first_field = __first_field,
-        },
-        .field = {
-            mfield_int(id, 0),
-            mfield_text(name, NULL),
-        }
-    };
-
-    memcpy(permission, &st, sizeof st);
+    }
 
     return permission;
 }
@@ -68,16 +77,10 @@ array_t* permissionview_list(array_t* params) {
     );
 }
 
-mfield_t* __first_field(void* arg) {
-    permissionview_t* permission = arg;
-    if (permission == NULL) return NULL;
-
-    return (void*)&permission->field;
+int permissionview_id(permissionview_t* permission) {
+    return model_int(model_field(&permission->record, PERMISSIONVIEW_COL_ID));
 }
 
-int __fields_count(void* arg) {
-    permissionview_t* permission = arg;
-    if (permission == NULL) return 0;
-
-    return sizeof(permission->field) / sizeof(mfield_t);
+const char* permissionview_name(permissionview_t* permission) {
+    return str_get(model_text(model_field(&permission->record, PERMISSIONVIEW_COL_NAME)));
 }

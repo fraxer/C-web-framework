@@ -7,17 +7,7 @@
 #define USER_HASH_SIZE 64
 
 typedef struct {
-    model_t base;
-    struct {
-        mfield_t id;
-        mfield_t email;
-        mfield_t name;
-        // mfield_t enm;
-        mfield_t created_at;
-        mfield_t secret;
-    } field;
-    char table[64];
-    char* primary_key[1]; // remove or update by id (primary or unique key)
+    model_t record;
     char salt[USER_SALT_SIZE + 1];
     char hash[USER_HASH_SIZE + 1];
 } user_t;

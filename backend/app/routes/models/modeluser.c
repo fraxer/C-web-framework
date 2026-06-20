@@ -40,7 +40,7 @@ void usercreate(httpctx_t* ctx) {
 
 void userget(httpctx_t* ctx) {
     int ok = 0;
-    const int userid = query_param_int(ctx->request, "id", &ok);
+    const int userid = query_param_int(ctx->request->query_, "id", &ok);
     if (!ok) {
         ctx->response->status_code = 400;
         ctx->response->send_data(ctx->response, "id not found in query");

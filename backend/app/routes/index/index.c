@@ -75,7 +75,7 @@ void websocket(httpctx_t* ctx) {
 }
 
 void mysql(httpctx_t* ctx) {
-    dbresult_t* result = dbqueryf("mysql", "select * from check_site ;select * from migration;", NULL);
+    dbresult_t* result = dbquery("mysql", "select * from check_site ;select * from migration;", NULL);
     if (!dbresult_ok(result)) {
         ctx->response->send_data(ctx->response, "query error");
         dbresult_free(result);
@@ -246,8 +246,8 @@ void pg(httpctx_t* ctx) {
 }
 
 void redis(httpctx_t* ctx) {
-    // dbresult_t* result = dbqueryf("redis.r1", "SET testkey123 123456");
-    dbresult_t* result = dbqueryf("redis.r1", "GET testkey123");
+    // dbresult_t* result = dbquery("redis.r1", "SET testkey123 123456", NULL);
+    dbresult_t* result = dbquery("redis.r1", "GET testkey123", NULL);
     if (!dbresult_ok(result)) {
         ctx->response->send_data(ctx->response, "error");
         goto failed;

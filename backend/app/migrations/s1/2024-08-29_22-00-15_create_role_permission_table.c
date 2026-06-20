@@ -5,7 +5,7 @@
 #include "dbresult.h"
 
 int up(const char* dbid) {
-    dbresult_t* result = dbqueryf(dbid,
+    dbresult_t* result = dbquery(dbid,
         "CREATE TABLE public.role_permission"
         "("
             "role_id          bigserial    NOT NULL,"
@@ -13,7 +13,7 @@ int up(const char* dbid) {
 
             "PRIMARY KEY (role_id, permission_id)"
         ")"
-    );
+    , NULL);
 
     int res = dbresult_ok(result);
 

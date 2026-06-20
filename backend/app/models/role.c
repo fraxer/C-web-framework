@@ -6,42 +6,42 @@
 
 static const char* __dbid = "postgresql";
 
-static mfield_t* __first_field(void* arg);
-static int __fields_count(void* arg);
-static const char* __table(void* arg);
-static const char** __unique_fields(void* arg);
-static int __primary_key_count(void* arg);
+enum role_column {
+    ROLE_COL_ID = 0,
+    ROLE_COL_NAME,
+    ROLE_COLUMNS_COUNT
+};
+
+static const mcolumn_t __role_columns[ROLE_COLUMNS_COUNT] = {
+    [ROLE_COL_ID]   = { .name = "id",   .type = MODEL_INT, .is_primary = 1, .auto_increment = 1 },
+    [ROLE_COL_NAME] = { .name = "name", .type = MODEL_TEXT },
+};
+
+static const int __role_primary_keys[] = { ROLE_COL_ID };
+
+static const mschema_t __role_schema = {
+    .table = "role",
+    .columns = __role_columns,
+    .columns_count = ROLE_COLUMNS_COUNT,
+    .primary_keys = __role_primary_keys,
+    .primary_keys_count = 1,
+};
 
 void* role_instance(void) {
-    role_t* role = malloc(sizeof * role);
-    if (role == NULL)
+    role_t* role = calloc(1, sizeof * role);
+    if (role == NULL) return NULL;
+
+    if (!model_init(&role->record, &__role_schema)) {
+        free(role);
         return NULL;
-
-    role_t st = {
-        .base = {
-            .fields_count = __fields_count,
-            .primary_key_count = __primary_key_count,
-            .first_field = __first_field,
-            .table = __table,
-            .primary_key = __unique_fields
-        },
-        .field = {
-            mfield_int(id, 0),
-            mfield_text(name, NULL)
-        },
-        .table = "role",
-        .primary_key = {
-            "id",
-        }
-    };
-
-    memcpy(role, &st, sizeof st);
+    }
 
     return role;
 }
 
 role_t* role_get(array_t* params) {
-    return model_get(__dbid, role_instance, params);
+    return model_one(__dbid, role_instance,
+        "SELECT * FROM role WHERE id = :id LIMIT 1", params);
 }
 
 int role_create(role_t* role) {
@@ -57,57 +57,17 @@ int role_delete(role_t* role) {
 }
 
 void role_set_id(role_t* role, int id) {
-    model_set_int(&role->field.id, id);
+    model_set_int(model_field(&role->record, ROLE_COL_ID), id);
 }
 
 void role_set_name(role_t* role, const char* name) {
-    model_set_text(&role->field.name, name);
+    model_set_text(model_field(&role->record, ROLE_COL_NAME), name);
 }
 
 int role_id(role_t* role) {
-    return model_int(&role->field.id);
+    return model_int(model_field(&role->record, ROLE_COL_ID));
 }
 
 const char* role_name(role_t* role) {
-    return str_get(model_text(&role->field.name));
-}
-
-mfield_t* __first_field(void* arg) {
-    role_t* role = arg;
-    if (role == NULL)
-        return NULL;
-
-    return (void*)&role->field;
-}
-
-int __fields_count(void* arg) {
-    role_t* role = arg;
-    if (role == NULL)
-        return 0;
-
-    return sizeof(role->field) / sizeof(mfield_t);
-}
-
-const char* __table(void* arg) {
-    role_t* role = arg;
-    if (role == NULL)
-        return NULL;
-
-    return role->table;
-}
-
-const char** __unique_fields(void* arg) {
-    role_t* role = arg;
-    if (role == NULL)
-        return NULL;
-
-    return (const char**)&role->primary_key[0];
-}
-
-int __primary_key_count(void* arg) {
-    role_t* role = arg;
-    if (role == NULL)
-        return 0;
-
-    return sizeof(role->primary_key) / sizeof(role->primary_key[0]);
+    return str_get(model_text(model_field(&role->record, ROLE_COL_NAME)));
 }

@@ -6,26 +6,35 @@
 
 static const char* __dbid = "postgresql";
 
-static mfield_t* __first_field(void* arg);
-static int __fields_count(void* arg);
+enum roleview_column {
+    ROLEVIEW_COL_ID = 0,
+    ROLEVIEW_COL_NAME,
+    ROLEVIEW_COLUMNS_COUNT
+};
+
+static const mcolumn_t __roleview_columns[ROLEVIEW_COLUMNS_COUNT] = {
+    [ROLEVIEW_COL_ID]   = { .name = "id",   .type = MODEL_INT, .is_primary = 1 },
+    [ROLEVIEW_COL_NAME] = { .name = "name", .type = MODEL_TEXT },
+};
+
+static const int __roleview_primary_keys[] = { ROLEVIEW_COL_ID };
+
+static const mschema_t __roleview_schema = {
+    .table = "role",
+    .columns = __roleview_columns,
+    .columns_count = ROLEVIEW_COLUMNS_COUNT,
+    .primary_keys = __roleview_primary_keys,
+    .primary_keys_count = 1,
+};
 
 void* roleview_instance(void) {
-    roleview_t* role = malloc(sizeof * role);
-    if (role == NULL)
+    roleview_t* role = calloc(1, sizeof * role);
+    if (role == NULL) return NULL;
+
+    if (!model_init(&role->record, &__roleview_schema)) {
+        free(role);
         return NULL;
-
-    roleview_t st = {
-        .base = {
-            .fields_count = __fields_count,
-            .first_field = __first_field,
-        },
-        .field = {
-            mfield_int(id, 0),
-            mfield_text(name, NULL),
-        }
-    };
-
-    memcpy(role, &st, sizeof st);
+    }
 
     return role;
 }
@@ -68,16 +77,10 @@ array_t* roleview_list(array_t* params) {
     );
 }
 
-mfield_t* __first_field(void* arg) {
-    roleview_t* role = arg;
-    if (role == NULL) return NULL;
-
-    return (void*)&role->field;
+int roleview_id(roleview_t* role) {
+    return model_int(model_field(&role->record, ROLEVIEW_COL_ID));
 }
 
-int __fields_count(void* arg) {
-    roleview_t* role = arg;
-    if (role == NULL) return 0;
-
-    return sizeof(role->field) / sizeof(mfield_t);
+const char* roleview_name(roleview_t* role) {
+    return str_get(model_text(model_field(&role->record, ROLEVIEW_COL_NAME)));
 }

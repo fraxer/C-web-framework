@@ -5,13 +5,13 @@
 #include "dbresult.h"
 
 int up(const char* dbid) {
-    dbresult_t* result = dbqueryf(dbid,
+    dbresult_t* result = dbquery(dbid,
         "CREATE TABLE public.role"
         "("
             "id    bigserial    NOT NULL PRIMARY KEY,"
             "name  varchar(100) NOT NULL DEFAULT ''"
         ")"
-    );
+    , NULL);
 
     int res = dbresult_ok(result);
 

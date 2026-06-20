@@ -10,54 +10,49 @@
 #include "model.h"
 #include "auth.h"
 
+enum uv_column {
+    UV_COL_ID = 0,
+    UV_COL_NAME,
+    UV_COL_EMAIL,
+    UV_COLUMNS_COUNT
+};
+
+static const mcolumn_t __uv_columns[UV_COLUMNS_COUNT] = {
+    [UV_COL_ID]    = { .name = "id",    .type = MODEL_INT, .is_primary = 1 },
+    [UV_COL_NAME]  = { .name = "name",  .type = MODEL_TEXT },
+    [UV_COL_EMAIL] = { .name = "email", .type = MODEL_TEXT },
+};
+
+static const int __uv_primary_keys[] = { UV_COL_ID };
+
+static const mschema_t __uv_schema = {
+    .table = "\"user\"",
+    .columns = __uv_columns,
+    .columns_count = UV_COLUMNS_COUNT,
+    .primary_keys = __uv_primary_keys,
+    .primary_keys_count = 1,
+};
+
 typedef struct {
-    modelview_t base;
-    struct {
-        mfield_t id;
-        mfield_t name;
-        mfield_t email;
-    } field;
+    model_t record;
 } uv_t;
 
-mfield_t* __first_field(void* arg) {
-    uv_t* user = arg;
-    if (user == NULL) return NULL;
-
-    return (void*)&user->field;
-}
-
-int __fields_count(void* arg) {
-    uv_t* user = arg;
-    if (user == NULL) return 0;
-
-    return sizeof(user->field) / sizeof(mfield_t);
-}
-
 void* user_instance(void) {
-    uv_t* user = malloc(sizeof * user);
+    uv_t* user = calloc(1, sizeof * user);
     if (user == NULL)
         return NULL;
 
-    uv_t st = {
-        .base = {
-            .fields_count = __fields_count,
-            .first_field = __first_field,
-        },
-        .field = {
-            mfield_int(id, 0),
-            mfield_text(name, NULL),
-            mfield_text(email, NULL),
-        }
-    };
-
-    memcpy(user, &st, sizeof st);
+    if (!model_init(&user->record, &__uv_schema)) {
+        free(user);
+        return NULL;
+    }
 
     return user;
 }
 
 void prepared_query(httpctx_t* ctx) {
     int param_ok = 0;
-    const int user_id = query_param_int(ctx->request, "id", &param_ok);
+    const int user_id = query_param_int(ctx->request->query_, "id", &param_ok);
     if (!param_ok) {
         ctx->response->send_default(ctx->response, 400);
         return;
@@ -74,7 +69,9 @@ void prepared_query(httpctx_t* ctx) {
         mparam_text(email, "admin@admin.admin")
     )
 
-    uv_t* user = model_prepared_one(POSTGRESQL, user_instance, "user_get", params);
+    uv_t* user = model_prepared_one(POSTGRESQL, user_instance, "user_get",
+        "SELECT id, name, email FROM \"user\" WHERE id = :id AND email = :email LIMIT 1",
+        params);
 
     array_free(params);
 

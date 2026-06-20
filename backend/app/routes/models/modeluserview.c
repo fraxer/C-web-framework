@@ -13,7 +13,7 @@ void userviewget(httpctx_t* ctx) {
     )
 
     int param_ok = 0;
-    const int user_id = query_param_int(ctx->request, "id", &param_ok);
+    const int user_id = query_param_int(ctx->request->query_, "id", &param_ok);
     if (!param_ok) {
         ctx->response->send_default(ctx->response, 400);
         return;
@@ -86,7 +86,7 @@ char* userview_list_stringify(array_t* users) {
 
     json_token_t* json_array_users = json_root(doc);
     for (size_t i = 0; i < array_size(users); i++) {
-        userview_t* user = (&users->elements[i])->_pointer;
+        userview_t* user = array_get_pointer(users, i);
         if (user == NULL) return NULL;
 
         array_t* user_roles_params = array_create();
@@ -94,7 +94,7 @@ char* userview_list_stringify(array_t* users) {
             return NULL;
 
         mparams_fill_array(user_roles_params,
-            mparam_int(user_id, model_int(&user->field.id))
+            mparam_int(user_id, userview_id(user))
         )
         array_t* user_roles = roleview_list(user_roles_params);
         array_free(user_roles_params);
@@ -104,7 +104,7 @@ char* userview_list_stringify(array_t* users) {
         if (user_roles != NULL) {
             json_token_t* json_array_roles = json_create_array();
             for (size_t j = 0; j < array_size(user_roles); j++) {
-                roleview_t* role = (&user_roles->elements[j])->_pointer;
+                roleview_t* role = array_get_pointer(user_roles, j);
                 if (role == NULL) return NULL;
 
                 array_t* role_permissions_params = array_create();
@@ -112,7 +112,7 @@ char* userview_list_stringify(array_t* users) {
                     return NULL;
 
                 mparams_fill_array(role_permissions_params,
-                    mparam_int(role_id, model_int(&role->field.id))
+                    mparam_int(role_id, roleview_id(role))
                 )
                 array_t* role_permissions = permissionview_list(role_permissions_params);
                 array_free(role_permissions_params);
@@ -122,7 +122,7 @@ char* userview_list_stringify(array_t* users) {
                 if (role_permissions != NULL) {
                     json_token_t* json_array_permissions = json_create_array();
                     for (size_t k = 0; k < array_size(role_permissions); k++) {
-                        permissionview_t* permission = (&role_permissions->elements[k])->_pointer;
+                        permissionview_t* permission = array_get_pointer(role_permissions, k);
                         if (permission == NULL) return NULL;
 
                         json_token_t* json_object_permission = model_to_json(permission, NULL);

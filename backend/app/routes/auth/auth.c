@@ -32,7 +32,7 @@ void login(httpctx_t* ctx) {
 
     json_doc_t* doc = json_root_create_object();
     json_token_t* object = json_root(doc);
-    json_object_set(object, "user_id", json_create_number(model_int(&user->field.id)));
+    json_object_set(object, "user_id", json_create_number(user_id(user)));
 
     char* session_id = session_create("backend", json_stringify(doc), 300);
     json_free(doc);

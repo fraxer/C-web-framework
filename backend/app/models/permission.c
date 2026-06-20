@@ -6,42 +6,42 @@
 
 static const char* __dbid = "postgresql";
 
-static mfield_t* __first_field(void* arg);
-static int __fields_count(void* arg);
-static const char* __table(void* arg);
-static const char** __unique_fields(void* arg);
-static int __primary_key_count(void* arg);
+enum permission_column {
+    PERMISSION_COL_ID = 0,
+    PERMISSION_COL_NAME,
+    PERMISSION_COLUMNS_COUNT
+};
+
+static const mcolumn_t __permission_columns[PERMISSION_COLUMNS_COUNT] = {
+    [PERMISSION_COL_ID]   = { .name = "id",   .type = MODEL_INT, .is_primary = 1, .auto_increment = 1 },
+    [PERMISSION_COL_NAME] = { .name = "name", .type = MODEL_TEXT },
+};
+
+static const int __permission_primary_keys[] = { PERMISSION_COL_ID };
+
+static const mschema_t __permission_schema = {
+    .table = "permission",
+    .columns = __permission_columns,
+    .columns_count = PERMISSION_COLUMNS_COUNT,
+    .primary_keys = __permission_primary_keys,
+    .primary_keys_count = 1,
+};
 
 void* permission_instance(void) {
-    permission_t* permission = malloc(sizeof * permission);
-    if (permission == NULL)
+    permission_t* permission = calloc(1, sizeof * permission);
+    if (permission == NULL) return NULL;
+
+    if (!model_init(&permission->record, &__permission_schema)) {
+        free(permission);
         return NULL;
-
-    permission_t st = {
-        .base = {
-            .fields_count = __fields_count,
-            .primary_key_count = __primary_key_count,
-            .first_field = __first_field,
-            .table = __table,
-            .primary_key = __unique_fields
-        },
-        .field = {
-            mfield_int(id, 0),
-            mfield_text(name, NULL)
-        },
-        .table = "permission",
-        .primary_key = {
-            "id",
-        }
-    };
-
-    memcpy(permission, &st, sizeof st);
+    }
 
     return permission;
 }
 
 permission_t* permission_get(array_t* params) {
-    return model_get(__dbid, permission_instance, params);
+    return model_one(__dbid, permission_instance,
+        "SELECT * FROM permission WHERE id = :id LIMIT 1", params);
 }
 
 int permission_create(permission_t* permission) {
@@ -57,57 +57,17 @@ int permission_delete(permission_t* permission) {
 }
 
 void permission_set_id(permission_t* permission, int id) {
-    model_set_int(&permission->field.id, id);
+    model_set_int(model_field(&permission->record, PERMISSION_COL_ID), id);
 }
 
 void permission_set_name(permission_t* permission, const char* name) {
-    model_set_text(&permission->field.name, name);
+    model_set_text(model_field(&permission->record, PERMISSION_COL_NAME), name);
 }
 
 int permission_id(permission_t* permission) {
-    return model_int(&permission->field.id);
+    return model_int(model_field(&permission->record, PERMISSION_COL_ID));
 }
 
 const char* permission_name(permission_t* permission) {
-    return str_get(model_text(&permission->field.name));
-}
-
-mfield_t* __first_field(void* arg) {
-    permission_t* permission = arg;
-    if (permission == NULL)
-        return NULL;
-
-    return (void*)&permission->field;
-}
-
-int __fields_count(void* arg) {
-    permission_t* permission = arg;
-    if (permission == NULL)
-        return 0;
-
-    return sizeof(permission->field) / sizeof(mfield_t);
-}
-
-const char* __table(void* arg) {
-    permission_t* permission = arg;
-    if (permission == NULL)
-        return NULL;
-
-    return permission->table;
-}
-
-const char** __unique_fields(void* arg) {
-    permission_t* permission = arg;
-    if (permission == NULL)
-        return NULL;
-
-    return (const char**)&permission->primary_key[0];
-}
-
-int __primary_key_count(void* arg) {
-    permission_t* permission = arg;
-    if (permission == NULL)
-        return 0;
-
-    return sizeof(permission->primary_key) / sizeof(permission->primary_key[0]);
+    return str_get(model_text(model_field(&permission->record, PERMISSION_COL_NAME)));
 }

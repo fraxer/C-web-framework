@@ -4,7 +4,7 @@
 #include "dbresult.h"
 
 int up(const char* dbid) {
-    dbresult_t* result = dbqueryf(dbid,
+    dbresult_t* result = dbquery(dbid,
         "CREATE TABLE public.user"
         "("
             "id         bigserial    NOT NULL PRIMARY KEY,"
@@ -13,7 +13,7 @@ int up(const char* dbid) {
             "created_at timestamp    NOT NULL DEFAULT NOW(),"
             "secret     text         NOT NULL DEFAULT ''"
         ")"
-    );
+    , NULL);
 
     int res = dbresult_ok(result);
 

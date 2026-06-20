@@ -4,48 +4,72 @@
 
 #include "db.h"
 #include "user.h"
+#include "str.h"
 
 static const char* __dbid = "postgresql.p1";
 
-static mfield_t* __first_field(void* arg);
-static int __fields_count(void* arg);
-static const char* __table(void* arg);
-static const char** __unique_fields(void* arg);
-static int __primary_key_count(void* arg);
+enum user_column {
+    USER_COL_ID = 0,
+    USER_COL_EMAIL,
+    USER_COL_NAME,
+    USER_COL_CREATED_AT,
+    USER_COL_SECRET,
+    USER_COLUMNS_COUNT
+};
+
+static const mcolumn_t __user_columns[USER_COLUMNS_COUNT] = {
+    [USER_COL_ID]         = { .name = "id",         .type = MODEL_INT, .is_primary = 1, .auto_increment = 1 },
+    [USER_COL_EMAIL]      = { .name = "email",      .type = MODEL_TEXT },
+    [USER_COL_NAME]       = { .name = "name",       .type = MODEL_TEXT },
+    [USER_COL_CREATED_AT] = { .name = "created_at", .type = MODEL_TIMESTAMP },
+    [USER_COL_SECRET]     = { .name = "secret",     .type = MODEL_TEXT },
+};
+
+static const int __user_primary_keys[] = { USER_COL_ID };
+
+static const mschema_t __user_schema = {
+    .table = "\"user\"",
+    .columns = __user_columns,
+    .columns_count = USER_COLUMNS_COUNT,
+    .primary_keys = __user_primary_keys,
+    .primary_keys_count = 1,
+};
 
 void* user_instance(void) {
-    user_t* user = malloc(sizeof * user);
+    user_t* user = calloc(1, sizeof * user);
     if (user == NULL) return NULL;
 
-    user_t st = {
-        .base = {
-            .fields_count = __fields_count,
-            .primary_key_count = __primary_key_count,
-            .first_field = __first_field,
-            .table = __table,
-            .primary_key = __unique_fields
-        },
-        .field = {
-            mfield_int(id, 0),
-            mfield_text(email, NULL),
-            mfield_text(name, NULL),
-            // mfield_enum(enm, NULL, "V1", "V2", "V3"),
-            mfield_timestamp(created_at, (tm_t){0}),
-            mfield_text(secret, NULL),
-        },
-        .table = "\"user\"",
-        .primary_key = {
-            "id",
-        }
-    };
-
-    memcpy(user, &st, sizeof st);
+    if (!model_init(&user->record, &__user_schema)) {
+        free(user);
+        return NULL;
+    }
 
     return user;
 }
 
 user_t* user_get(array_t* params) {
-    return model_get(__dbid, user_instance, params);
+    str_t* sql = str_create_empty(256);
+    if (sql == NULL) return NULL;
+
+    str_append(sql, "SELECT * FROM ", 15);
+    str_append(sql, __user_schema.table, strlen(__user_schema.table));
+
+    if (params != NULL && array_size(params) > 0) {
+        str_append(sql, " WHERE ", 7);
+        for (size_t i = 0, n = 0; i < array_size(params); i++) {
+            const mfield_t* f = (const mfield_t*)array_get(params, i);
+            if (f == NULL || f->name == NULL) continue;
+            if (n > 0) str_append(sql, " AND ", 5);
+            str_append(sql, f->name, strlen(f->name));
+            str_append(sql, " = :", 4);
+            str_append(sql, f->name, strlen(f->name));
+            n++;
+        }
+    }
+
+    user_t* user = model_one(__dbid, user_instance, str_get(sql), params);
+    str_free(sql);
+    return user;
 }
 
 int user_create(user_t* user) {
@@ -66,7 +90,6 @@ void user_free(user_t* user) {
     // Wipe sensitive data before model_free
     explicit_bzero(user->salt, sizeof(user->salt));
     explicit_bzero(user->hash, sizeof(user->hash));
-    explicit_bzero(user->table, sizeof(user->table));
 
     model_free(user);
 }
@@ -76,39 +99,39 @@ user_t* user_create_anonymous(void) {
 }
 
 void user_set_id(user_t* user, int id) {
-    model_set_int(&user->field.id, id);
+    model_set_int(model_field(&user->record, USER_COL_ID), id);
 }
 
 void user_set_name(user_t* user, const char* name) {
-    model_set_text(&user->field.name, name);
+    model_set_text(model_field(&user->record, USER_COL_NAME), name);
 }
 
 void user_set_secret(user_t* user, const char* secret) {
-    model_set_text(&user->field.secret, secret);
+    model_set_text(model_field(&user->record, USER_COL_SECRET), secret);
 }
 
 void user_set_email(user_t* user, const char* email) {
-    model_set_text(&user->field.email, email);
+    model_set_text(model_field(&user->record, USER_COL_EMAIL), email);
 }
 
 void user_set_created_at(user_t* user, const char* value) {
-    model_set_timestamp_from_str(&user->field.created_at, value);
+    model_set_timestamp_from_str(model_field(&user->record, USER_COL_CREATED_AT), value);
 }
 
 int user_id(user_t* user) {
-    return model_int(&user->field.id);
+    return model_int(model_field(&user->record, USER_COL_ID));
 }
 
 const char* user_name(user_t* user) {
-    return str_get(model_text(&user->field.name));
+    return str_get(model_text(model_field(&user->record, USER_COL_NAME)));
 }
 
 const char* user_email(user_t* user) {
-    return str_get(model_text(&user->field.email));
+    return str_get(model_text(model_field(&user->record, USER_COL_EMAIL)));
 }
 
 const char* user_secret(user_t* user) {
-    return str_get(model_text(&user->field.secret));
+    return str_get(model_text(model_field(&user->record, USER_COL_SECRET)));
 }
 
 const char* user_salt(user_t* user) {
@@ -146,44 +169,4 @@ const char* user_hash(user_t* user) {
     user->hash[length] = 0;
 
     return user->hash;
-}
-
-mfield_t* __first_field(void* arg) {
-    user_t* user = arg;
-    if (user == NULL)
-        return NULL;
-
-    return (void*)&user->field;
-}
-
-int __fields_count(void* arg) {
-    user_t* user = arg;
-    if (user == NULL)
-        return 0;
-
-    return sizeof(user->field) / sizeof(mfield_t);
-}
-
-const char* __table(void* arg) {
-    user_t* user = arg;
-    if (user == NULL)
-        return NULL;
-
-    return user->table;
-}
-
-const char** __unique_fields(void* arg) {
-    user_t* user = arg;
-    if (user == NULL)
-        return NULL;
-
-    return (const char**)&user->primary_key[0];
-}
-
-int __primary_key_count(void* arg) {
-    user_t* user = arg;
-    if (user == NULL)
-        return 0;
-
-    return sizeof(user->primary_key) / sizeof(user->primary_key[0]);
 }

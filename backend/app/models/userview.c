@@ -4,33 +4,43 @@
 #include "db.h"
 #include "userview.h"
 
-static mfield_t* __first_field(void* arg);
-static int __fields_count(void* arg);
+enum userview_column {
+    USERVIEW_COL_ID = 0,
+    USERVIEW_COL_NAME,
+    USERVIEW_COL_EMAIL,
+    USERVIEW_COLUMNS_COUNT
+};
+
+static const mcolumn_t __userview_columns[USERVIEW_COLUMNS_COUNT] = {
+    [USERVIEW_COL_ID]    = { .name = "id",    .type = MODEL_INT, .is_primary = 1 },
+    [USERVIEW_COL_NAME]  = { .name = "name",  .type = MODEL_TEXT },
+    [USERVIEW_COL_EMAIL] = { .name = "email", .type = MODEL_TEXT },
+};
+
+static const int __userview_primary_keys[] = { USERVIEW_COL_ID };
+
+static const mschema_t __userview_schema = {
+    .table = "\"user\"",
+    .columns = __userview_columns,
+    .columns_count = USERVIEW_COLUMNS_COUNT,
+    .primary_keys = __userview_primary_keys,
+    .primary_keys_count = 1,
+};
 
 void* userview_instance(void) {
-    userview_t* user = malloc(sizeof * user);
-    if (user == NULL)
+    userview_t* user = calloc(1, sizeof * user);
+    if (user == NULL) return NULL;
+
+    if (!model_init(&user->record, &__userview_schema)) {
+        free(user);
         return NULL;
-
-    userview_t st = {
-        .base = {
-            .fields_count = __fields_count,
-            .first_field = __first_field,
-        },
-        .field = {
-            mfield_int(id, 0),
-            mfield_text(name, NULL),
-            mfield_text(email, NULL),
-        }
-    };
-
-    memcpy(user, &st, sizeof st);
+    }
 
     return user;
 }
 
 userview_t* userview_get(array_t* params) {
-    return model_one(POSTGRESQL, userview_instance, 
+    return model_one(POSTGRESQL, userview_instance,
         "SELECT "
             "id, "
             "name, "
@@ -73,16 +83,14 @@ int userview_execute(array_t* params) {
     return result;
 }
 
-mfield_t* __first_field(void* arg) {
-    userview_t* user = arg;
-    if (user == NULL) return NULL;
-
-    return (void*)&user->field;
+int userview_id(userview_t* user) {
+    return model_int(model_field(&user->record, USERVIEW_COL_ID));
 }
 
-int __fields_count(void* arg) {
-    userview_t* user = arg;
-    if (user == NULL) return 0;
+const char* userview_name(userview_t* user) {
+    return str_get(model_text(model_field(&user->record, USERVIEW_COL_NAME)));
+}
 
-    return sizeof(user->field) / sizeof(mfield_t);
+const char* userview_email(userview_t* user) {
+    return str_get(model_text(model_field(&user->record, USERVIEW_COL_EMAIL)));
 }
