@@ -30,15 +30,18 @@ Documentation is available at: [https://cwebframework.tech/en/introduction.html]
 * **PostgreSQL** - native support with prepared statements
 * **MySQL** - native support with SQL injection protection
 * **Redis** - Redis support for caching and sessions
+* **SQLite** - embedded database support (no external server required)
 * **ORM-like operations** - model system for working with tables
-* **Migrations** - database schema versioning system with up/down migrations
+* **Migrations** - database schema versioning system (scaffold, apply pending/all/N)
 * **Query Builder** - safe SQL query building with parameterization
 * **Prepared Statements** - SQL injection protection at framework level
+* **Transactions** - `begin`/`commit`/`rollback` with isolation levels
 
 ### Authentication and Security
 * **Authentication system** - built-in registration and authorization system
-* **Sessions** - support for file-based sessions and Redis sessions
-* **Password hashing** - secure password storage using salt and hash
+* **Sessions** - file-based, Redis, and database-backed sessions, each encrypted with **AES-256-GCM**
+* **Password hashing** - secure password storage using PBKDF2-HMAC-SHA256 (salt + hash)
+* **JWT** - JSON Web Token signing and verification
 * **Validation** - validators for email, passwords, and other data
 * **Authentication middleware** - route protection with session verification
 * **RBAC** - Role-Based Access Control system
@@ -54,6 +57,16 @@ Documentation is available at: [https://cwebframework.tech/en/introduction.html]
 * **SMTP client** - email sending via SMTP
 * **DKIM signature** - DKIM signature support for sender authentication
 * **Email templates** - email template support
+
+### Internationalization
+* **i18n** - translation system with locale catalogs (gettext-style domains)
+* **Domain translation** - configurable translation sources per domain in `config.json`
+* **Internationalized Domain Names (IDN)** - Punycode handling for IDN domains
+
+### Task Scheduling
+* **Task Manager** - scheduled tasks loaded from shared libraries (`.so`)
+* **Interval tasks** - run handlers at fixed intervals (e.g. periodic cleanup)
+* **Dynamic loading** - tasks reference a `.so` file + function, like routes
 
 ### Template Engine
 * **Template Engine** - built-in template engine
@@ -77,9 +90,15 @@ Documentation is available at: [https://cwebframework.tech/en/introduction.html]
 * **String (str_t)** - dynamic strings with SSO optimization
 * **Array** - dynamic arrays
 * **HashMap/Map** - associative arrays for fast lookup
+* **Buffer objects (bufo) / queue (cqueue)** - reusable buffers and FIFO queue
 * **JSON structures** - working with JSON as objects
-* **Logging** - logging system with different levels
+* **JWT** - JSON Web Token signing/verification
+* **UUID** - UUID generation
+* **Hashing** - SHA-1, SHA-256, PBKDF2-HMAC-SHA256
+* **AES-256-GCM** - authenticated encryption (session secrets)
+* **UTF-8** - proper Unicode and surrogate-pair handling
 * **Base64** - Base64 encoding/decoding
+* **Logging** - logging system with configurable levels
 
 ### Additional Features
 * **Modular architecture** - easy component connection and disconnection
@@ -92,68 +111,86 @@ Documentation is available at: [https://cwebframework.tech/en/introduction.html]
 
 ```
 project/
-├── core/                          # Framework core
-│   ├── framework/                 # Framework components
-│   │   ├── database/             # Database operations (PostgreSQL, MySQL, Redis)
-│   │   ├── model/                # ORM model system
-│   │   ├── session/              # Session system
-│   │   ├── storage/              # File storage (FS, S3)
-│   │   ├── view/                 # Template engine
-│   │   ├── middleware/           # Middleware system
-│   │   └── query/                # Query builder
-│   ├── protocols/                # Protocol implementations
-│   │   ├── http/                 # HTTP/1.1 server and client
-│   │   ├── websocket/            # WebSocket server
-│   │   └── smtp/                 # SMTP client, DKIM
-│   ├── src/                      # Core components
-│   │   ├── broadcast/            # Broadcasting system
-│   │   ├── connection/           # Connection management
-│   │   ├── server/               # HTTP server
-│   │   ├── route/                # Routing system
-│   │   ├── thread/               # Multithreading
-│   │   └── multiplexing/         # Epoll multiplexing
-│   └── misc/                     # Utilities
-│       ├── str.h                 # Dynamic strings
-│       ├── array.h               # Arrays
-│       ├── hashmap.h/map.h       # Associative arrays
-│       ├── json.h                # JSON parser
-│       ├── log.h                 # Logging
-│       └── gzip.h                # Gzip compression
-│
-└── app/                          # User application
-    ├── routes/                   # HTTP and WebSocket handlers
-    │   ├── auth/                # Authentication (login, registration)
-    │   ├── index/               # Main page
-    │   ├── ws/                  # WebSocket handlers
-    │   ├── files/               # File operations
-    │   ├── models/              # Model API operations
-    │   ├── email/               # Email sending
-    │   └── db/                  # Database examples
-    ├── models/                   # Data models
-    │   ├── user.c               # User model
-    │   ├── role.c               # Role model
-    │   ├── permission.c         # Permission model
-    │   └── *view.c              # View models for JOIN queries
-    ├── middlewares/              # Custom middleware
-    │   ├── httpmiddlewares.c    # HTTP middleware (auth, rate limit)
-    │   └── wsmiddlewares.c      # WebSocket middleware
-    ├── migrations/               # Database migrations
-    │   ├── s1/                  # Migrations for server s1
-    │   └── s2/                  # Migrations for server s2
-    ├── broadcasting/             # Broadcasting channels
-    │   └── mybroadcast.c        # Broadcasting channel example
-    ├── auth/                     # Authentication module
-    │   ├── auth.c               # Authentication functions
-    │   ├── password_validator.c # Password validation
-    │   └── email_validator.c    # Email validation
-    ├── contexts/                 # Request contexts
-    │   ├── httpcontext.c        # HTTP context
-    │   └── wscontext.c          # WebSocket context
-    └── views/                    # Templates
-        ├── index.tpl            # Main page
-        └── header.tpl           # Header
+└── backend/
+    ├── core/                          # Framework core (git submodule)
+    │   ├── apps/                      # Executables
+    │   │   ├── server/                #   → cpdy (the web server)
+    │   │   └── migrate/               #   → migrate (DB migration CLI)
+    │   ├── framework/                 # Framework components
+    │   │   ├── database/             # PostgreSQL, MySQL, Redis, SQLite
+    │   │   ├── model/                # ORM model system (mfield / mschema / mparams)
+    │   │   ├── session/              # Sessions (file / redis / db) + AES-256-GCM
+    │   │   ├── storage/              # File storage (FS, S3)
+    │   │   ├── view/                 # Template engine
+    │   │   ├── middleware/           # Middleware system
+    │   │   ├── taskmanager/          # Scheduled task runner
+    │   │   └── translation/          # i18n translation
+    │   ├── protocols/                # Protocol implementations
+    │   │   ├── http/                 # HTTP/1.1 server and client
+    │   │   ├── websocket/            # WebSocket server
+    │   │   └── smtp/                 # SMTP client, DKIM
+    │   ├── src/                      # Core runtime
+    │   │   ├── server/               # HTTP server
+    │   │   ├── multiplexing/         # Epoll multiplexing
+    │   │   ├── thread/               # Multithreading
+    │   │   ├── connection/           # Connection management
+    │   │   ├── socket/               # Socket abstraction
+    │   │   ├── route/                # Routing system
+    │   │   ├── domain/               # Virtual hosts / domains (regex, IDN)
+    │   │   ├── config/               # Config loading (JSON)
+    │   │   ├── ratelimiter/          # Rate limiting
+    │   │   ├── moduleloader/         # Dynamic .so loading
+    │   │   ├── broadcast/            # Broadcasting system
+    │   │   ├── mimetype/             # MIME type detection
+    │   │   ├── openssl/              # OpenSSL helpers
+    │   │   └── signal/               # Signal handling
+    │   ├── misc/                     # Utilities (headers + small .c)
+    │   │   ├── str.h                 # Dynamic strings (SSO)
+    │   │   ├── array.h               # Arrays
+    │   │   ├── hashmap.h / map.h     # Associative arrays
+    │   │   ├── json.h                # JSON parser/generator
+    │   │   ├── jwt.h                 # JSON Web Tokens
+    │   │   ├── uuid.h                # UUIDs
+    │   │   ├── sha1.h / sha256.h     # Hashing
+    │   │   ├── base64.h              # Base64
+    │   │   ├── i18n.h / idn_utils.h  # i18n + IDN domains
+    │   │   ├── log.h                 # Logging
+    │   │   └── gzip.h                # Gzip compression
+    │   └── tests/                    # Unit/integration tests (core, db, unit)
+    │
+    └── app/                           # User application
+        ├── routes/                    # HTTP / WebSocket handlers (compiled to .so)
+        │   ├── auth/                 # Authentication (login, registration)
+        │   ├── index/                # Main page / WebSocket entry
+        │   ├── ws/                   # WebSocket handlers
+        │   ├── files/                # File operations
+        │   ├── models/               # Model CRUD API
+        │   ├── email/                # Email sending
+        │   ├── db/                   # Database examples
+        │   ├── json/                 # JSON handling examples
+        │   ├── httpclient/           # Outbound HTTP client examples
+        │   └── middleware/           # Middleware examples
+        ├── models/                    # Data models (ORM)
+        │   ├── user.c / role.c / permission.c
+        │   ├── user_role.c / role_permission.c   # junction tables (RBAC)
+        │   ├── *view.c                            # view models (JOIN queries)
+        │   └── prepare_statements.c               # named prepared statements
+        ├── middlewares/               # Custom middleware
+        │   ├── httpmiddlewares.c     # HTTP middleware (auth, rate limit)
+        │   ├── wsmiddlewares.c       # WebSocket middleware
+        │   └── middlewarelist.c      # registers middleware by name for config.json
+        ├── contexts/                  # Request contexts (httpctx.c, wsctx.c)
+        ├── auth/                      # Authentication module
+        │   ├── auth.c                # password hashing, authenticate()
+        │   ├── password_validator.c  # password validation
+        │   └── email_validator.c     # email validation
+        ├── migrations/                # Database migrations (int up(const char* dbid))
+        │   ├── s1/                    # Migrations for server s1
+        │   └── s2/                    # Migrations for server s2
+        ├── broadcasting/              # Broadcasting channels
+        └── views/                     # Templates (.tpl)
 
-config.json                       # Application configuration
+    config.json                        # Application configuration
 ```
 
 ## Usage Examples
@@ -222,12 +259,14 @@ void ws_send_message(wsctx_t* ctx) {
 
 void get_users(httpctx_t* ctx) {
     // Parameterized query (SQL injection protection)
-    mparams_create_array(params,
+    array_t* params = array_create();
+    mparams_fill_array(params,
         mparam_int(id, 123),
         mparam_text(email, "user@example.com")
     );
 
-    dbresult_t* result = dbquery("postgresql",
+    // dbid is "<driver>.<host_id>" from config.json, e.g. postgresql.p1
+    dbresult_t* result = dbquery("postgresql.p1",
         "SELECT * FROM users WHERE id = :id OR email = :email",
         params);
 
@@ -372,17 +411,32 @@ The framework uses `config.json` for centralized configuration:
     "buffer_size": 16384,
     "client_max_body_size": 110485760,
     "tmp": "/tmp",
-    "gzip": ["text/html", "text/css", "application/json", "application/javascript"]
+    "gzip": ["text/html", "text/css", "application/json", "application/javascript"],
+    "log": { "enabled": true, "level": "info" },
+    "env": { "refresh_token_expiration": 15552000 }
   },
   "migrations": {
     "source_directory": "/path/to/migrations"
   },
+  "translations": [
+    { "domain": "backend", "path": "/app/locale" }
+  ],
+  "task_manager": [
+    {
+      "name": "cleanup_expired_tokens",
+      "type": "interval",
+      "interval": 60,
+      "file": "path/to/libtasks.so",
+      "function": "cleanup_authorization_codes"
+    }
+  ],
   "servers": {
     "s1": {
-      "domains": ["example.com", "*.example.com", "(api|www).example.com"],
+      "domains": ["example.com", "*.example.com", "(api|www).example.com", "mail.*"],
       "ip": "127.0.0.1",
       "port": 443,
       "root": "/var/www/html",
+      "index": "index.html",
       "ratelimits": {
         "default": { "burst": 15, "rate": 15 },
         "strict": { "burst": 1, "rate": 0 }
@@ -390,7 +444,8 @@ The framework uses `config.json` for centralized configuration:
       "http": {
         "ratelimit": "default",
         "redirects": {
-          "/old-path": "/new-path"
+          "/old-path": "/new-path",
+          "/user/(\\d+)/(.+)": "/profile/{1}/{2}"
         },
         "middlewares": ["middleware_auth"],
         "routes": {
@@ -443,6 +498,10 @@ The framework uses `config.json` for centralized configuration:
       "dbindex": 0,
       "user": "",
       "password": ""
+    }],
+    "sqlite": [{
+      "host_id": "s1",
+      "path": "/var/lib/cpdy/app.db"
     }]
   },
   "storages": {
@@ -462,10 +521,21 @@ The framework uses `config.json` for centralized configuration:
     }
   },
   "sessions": {
-    "driver": "storage",
-    "host_id": "redis.r1",
-    "storage_name": "sessions",
-    "lifetime": 3600
+    "backend": {
+      "driver": "filesystem",
+      "storage_name": "sessions",
+      "secret": "change-me"
+    },
+    "scheduler": {
+      "driver": "redis",
+      "host_id": "redis.r1",
+      "secret": "change-me"
+    },
+    "admin": {
+      "driver": "database",
+      "host_id": "postgresql.p1",
+      "secret": "change-me"
+    }
   },
   "mail": {
     "dkim_private": "/path/to/dkim_private.pem",
@@ -497,6 +567,7 @@ The framework uses `config.json` for centralized configuration:
 * **PostgreSQL** development libraries (for PostgreSQL support)
 * **MySQL/MariaDB** development libraries (for MySQL support)
 * **Redis** (for Redis sessions and caching)
+* **SQLite** development libraries (for embedded SQLite support)
 
 ## Building the Project
 
@@ -504,17 +575,21 @@ The framework uses `config.json` for centralized configuration:
 # Create build directory
 mkdir build && cd build
 
-# Configure with CMake
+# Configure with CMake (enable the databases you need)
 cmake .. -DCMAKE_BUILD_TYPE=Release \
          -DINCLUDE_POSTGRESQL=yes \
          -DINCLUDE_MYSQL=yes \
-         -DINCLUDE_REDIS=yes
+         -DINCLUDE_REDIS=yes \
+         -DINCLUDE_SQLITE=yes
 
 # Build
 cmake --build . -j4
 
 # Run
 <workspaceFolder>/build/exec/cpdy -c <path_to_config>/config.json
+
+# Apply database migrations (positional args — see the migrate CLI)
+<workspaceFolder>/build/exec/migrate up <path_to_config>/config.json postgresql.p1 s1
 ```
 
 ### Build Modes:

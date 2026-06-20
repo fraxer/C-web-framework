@@ -43,6 +43,13 @@ if(Redis_FOUND AND INCLUDE_REDIS STREQUAL yes)
 	add_definitions(-DRedis_FOUND)
 endif()
 
+if(INCLUDE_SQLITE STREQUAL yes)
+	find_package(SQLite)
+endif()
+if(SQLite_FOUND AND INCLUDE_SQLITE STREQUAL yes)
+	add_definitions(-DSQLite_FOUND)
+endif()
+
 if(BUILD_TESTS STREQUAL yes)
     enable_testing()
 endif()
