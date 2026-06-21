@@ -5,7 +5,12 @@ description: Примеры работы с базами данных
 
 # Примеры работы с базами данных
 
+Готовые примеры запросов к PostgreSQL, MySQL, Redis и SQLite через единый API `dbquery`.
+Полное описание функций — в разделе [База данных](/db).
+
 ## PostgreSQL или MySQL
+
+Обход нескольких наборов строк в одном вызове (multi-query):
 
 ```c
 // handlers/indexpage.c
@@ -13,10 +18,11 @@ description: Примеры работы с базами данных
 #include "db.h"
 
 void db(httpctx_t* ctx) {
-    dbresult_t* result = dbquery("postgresql", "SELECT * FROM \"user\" LIMIT 3; SELECT * FROM \"news\";", NULL);
+    dbresult_t* result = dbquery("postgresql.p1",
+        "SELECT * FROM \"user\" LIMIT 3; SELECT * FROM \"news\";", NULL);
 
     if (!dbresult_ok(result)) {
-        ctx->response->send_data(ctx->response, dbresult_error_message(result));
+        ctx->response->send_data(ctx->response, dbresult_error(result));
         goto failed;
     }
 
@@ -24,7 +30,6 @@ void db(httpctx_t* ctx) {
         for (int row = 0; row < dbresult_query_rows(result); row++) {
             for (int col = 0; col < dbresult_query_cols(result); col++) {
                 const db_table_cell_t* field = dbresult_cell(result, row, col);
-
                 printf("%s | ", field->value);
             }
             printf("\n");
@@ -43,21 +48,23 @@ void db(httpctx_t* ctx) {
 }
 ```
 
+Чтение одного поля по имени колонки:
+
 ```c
 void db_field(httpctx_t* ctx) {
-    dbresult_t* result = dbquery("mysql", "select * from site limit 1;", NULL);
+    dbresult_t* result = dbquery("mysql.m1", "select * from site limit 1;", NULL);
 
     if (!dbresult_ok(result)) {
-        ctx->response->send_data(ctx->response, dbresult_error_message(result));
+        ctx->response->send_data(ctx->response, dbresult_error(result));
         goto failed;
     }
 
     if (dbresult_query_rows(result) == 0) {
-        ctx->response->send_data(ctx->response, "No results");
+        ctx->response->send_default(ctx->response, 404);
         goto failed;
     }
 
-    db_table_cell_t* field = dbresult_field(result, "domain");
+    const db_table_cell_t* field = dbresult_field(result, "domain");
 
     if (!field) {
         ctx->response->send_data(ctx->response, "Field domain not found");
@@ -74,19 +81,22 @@ void db_field(httpctx_t* ctx) {
 
 ## Redis
 
+Redis использует тот же `dbquery` — команды передаются как текст:
+
 ```c
 void db_redis(httpctx_t* ctx) {
-    // dbresult_t* result = dbquery("redis", "SET testkey testvalue", NULL);
-    dbresult_t* result = dbquery("redis", "GET testkey", NULL);
+    dbresult_t* set_result = dbquery("redis.r1", "SET testkey testvalue", NULL);
+    dbresult_free(set_result);
+
+    dbresult_t* result = dbquery("redis.r1", "GET testkey", NULL);
 
     if (!dbresult_ok(result)) {
-        ctx->response->send_data(ctx->response, dbresult_error_message(result));
+        ctx->response->send_data(ctx->response, dbresult_error(result));
         goto failed;
     }
 
     const db_table_cell_t* field = dbresult_field(result, NULL);
-
-    ctx->response->send_data(ctx->response, field->value);
+    ctx->response->send_data(ctx->response, field ? field->value : "(nil)");
 
     failed:
 
@@ -94,7 +104,10 @@ void db_redis(httpctx_t* ctx) {
 }
 ```
 
-## Параметризованные запросы с параметрами URL
+## Параметризованный запрос с параметром URL
+
+Числовые параметры удобно читать сразу типизированными через `query_param_int` —
+не нужно вручную вызывать `atoi`:
 
 ```c
 #include "http.h"
@@ -103,18 +116,19 @@ void db_redis(httpctx_t* ctx) {
 
 void get_user(httpctx_t* ctx) {
     int ok = 0;
-    const char* user_id = query_param_char(ctx->request, "id", &ok);
+    const int user_id = query_param_int(ctx->request->query_, "id", &ok);
 
     if (!ok) {
-        ctx->response->send_data(ctx->response, "Missing id parameter");
+        ctx->response->send_default(ctx->response, 400);
         return;
     }
 
-    mparams_create_array(params,
-        mparam_int(id, atoi(user_id))
+    array_t* params = array_create();
+    mparams_fill_array(params,
+        mparam_int(id, user_id)
     );
 
-    dbresult_t* result = dbquery("postgresql",
+    dbresult_t* result = dbquery("postgresql.p1",
         "SELECT id, name, email FROM \"user\" WHERE id = :id",
         params
     );
@@ -122,19 +136,17 @@ void get_user(httpctx_t* ctx) {
     array_free(params);
 
     if (!dbresult_ok(result)) {
-        ctx->response->send_data(ctx->response, "Query failed");
-        dbresult_free(result);
-        return;
+        ctx->response->send_default(ctx->response, 500);
+        goto failed;
     }
 
     if (dbresult_query_rows(result) == 0) {
-        ctx->response->send_data(ctx->response, "User not found");
-        dbresult_free(result);
-        return;
+        ctx->response->send_default(ctx->response, 404);
+        goto failed;
     }
 
-    db_table_cell_t* name_field = dbresult_field(result, "name");
-    db_table_cell_t* email_field = dbresult_field(result, "email");
+    const db_table_cell_t* name_field  = dbresult_field(result, "name");
+    const db_table_cell_t* email_field = dbresult_field(result, "email");
 
     char response[512];
     snprintf(response, sizeof(response), "User: %s, Email: %s",
@@ -142,6 +154,9 @@ void get_user(httpctx_t* ctx) {
              email_field ? email_field->value : "N/A");
 
     ctx->response->send_data(ctx->response, response);
+
+    failed:
+
     dbresult_free(result);
 }
 ```
@@ -153,22 +168,23 @@ void get_user(httpctx_t* ctx) {
 #include "db.h"
 
 void create_user(httpctx_t* ctx) {
-    char* name = ctx->request->get_payloadf(ctx->request, "name");
+    char* name  = ctx->request->get_payloadf(ctx->request, "name");
     char* email = ctx->request->get_payloadf(ctx->request, "email");
 
     if (!name || !email) {
-        ctx->response->send_data(ctx->response, "Missing name or email");
-        if (name) free(name);
-        if (email) free(email);
+        ctx->response->send_default(ctx->response, 400);
+        free(name);
+        free(email);
         return;
     }
 
-    mparams_create_array(params,
+    array_t* params = array_create();
+    mparams_fill_array(params,
         mparam_text(name, name),
         mparam_text(email, email)
     );
 
-    dbresult_t* result = dbquery("postgresql",
+    dbresult_t* result = dbquery("postgresql.p1",
         "INSERT INTO \"user\" (name, email) VALUES (:name, :email) RETURNING id",
         params
     );
@@ -176,19 +192,15 @@ void create_user(httpctx_t* ctx) {
     array_free(params);
 
     if (!dbresult_ok(result)) {
-        ctx->response->send_data(ctx->response, "Insert failed");
-        dbresult_free(result);
-        free(name);
-        free(email);
-        return;
+        ctx->response->send_data(ctx->response, dbresult_error(result));
+    } else {
+        const db_table_cell_t* id_field = dbresult_field(result, "id");
+        char response[256];
+        snprintf(response, sizeof(response), "User created with id: %s",
+                 id_field ? id_field->value : "unknown");
+        ctx->response->send_data(ctx->response, response);
     }
 
-    db_table_cell_t* id_field = dbresult_field(result, "id");
-    char response[256];
-    snprintf(response, sizeof(response), "User created with id: %s",
-             id_field ? id_field->value : "unknown");
-
-    ctx->response->send_data(ctx->response, response);
     dbresult_free(result);
     free(name);
     free(email);
@@ -204,26 +216,27 @@ void create_user(httpctx_t* ctx) {
 
 void update_user(httpctx_t* ctx) {
     int ok = 0;
-    const char* user_id = query_param_char(ctx->request, "id", &ok);
+    const int user_id = query_param_int(ctx->request->query_, "id", &ok);
 
     if (!ok) {
-        ctx->response->send_data(ctx->response, "Missing id parameter");
+        ctx->response->send_default(ctx->response, 400);
         return;
     }
 
     char* name = ctx->request->get_payloadf(ctx->request, "name");
 
     if (!name) {
-        ctx->response->send_data(ctx->response, "Missing name field");
+        ctx->response->send_default(ctx->response, 400);
         return;
     }
 
-    mparams_create_array(params,
+    array_t* params = array_create();
+    mparams_fill_array(params,
         mparam_text(name, name),
-        mparam_int(id, atoi(user_id))
+        mparam_int(id, user_id)
     );
 
-    dbresult_t* result = dbquery("postgresql",
+    dbresult_t* result = dbquery("postgresql.p1",
         "UPDATE \"user\" SET name = :name WHERE id = :id",
         params
     );
@@ -231,19 +244,21 @@ void update_user(httpctx_t* ctx) {
     array_free(params);
 
     if (!dbresult_ok(result)) {
-        ctx->response->send_data(ctx->response, "Update failed");
-        dbresult_free(result);
-        free(name);
-        return;
+        ctx->response->send_data(ctx->response, dbresult_error(result));
+    } else {
+        ctx->response->send_data(ctx->response, "User updated");
     }
 
-    ctx->response->send_data(ctx->response, "User updated");
     dbresult_free(result);
     free(name);
 }
 ```
 
 ## Поиск с фильтром
+
+Строковые параметры читаются через `query_param_char`. Шаблон `%текст%`
+передаётся как значение параметра `:pattern`, а не вклеивается в SQL — это
+защищает от инъекций:
 
 ```c
 #include "http.h"
@@ -252,21 +267,22 @@ void update_user(httpctx_t* ctx) {
 
 void search_users(httpctx_t* ctx) {
     int ok = 0;
-    const char* search_term = query_param_char(ctx->request, "q", &ok);
+    const char* search_term = query_param_char(ctx->request->query_, "q", &ok);
 
-    if (!ok) {
-        ctx->response->send_data(ctx->response, "Missing search parameter");
+    if (!ok || !search_term) {
+        ctx->response->send_default(ctx->response, 400);
         return;
     }
 
     char search_pattern[512];
     snprintf(search_pattern, sizeof(search_pattern), "%%%s%%", search_term);
 
-    mparams_create_array(params,
+    array_t* params = array_create();
+    mparams_fill_array(params,
         mparam_text(pattern, search_pattern)
     );
 
-    dbresult_t* result = dbquery("postgresql",
+    dbresult_t* result = dbquery("postgresql.p1",
         "SELECT id, name, email FROM \"user\" WHERE name ILIKE :pattern LIMIT 10",
         params
     );
@@ -274,28 +290,92 @@ void search_users(httpctx_t* ctx) {
     array_free(params);
 
     if (!dbresult_ok(result)) {
-        ctx->response->send_data(ctx->response, "Search failed");
-        dbresult_free(result);
-        return;
+        ctx->response->send_data(ctx->response, dbresult_error(result));
+        goto failed;
     }
 
     if (dbresult_query_rows(result) == 0) {
-        ctx->response->send_data(ctx->response, "No users found");
-        dbresult_free(result);
-        return;
+        ctx->response->send_default(ctx->response, 404);
+        goto failed;
     }
 
     char response[2048] = "Found users: ";
     for (int row = 0; row < dbresult_query_rows(result); row++) {
-        db_table_cell_t* id = dbresult_cell(result, row, 0);
-        db_table_cell_t* name = dbresult_cell(result, row, 1);
+        const db_table_cell_t* id   = dbresult_cell(result, row, 0);
+        const db_table_cell_t* name = dbresult_cell(result, row, 1);
 
         char line[256];
-        snprintf(line, sizeof(line), "[%s] %s | ", id->value, name->value);
+        snprintf(line, sizeof(line), "[%s] %s | ",
+                 id ? id->value : "?",
+                 name ? name->value : "?");
         strncat(response, line, sizeof(response) - strlen(response) - 1);
     }
 
     ctx->response->send_data(ctx->response, response);
+
+    failed:
+
     dbresult_free(result);
+}
+```
+
+## Транзакции
+
+`dbbegin` / `dbcommit` / `dbrollback` управляют транзакцией. Уровень изоляции
+задаётся перечислением `transaction_level_e` (`READ_COMMITTED` и т. д.). При
+сборе любой ошибки — откат:
+
+```c
+#include "http.h"
+#include "db.h"
+#include "query.h"
+
+void transfer(httpctx_t* ctx) {
+    int ok = 0;
+    const int from_id = query_param_int(ctx->request->query_, "from", &ok);
+    if (!ok) {
+        ctx->response->send_default(ctx->response, 400);
+        return;
+    }
+    const int to_id = query_param_int(ctx->request->query_, "to", &ok);
+    if (!ok) {
+        ctx->response->send_default(ctx->response, 400);
+        return;
+    }
+
+    dbresult_free(dbbegin("postgresql.p1", READ_COMMITTED));
+
+    array_t* debit = array_create();
+    mparams_fill_array(debit, mparam_int(id, from_id));
+    dbresult_t* r1 = dbquery("postgresql.p1",
+        "UPDATE account SET balance = balance - 100 WHERE id = :id", debit);
+    array_free(debit);
+
+    if (!dbresult_ok(r1)) {
+        dbresult_free(r1);
+        goto rollback;
+    }
+    dbresult_free(r1);
+
+    array_t* credit = array_create();
+    mparams_fill_array(credit, mparam_int(id, to_id));
+    dbresult_t* r2 = dbquery("postgresql.p1",
+        "UPDATE account SET balance = balance + 100 WHERE id = :id", credit);
+    array_free(credit);
+
+    if (!dbresult_ok(r2)) {
+        dbresult_free(r2);
+        goto rollback;
+    }
+    dbresult_free(r2);
+
+    dbresult_free(dbcommit("postgresql.p1"));
+    ctx->response->send_data(ctx->response, "Transfer completed");
+    return;
+
+    rollback:
+
+    dbresult_free(dbrollback("postgresql.p1"));
+    ctx->response->send_default(ctx->response, 500);
 }
 ```

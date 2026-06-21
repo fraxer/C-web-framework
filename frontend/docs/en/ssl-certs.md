@@ -34,11 +34,17 @@ To enable HTTPS, add a `tls` section to the server configuration:
 
 ### Parameters
 
+All three fields are required — the server will not start if any of them is missing or empty.
+
 | Parameter | Description |
 |-----------|-------------|
-| `fullchain` | Path to the certificate file (including intermediate certificates) |
-| `private` | Path to the private key |
-| `ciphers` | List of supported ciphers |
+| `fullchain` | Path to the certificate file in PEM format (including intermediate certificates) |
+| `private` | Path to the private key file in PEM format |
+| `ciphers` | List of supported ciphers, passed to OpenSSL as is |
+
+::: tip Protocol and ciphers
+The server uses `TLS_server_method()`: SSLv2 and SSLv3 are disabled and renegotiation is forbidden. The `ciphers` string is a single string where names prefixed with `TLS_` (`TLS_AES_256_GCM_SHA384`, …) are TLS 1.3 suites and the rest (`ECDHE-RSA-AES256-GCM-SHA384`, …) are TLS 1.2 suites. The separator may be a space or a colon.
+:::
 
 ## Obtaining a certificate
 
@@ -154,6 +160,43 @@ TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256 TLS_AES_128_GCM_SHA256 ECDHE
 ```
 TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256 TLS_AES_128_GCM_SHA256 TLS_AES_128_CCM_8_SHA256 TLS_AES_128_CCM_SHA256 ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256
 ```
+
+## Multiple certificates on one IP (SNI)
+
+The framework supports SNI (Server Name Indication). If several servers listen on the same `ip` and `port`, the certificate of the server whose domain pattern matches the host name sent by the client in SNI is selected during the TLS handshake. This lets you serve different certificates for different domains on the same address.
+
+```json
+{
+    "servers": {
+        "site_a": {
+            "domains": ["a.example.com"],
+            "ip": "0.0.0.0",
+            "port": 443,
+            "tls": {
+                "fullchain": "/etc/ssl/a/fullchain.pem",
+                "private": "/etc/ssl/a/privkey.pem",
+                "ciphers": "..."
+            },
+            "http": { "routes": { ... } }
+        },
+        "site_b": {
+            "domains": ["b.example.com"],
+            "ip": "0.0.0.0",
+            "port": 443,
+            "tls": {
+                "fullchain": "/etc/ssl/b/fullchain.pem",
+                "private": "/etc/ssl/b/privkey.pem",
+                "ciphers": "..."
+            },
+            "http": { "routes": { ... } }
+        }
+    }
+}
+```
+
+::: tip Domain matching
+SNI matching uses the same PCRE regular expressions as the server domains. IDN domains are automatically converted to Punycode, and IP addresses used as SNI are ignored per RFC 6066. If nothing matches, the default server's certificate (the one that accepted the connection) is used.
+:::
 
 ## HTTP and HTTPS on the same server
 
@@ -272,8 +315,12 @@ Check the permissions on the certificate and key files. The server process must 
 
 ### Certificate not updating
 
-After updating the certificate, perform a hot reload of the server:
+After replacing the certificate files, perform a hot reload — it re-reads `config.json` and builds new SSL contexts without restarting the process:
 
 ```bash
-kill -SIGUSR1 $(pidof server)
+kill -SIGUSR1 $(pidof cpdy)
 ```
+
+The reload behavior is controlled by the `main.reload` setting in `config.json`:
+- `"soft"` — new connections use the updated configuration, existing connections keep running;
+- `"hard"` — additionally forces the current sockets to close and clients to reconnect.

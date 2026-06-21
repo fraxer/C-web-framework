@@ -1,17 +1,36 @@
 ---
 outline: deep
-description: Шаблонизатор в C Web Framework. Рендеринг HTML-шаблонов с переменными, условиями, циклами и включениями.
+description: Шаблонизатор в C Web Framework. Рендеринг HTML с переменными, условиями, циклами и включениями на основе JSON-документа.
 ---
 
 # Шаблонизатор
 
-Фреймворк включает встроенный шаблонизатор для рендеринга HTML-страниц с динамическими данными.
+Фреймворк включает встроенный шаблонизатор для рендеринга текста (HTML, письма, любые текстовые форматы) с подстановкой динамических данных из JSON-документа.
 
-## Основы
+## Принцип работы
 
-Шаблоны — это HTML-файлы со специальными тегами для вставки переменных, условий и циклов. Шаблоны хранятся в хранилище и рендерятся с помощью функции `render()`.
+Шаблон — это текстовый файл со специальными тегами. Источником данных выступает `json_doc_t*`, а сам файл читается из [хранилища](./storage.md), объявленного в `config.json`.
+
+Парсинг и компиляция шаблона в дерево тегов выполняются один раз; результат кэшируется в `viewstore` по пути к файлу. При последующих вызовах `render()` с тем же путём используется уже построенное дерево, поэтому повторный рендеринг отрабатывает быстро.
+
+## Настройка хранилища
+
+Шаблоны хранятся в обычном хранилище (`filesystem` или `s3`). Имя хранилища далее передаётся в функции рендеринга.
+
+```json
+{
+    "storages": {
+        "views": {
+            "type": "filesystem",
+            "root": "/var/www/app/views"
+        }
+    }
+}
+```
 
 ## API
+
+### `render()`
 
 ```c
 #include "view.h"
@@ -19,46 +38,82 @@ description: Шаблонизатор в C Web Framework. Рендеринг HTM
 char* render(json_doc_t* document, const char* storage_name, const char* path_format, ...);
 ```
 
-Рендерит шаблон с указанными данными.
+Рендерит шаблон и возвращает готовую строку.
 
-**Параметры**\
-`document` — JSON-документ с данными для шаблона.\
-`storage_name` — имя хранилища, где расположен шаблон.\
-`path_format` — путь к файлу шаблона (поддерживает форматирование).
+**Параметры**
 
-**Возвращаемое значение**\
-Указатель на строку с отрендеренным HTML. Необходимо освободить память функцией `free()`.
+- `document` — JSON-документ с данными для шаблона.
+- `storage_name` — имя хранилища, где расположен шаблон.
+- `path_format` — путь к файлу шаблона внутри хранилища. Поддерживает `printf`-форматирование через вариативные аргументы.
 
-## Синтаксис шаблонов
+**Возвращаемое значение**
+
+Указатель на строку с отрендеренным результатом или `NULL` при ошибке (файл не найден, ошибка синтаксиса). Память необходимо освободить функцией `free()`.
+
+### `send_view()`
+
+Метод объекта ответа — рендерит шаблон и сразу отправляет результат клиенту.
+
+```c
+void (*send_view)(struct httpresponse* response, json_doc_t* document,
+                  const char* storage_name, const char* path_format, ...);
+```
+
+```c
+ctx->response->send_view(ctx->response, document, "views", "/index.tpl");
+```
+
+## Синтаксис
+
+Шаблонизатор различает три вида тегов:
+
+| Тег | Назначение | Пример |
+| --- | --- | --- |
+| <code v-pre>{{ ... }}</code> | Вывод значения переменной | <code v-pre>{{ user.name }}</code> |
+| `{% ... %}` | Управляющие конструкции (`if`, `for`) | `{% if active %}` |
+| `{* include ... *}` | Включение другого шаблона | `{* include /header.tpl *}` |
 
 ### Переменные
 
-Вывод значения переменной:
+Значение выводится через <code v-pre>{{ }}</code>. Поддерживается доступ к вложенным полям через точку и к элементам массива по индексу в квадратных скобках.
 
 ```html
 <p>Привет, {{ name }}!</p>
 <p>Email: {{ user.email }}</p>
 <p>Первый элемент: {{ items[0] }}</p>
+<p>Имя первого пользователя: {{ users[0].name }}</p>
 ```
+
+::: tip Только строки и числа
+Выводятся значения строковых и числовых JSON-полей. Если значение отсутствует или имеет тип объект/массив, ничего не выводится.
+:::
 
 ### Условия
 
 ```html
-{{ if is_authenticated }}
+{% if is_authenticated %}
     <p>Добро пожаловать, {{ user.name }}!</p>
-{{ elseif is_guest }}
+{% elseif is_guest %}
     <p>Вы вошли как гость</p>
-{{ else }}
+{% else %}
     <p>Пожалуйста, войдите в систему</p>
-{{ endif }}
+{% endif %}
 ```
 
-Инверсия условия:
+Инверсия условия через `!`:
 
 ```html
-{{ if !is_authenticated }}
+{% if !is_authenticated %}
     <a href="/login">Войти</a>
-{{ endif }}
+{% endif %}
+```
+
+Условие истинно, когда переменная равна логическому `true`. В условном выражении можно использовать доступ к вложенным полям и индексам, как и в обычных переменных:
+
+```html
+{% if users[0].authorized %}
+    {{ users[0].name }} авторизован
+{% endif %}
 ```
 
 ### Циклы
@@ -67,31 +122,57 @@ char* render(json_doc_t* document, const char* storage_name, const char* path_fo
 
 ```html
 <ul>
-{{ for item in items }}
-    <li>{{ item.name }} - {{ item.price }}</li>
-{{ endfor }}
+{% for product in products %}
+    <li>{{ product.name }} — {{ product.price }}</li>
+{% endfor %}
 </ul>
 ```
 
-С доступом к индексу:
+С доступом к индексу (второе имя после запятой):
 
 ```html
-{{ for item, index in items }}
-    <li>{{ index }}: {{ item.name }}</li>
-{{ endfor }}
+<ol>
+{% for product, i in products %}
+    <li>{{ i }}: {{ product.name }}</li>
+{% endfor %}
+</ol>
 ```
 
-### Включение других шаблонов
+Если имя индекса не задано, оно по умолчанию равно `index`:
 
 ```html
-{{ include "partials/header.html" }}
+{% for product in products %}
+    <p>№ {{ index }}: {{ product.name }}</p>
+{% endfor %}
+```
+
+Циклы также обходят **объекты** — в этом случае значением индекса служит имя ключа (строка), а элементом — значение поля:
+
+```html
+{% for value, key in settings %}
+    <p>{{ key }} = {{ value }}</p>
+{% endfor %}
+```
+
+Внутри цикла становятся доступны переменные с именами элемента и индекса; к их полям можно обращаться как к обычным переменным.
+
+### Включение шаблонов
+
+Включение другого файла выполняется тегом `{* include ... *}`. Путь указывается как есть, без кавычек — это путь внутри хранилища шаблонов.
+
+```html
+{* include /partials/header.tpl *}
 
 <main>
     <h1>{{ title }}</h1>
 </main>
 
-{{ include "partials/footer.html" }}
+{* include /partials/footer.tpl *}
 ```
+
+::: warning Лимит вложенности
+Глубина включений ограничена 100 уровнями. Циклические включения (шаблон включает сам себя без условий) приведут к ошибке парсинга.
+:::
 
 ## Примеры использования
 
@@ -102,29 +183,36 @@ char* render(json_doc_t* document, const char* storage_name, const char* path_fo
 #include "view.h"
 
 void home(httpctx_t* ctx) {
-    // Создаем данные для шаблона
     json_doc_t* doc = json_root_create_object();
     json_token_t* root = json_root(doc);
 
     json_object_set(root, "title", json_create_string("Главная"));
     json_object_set(root, "username", json_create_string("Иван"));
 
-    // Рендерим шаблон
-    char* html = render(doc, "templates", "pages/home.html");
+    ctx->response->send_view(ctx->response, doc, "views", "/pages/home.tpl");
+
     json_free(doc);
-
-    if (html == NULL) {
-        ctx->response->send_default(ctx->response, 500);
-        return;
-    }
-
-    ctx->response->header_add(ctx->response, "Content-Type", "text/html; charset=utf-8");
-    ctx->response->send_data(ctx->response, html);
-    free(html);
 }
 ```
 
-### Шаблон со списком
+### Рендеринг с форматированием пути
+
+Путь поддерживает `printf`-форматирование — удобно, когда имя шаблона зависит от входных данных:
+
+```c
+char* html = render(doc, "views", "/pages/%s.tpl", page_name);
+
+if (html == NULL) {
+    ctx->response->send_default(ctx->response, 404);
+    return;
+}
+
+ctx->response->header_add(ctx->response, "Content-Type", "text/html; charset=utf-8");
+ctx->response->send_data(ctx->response, html);
+free(html);
+```
+
+### Список товаров
 
 ```c
 void products_list(httpctx_t* ctx) {
@@ -133,60 +221,49 @@ void products_list(httpctx_t* ctx) {
 
     json_object_set(root, "title", json_create_string("Товары"));
 
-    // Создаем массив товаров
     json_token_t* products = json_create_array(doc);
 
-    // Добавляем товары
-    json_token_t* product1 = json_create_object(doc);
-    json_object_set(product1, "name", json_create_string("Ноутбук"));
-    json_object_set(product1, "price", json_create_number(50000));
-    json_array_append(products, product1);
+    json_token_t* p1 = json_create_object(doc);
+    json_object_set(p1, "name", json_create_string("Ноутбук"));
+    json_object_set(p1, "price", json_create_number(50000));
+    json_array_append(products, p1);
 
-    json_token_t* product2 = json_create_object(doc);
-    json_object_set(product2, "name", json_create_string("Телефон"));
-    json_object_set(product2, "price", json_create_number(30000));
-    json_array_append(products, product2);
+    json_token_t* p2 = json_create_object(doc);
+    json_object_set(p2, "name", json_create_string("Телефон"));
+    json_object_set(p2, "price", json_create_number(30000));
+    json_array_append(products, p2);
 
     json_object_set(root, "products", products);
 
-    char* html = render(doc, "templates", "pages/products.html");
-    json_free(doc);
+    ctx->response->send_view(ctx->response, doc, "views", "/pages/products.tpl");
 
-    ctx->response->header_add(ctx->response, "Content-Type", "text/html; charset=utf-8");
-    ctx->response->send_data(ctx->response, html);
-    free(html);
+    json_free(doc);
 }
 ```
 
-### Шаблон products.html
+Шаблон `/pages/products.tpl`:
 
 ```html
 <!DOCTYPE html>
 <html>
-<head>
-    <title>{{ title }}</title>
-</head>
+<head><title>{{ title }}</title></head>
 <body>
     <h1>{{ title }}</h1>
 
-    {{ if products }}
+    {% if products %}
         <table>
-            <tr>
-                <th>#</th>
-                <th>Название</th>
-                <th>Цена</th>
-            </tr>
-            {{ for product, i in products }}
+            <tr><th>#</th><th>Название</th><th>Цена</th></tr>
+            {% for product, i in products %}
             <tr>
                 <td>{{ i }}</td>
                 <td>{{ product.name }}</td>
                 <td>{{ product.price }} руб.</td>
             </tr>
-            {{ endfor }}
+            {% endfor %}
         </table>
-    {{ else }}
+    {% else %}
         <p>Товары не найдены</p>
-    {{ endif }}
+    {% endif %}
 </body>
 </html>
 ```
@@ -195,7 +272,6 @@ void products_list(httpctx_t* ctx) {
 
 ```c
 void user_profile(httpctx_t* ctx) {
-    // Получаем пользователя
     array_t* params = array_create();
     mparams_fill_array(params, mparam_int(id, 1));
     user_t* user = user_get(params);
@@ -206,75 +282,78 @@ void user_profile(httpctx_t* ctx) {
         return;
     }
 
-    // Преобразуем модель в JSON
     json_doc_t* doc = json_root_create_object();
     json_token_t* root = json_root(doc);
 
-    json_token_t* user_json = model_to_json(user, NULL);
-    json_object_set(root, "user", user_json);
+    json_object_set(root, "user", model_to_json(user, NULL));
     json_object_set(root, "title", json_create_string("Профиль пользователя"));
 
     user_free(user);
 
-    char* html = render(doc, "templates", "pages/profile.html");
-    json_free(doc);
+    ctx->response->send_view(ctx->response, doc, "views", "/pages/profile.tpl");
 
-    ctx->response->header_add(ctx->response, "Content-Type", "text/html; charset=utf-8");
-    ctx->response->send_data(ctx->response, html);
-    free(html);
+    json_free(doc);
 }
 ```
 
-### Шаблон profile.html
+### Вложенные циклы
+
+Допустим, есть документ с пользователями и их задачами:
+
+```json
+{
+    "company": "My Company",
+    "users": [
+        {
+            "name": "Alex",
+            "authorized": true,
+            "tasks": ["Task 1", "Task 2", "Task 3"]
+        },
+        {
+            "name": "Bonnie",
+            "authorized": false,
+            "tasks": ["Task 4", "Task 5"]
+        }
+    ]
+}
+```
+
+Шаблон, обходящий пользователей и их задачи:
 
 ```html
-<!DOCTYPE html>
-<html>
-<head>
-    <title>{{ title }}</title>
-</head>
-<body>
-    {{ include "partials/header.html" }}
+{* include /header.tpl *}
 
-    <main>
-        <h1>{{ title }}</h1>
-
-        {{ if user }}
-            <div class="profile">
-                <p><strong>ID:</strong> {{ user.id }}</p>
-                <p><strong>Email:</strong> {{ user.email }}</p>
-                <p><strong>Имя:</strong> {{ user.name }}</p>
-            </div>
-        {{ else }}
-            <p>Пользователь не найден</p>
-        {{ endif }}
-    </main>
-
-    {{ include "partials/footer.html" }}
-</body>
-</html>
+Пользователи компании {{ company }}:
+{% for user, i in users %}
+    {{ i }}. {{ user.name }}
+    Авторизован: {% if user.authorized %}да{% else %}нет{% endif %}
+    Задачи:
+    {% for task, j in user.tasks %}
+        - {{ j }}: {{ task }}
+    {% endfor %}
+{% endfor %}
 ```
+
+Внешний цикл объявляет элемент `user` и индекс `i`, внутренний — элемент `task` и индекс `j`.
 
 ## Организация шаблонов
 
-Рекомендуемая структура:
+Рекомендуемая структура хранилища:
 
 ```
-storages/
-└── templates/
-    ├── layouts/
-    │   └── base.html
-    ├── partials/
-    │   ├── header.html
-    │   ├── footer.html
-    │   └── navigation.html
-    └── pages/
-        ├── home.html
-        ├── products.html
-        └── profile.html
+views/
+├── layouts/
+│   └── base.tpl
+├── partials/
+│   ├── header.tpl
+│   └── footer.tpl
+└── pages/
+    ├── home.tpl
+    ├── products.tpl
+    └── profile.tpl
 ```
 
-### partials/header.html
+### partials/header.tpl
 
 ```html
 <!DOCTYPE html>
@@ -288,17 +367,17 @@ storages/
     <header>
         <nav>
             <a href="/">Главная</a>
-            {{ if is_authenticated }}
+            {% if is_authenticated %}
                 <a href="/profile">Профиль</a>
                 <a href="/logout">Выход</a>
-            {{ else }}
+            {% else %}
                 <a href="/login">Вход</a>
-            {{ endif }}
+            {% endif %}
         </nav>
     </header>
 ```
 
-### partials/footer.html
+### partials/footer.tpl
 
 ```html
     <footer>
@@ -308,22 +387,10 @@ storages/
 </html>
 ```
 
-## Вложенные данные
+## Экранирование и безопасность
 
-Доступ к вложенным объектам через точку:
+::: warning Значения не экранируются автоматически
+Шаблонизатор выводит строковые значения как есть, без HTML-экранирования. Если данные приходят от пользователя и вставляются в HTML, их необходимо экранировать заранее, иначе возможно выполнение произвольного HTML/JavaScript (XSS).
+:::
 
-```html
-<p>{{ user.profile.avatar_url }}</p>
-<p>{{ company.address.city }}</p>
-```
-
-Доступ к элементам массива по индексу:
-
-```html
-<p>Первый: {{ items[0].name }}</p>
-<p>Второй: {{ items[1].name }}</p>
-```
-
-## Экранирование
-
-По умолчанию все значения экранируются для предотвращения XSS-атак. HTML-теги в переменных будут преобразованы в безопасные сущности.
+Вывод значений, которые могут содержать спецсимволы (`<`, `>`, `&`, `"`), безопасно только после предварительной очистки на стороне обработчика.

@@ -11,16 +11,18 @@ The framework provides a complete set of tools for developing modern web applica
 
 ## Features
 
-### HTTP Server
+### HTTP
 * Full HTTP/1.1 support
+* Built-in HTTP client: HTTPS (TLS 1.2+), keep-alive connection pooling, automatic redirect following
 * Flexible routing system with dynamic parameters
+* Virtual hosts with regex domains and IDN support
 * Middleware for HTTP and WebSocket requests
 * Built-in filters: chunked encoding, range requests, gzip, cache control
 * Multipart/form-data handling and file uploads
 * Full cookie support with secure, httpOnly, sameSite
 * Automatic gzip compression for supported content types
 * TLS/SSL with configurable cipher suites
-* Redirects with regular expression support
+* Redirects with regular expressions and capture-group substitution
 
 ### WebSocket
 * Full WebSocket protocol support
@@ -32,6 +34,7 @@ The framework provides a complete set of tools for developing modern web applica
 ### Databases
 * PostgreSQL — native support with prepared statements
 * MySQL — native support with SQL injection protection
+* SQLite — embedded database that works directly with a file, no server required
 * Redis — support for caching and sessions
 * ORM-like operations — model system for working with tables
 * Migrations — database schema versioning system
@@ -39,7 +42,7 @@ The framework provides a complete set of tools for developing modern web applica
 
 ### Authentication and Security
 * Built-in registration and authorization system
-* File-based and Redis sessions
+* Sessions on files, Redis, and database (secrets protected with AES-256-GCM)
 * Password hashing with salt
 * Validators for email, passwords, and other data
 * Authentication middleware for route protection
@@ -62,11 +65,24 @@ The framework provides a complete set of tools for developing modern web applica
 * Variables and loops for dynamic HTML generation
 * Model integration
 
+### Internationalization (i18n)
+* Built on top of the standard gettext library
+* Translations organized by domains to separate localization between modules
+* Automatic language detection from the query string or Accept-Language header
+* Plural forms and placeholder substitution
+* Fallback chain: requested language → en → message identifier
+
 ### JSON
 * High-performance JSON parser
 * Data serialization to JSON
 * Thread-safe operations
 * Correct handling of Unicode and surrogate pairs
+
+### Task Manager
+* Async tasks — one-time tasks executed in a background thread
+* Scheduled tasks — interval, daily, weekly, monthly
+* Two dedicated threads: async worker and scheduler worker
+* Tasks loaded as dynamic .so modules
 
 ### Performance and Scalability
 * Event-driven architecture on epoll
@@ -79,8 +95,9 @@ The framework provides a complete set of tools for developing modern web applica
 * str_t — dynamic strings with SSO optimization
 * Array — dynamic arrays
 * HashMap/Map — associative arrays
+* JWT — token creation and verification
+* UUID, Base64, SHA-1/256, AES-256-GCM
 * Logging system with different levels
-* Base64 encoding/decoding
 
 ## Software Requirements
 

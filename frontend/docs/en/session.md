@@ -27,7 +27,7 @@ Session settings are specified in the `config.json` file. The `sessions` section
 - `driver` — storage driver: `filesystem`, `redis`, or `database`
 - `storage_name` — storage name from the `storages` section (for `filesystem` driver)
 - `host_id` — database/Redis server host identifier (for `redis` and `database` drivers)
-- `secret` — secret passphrase for session data encryption (required)
+- `secret` — secret passphrase for session data encryption with AES-256-GCM (required)
 
 ### Redis Configuration Example
 
@@ -79,6 +79,10 @@ Session settings are specified in the `config.json` file. The `sessions` section
 }
 ```
 
+::: tip The sessions table
+The `database` driver stores sessions in a `sessions` table with the columns `session_id`, `data` (encrypted value), and `expired_at`. Create this table in advance, for example via a migration.
+:::
+
 ## Session API
 
 ### Creating a Session
@@ -89,7 +93,7 @@ Session settings are specified in the `config.json` file. The `sessions` section
 char* session_create(const char* key, const char* data, long duration);
 ```
 
-Creates a new session with the specified data.
+Creates a new session with the specified data. Before creation, all expired sessions of this configuration are removed automatically.
 
 **Parameters**\
 `key` — session configuration name from `config.json`.\
@@ -162,7 +166,7 @@ char* session_create_id();
 Generates a unique session identifier.
 
 **Return Value**\
-Pointer to a string with the identifier. Memory must be freed with `free()`.
+Pointer to a string with the identifier. Memory must be freed with `free()`. Returns `NULL` on failure.
 
 ## Usage Example
 
@@ -257,11 +261,6 @@ void logout(httpctx_t* ctx) {
 
 ## Automatic Cleanup
 
-```c
-void session_remove_expired(const char* key);
-```
+On every `session_create()` call, the framework first removes all expired sessions of the given configuration — no separate cleanup function is needed. Removal is performed by the storage driver: files are deleted from disk, keys from Redis, rows from the `sessions` table.
 
-Removes all expired sessions for the specified configuration. It is recommended to call periodically to clean up stale data.
-
-**Parameters**\
-`key` — session configuration name from `config.json`.
+Thus, stale data is cleaned up automatically as new sessions are created.

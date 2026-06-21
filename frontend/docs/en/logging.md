@@ -1,6 +1,6 @@
 ---
 outline: deep
-description: C Web Framework logging system. Full syslog level support, configurable filtering, writing to syslog and console output.
+description: C Web Framework logging system. Full syslog level support, configurable filtering, and writing to the syslog.
 ---
 
 # Logging
@@ -75,16 +75,6 @@ Debug-level messages. Detailed information for diagnostics.
 log_debug("Query executed in %d ms: %s\n", duration, query);
 ```
 
-## Helper Functions
-
-### print
-
-Outputs a message only to standard output without writing to syslog. Useful for debugging.
-
-```C
-print("Debug output: %d\n", value);
-```
-
 ## Logging Configuration
 
 Logging is configured through the `log` section in `config.json`:
@@ -99,6 +89,10 @@ Logging is configured through the `log` section in `config.json`:
     }
 }
 ```
+
+::: warning Note
+The `log` section is required — both fields (`enabled` and `level`) must be present. If either is missing, configuration loading fails.
+:::
 
 ### enabled <Badge type="info" text="boolean"/>
 
@@ -122,7 +116,7 @@ Valid values (in order of decreasing priority):
 
 ## Where Logs are Stored
 
-All messages (except `print` calls) are written to the system syslog and are usually available in `/var/log/syslog`.
+All messages are written to the system syslog and are usually available in `/var/log/syslog`.
 
 To view logs use:
 

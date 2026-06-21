@@ -77,7 +77,7 @@ void channel_send(wsctx_t* ctx) {
 
 ## Response handler
 
-Function for forming the response for channel clients:
+The handler determines how a subscriber receives the message. It is a user-defined function with the signature `void(*)(response_t*, const char*, size_t)`, called separately for each recipient. Typical implementations send a text or binary frame:
 
 ```c
 void broadcast_send_text(response_t* response, const char* data, size_t size) {
@@ -93,7 +93,13 @@ void broadcast_send_binary(response_t* response, const char* data, size_t size) 
 
 ## Recipient filtering
 
-To send messages to specific clients, use an identification structure.
+To send messages to specific clients, use an identification structure. It inherits from `broadcast_id_t` (always as the first field) and plays two roles: when subscribing a client (`broadcast_add`) and as a filter when sending (`broadcast_send`).
+
+::: warning Identifier lifetime
+These roles have different lifetimes:
+- the identifier from `broadcast_add` is freed through its `free` handler when the subscriber is removed — on client disconnect or `broadcast_remove`;
+- the filter identifier from `broadcast_send` **is freed by the function itself** through `free` immediately after distribution — do not free it manually and do not reuse it after the call.
+:::
 
 ### Defining the structure
 
@@ -132,14 +138,14 @@ void chat_broadcast_id_free(void* ptr) {
 ### Connecting with identification
 
 ```c
-#include "query.h"
+#include "websockets.h"
 
 void join_room(wsctx_t* ctx) {
-    int ok = 0;
-    const char* room_id_str = query_param_char(ctx->request, "room", &ok);
-    const char* user_id_str = query_param_char(ctx->request, "user", &ok);
+    websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)ctx->request->protocol;
+    const char* room_id_str = protocol->get_query(protocol, "room");
+    const char* user_id_str = protocol->get_query(protocol, "user");
 
-    if (!ok) {
+    if (!room_id_str || !user_id_str) {
         ctx->response->send_text(ctx->response, "Missing parameters");
         return;
     }
@@ -179,13 +185,13 @@ int compare_by_user(void* source, void* target) {
 ### Sending with filtering
 
 ```c
-#include "query.h"
+#include "websockets.h"
 
 void send_to_room(wsctx_t* ctx) {
-    int ok = 0;
-    const char* room_id_str = query_param_char(ctx->request, "room", &ok);
+    websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)ctx->request->protocol;
+    const char* room_id_str = protocol->get_query(protocol, "room");
 
-    if (!ok) {
+    if (!room_id_str) {
         ctx->response->send_text(ctx->response, "Missing room parameter");
         return;
     }
@@ -197,7 +203,8 @@ void send_to_room(wsctx_t* ctx) {
         return;
     }
 
-    // Create filter for the room
+    // Create filter for the room.
+    // Note: broadcast_send frees filter via its free handler — do not free it yourself.
     chat_broadcast_id_t* filter = chat_broadcast_id_create(0, atoi(room_id_str));
 
     // Send only to clients in the specified room
@@ -213,10 +220,15 @@ void send_to_room(wsctx_t* ctx) {
 
 | Function | Description |
 |----------|-------------|
-| `broadcast_add(channel, conn, id, handler)` | Add client to channel |
-| `broadcast_remove(channel, conn)` | Remove client from channel |
-| `broadcast_send_all(channel, sender, data, len)` | Send to all (except sender) |
-| `broadcast_send(channel, sender, data, len, filter, cmp)` | Send with filtering |
+| `broadcast_add(channel, conn, id, handler)` | Subscribe a connection to a channel; the channel is created automatically. Returns `1` on success, `0` on error or if the connection is already subscribed |
+| `broadcast_remove(channel, conn)` | Unsubscribe a connection from a channel; an empty channel is destroyed |
+| `broadcast_clear(conn)` | Unsubscribe a connection from all channels at once (called automatically when the connection closes) |
+| `broadcast_send_all(channel, sender, data, len)` | Send to all channel subscribers except the sender |
+| `broadcast_send(channel, sender, data, len, filter, cmp)` | Send to subscribers filtered by `filter`. If `filter` or `cmp` is `NULL`, the message goes to all (except the sender). The function takes ownership of `filter` and frees it |
+
+::: tip Filtering applies only to recipients
+The comparison runs between the subscriber's identifier (the first argument of `cmp`) and the passed `filter` (the second argument). Every subscriber for which `cmp` returns a non-zero value receives the message; the sender is always excluded.
+:::
 
 ## Example: Chat room
 
@@ -226,13 +238,12 @@ void send_to_room(wsctx_t* ctx) {
 #include "websockets.h"
 #include "broadcast.h"
 #include "json.h"
-#include "query.h"
 
 void ws_join_chat(wsctx_t* ctx) {
-    int ok = 0;
-    const char* username = query_param_char(ctx->request, "username", &ok);
+    websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)ctx->request->protocol;
+    const char* username = protocol->get_query(protocol, "username");
 
-    if (!ok) {
+    if (!username) {
         ctx->response->send_text(ctx->response, "Missing username parameter");
         return;
     }
@@ -285,7 +296,8 @@ function sendMessage(text) {
 
 ## Important
 
-- Identification structure memory is freed automatically when the client disconnects
-- The sender client does not receive its own message during broadcast
-- Channels are created automatically on the first `broadcast_add`
-- Channels are deleted automatically when the last client disconnects
+- The identifier from `broadcast_add` is freed automatically when the subscriber is removed (client disconnect or `broadcast_remove`), while the filter identifier from `broadcast_send` is freed by `broadcast_send` itself right after distribution
+- A connection can subscribe to a channel only once — a repeated `broadcast_add` returns `0` and does not add a duplicate
+- On disconnect, a connection is unsubscribed from all channels via `broadcast_clear`, so no explicit cleanup is needed in a close handler
+- The sender never receives its own message
+- Channels are created automatically on the first `broadcast_add` and destroyed automatically when the last subscriber leaves

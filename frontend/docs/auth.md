@@ -5,9 +5,17 @@ description: Аутентификация в C Web Framework. Хеширован
 
 # Аутентификация
 
-Фреймворк предоставляет инструменты для реализации аутентификации пользователей: хеширование паролей (PBKDF2-SHA256), управление сессиями и ролевой доступ (RBAC).
+Фреймворк предоставляет инструменты для реализации аутентификации пользователей: хеширование паролей (PBKDF2-HMAC-SHA256), управление сессиями, валидация учётных данных и ролевой доступ (RBAC).
 
 ## Хеширование паролей
+
+Для хеширования используется PBKDF2-HMAC-SHA256. Соль и хеш хранятся в одном поле модели `user` в формате `iterations$salt$hash` (значения salt и hash — в шестнадцатеричной кодировке). Параметры по умолчанию определены в `auth.h`:
+
+```c
+#define SALT_SIZE 16      // размер соли в байтах
+#define HASH_SIZE 32      // размер хеша в байтах
+#define ITERATIONS 140000 // количество итераций PBKDF2
+```
 
 ### Генерация секрета
 
@@ -17,13 +25,31 @@ description: Аутентификация в C Web Framework. Хеширован
 str_t* generate_secret(const char* password);
 ```
 
-Генерирует безопасный секрет из пароля, используя PBKDF2-SHA256 с случайной солью.
+Генерирует безопасный секрет из пароля: создаёт случайную соль, хеширует пароль и собирает строку `iterations$salt$hash`.
 
 **Параметры**\
 `password` — пароль пользователя.
 
 **Возвращаемое значение**\
-Строка в формате `iterations$salt$hash`. Необходимо освободить функцией `str_free()`.
+Строка в формате `iterations$salt$hash`. Необходимо освободить функцией `str_free()`. `NULL` при ошибке.
+
+<br>
+
+### Сборка секрета из готовых значений
+
+```c
+str_t* create_secret(int iterations, const char* hash_hex, const char* salt_hex);
+```
+
+Собирает секрет из числа итераций, хеша и соли (оба значения — hex-строки), разделяя их символом `$`. Используется внутри `generate_secret()`, но доступна и для самостоятельного вызова — например, при смене числа итераций.
+
+**Параметры**\
+`iterations` — количество итераций PBKDF2.\
+`hash_hex` — хеш пароля в hex.\
+`salt_hex` — соль в hex.
+
+**Возвращаемое значение**\
+Строка секрета. Необходимо освободить функцией `str_free()`. `NULL` при ошибке.
 
 <br>
 
@@ -33,13 +59,13 @@ str_t* generate_secret(const char* password);
 int password_hash(const char* password, unsigned char* salt, int salt_size, unsigned char* hash);
 ```
 
-Хеширует пароль с указанной солью.
+Хеширует пароль с указанной солью и числом итераций `ITERATIONS`.
 
 **Параметры**\
 `password` — пароль.\
 `salt` — соль.\
 `salt_size` — размер соли.\
-`hash` — буфер для записи хеша.
+`hash` — буфер размером `HASH_SIZE` для записи хеша.
 
 **Возвращаемое значение**\
 1 при успехе, 0 при ошибке.
@@ -52,7 +78,7 @@ int password_hash(const char* password, unsigned char* salt, int salt_size, unsi
 int generate_salt(unsigned char* salt, int size);
 ```
 
-Генерирует криптографически безопасную случайную соль.
+Генерирует криптографически безопасную случайную соль (`RAND_bytes` из OpenSSL).
 
 **Параметры**\
 `salt` — буфер для записи соли.\
@@ -69,30 +95,37 @@ int generate_salt(unsigned char* salt, int size);
 user_t* authenticate(const char* email, const char* password);
 ```
 
-Аутентифицирует пользователя по email и паролю.
+Проверяет email и пароль, загружает пользователя из БД, извлекает соль из секрета, хеширует пароль и сверяет с хранимым хешем.
 
 **Параметры**\
 `email` — email пользователя.\
 `password` — пароль.
 
 **Возвращаемое значение**\
-Указатель на модель пользователя при успехе, `NULL` при ошибке.
+Указатель на модель пользователя при успехе, `NULL` при ошибке (невалидные данные, пользователь не найден, несовпадение хеша). Пользователя необходимо освободить через `user_free()`.
 
 <br>
 
-### По cookie
+### По cookie `token`
 
 ```c
 user_t* authenticate_by_cookie(httpctx_t* ctx);
 ```
 
-Аутентифицирует пользователя по cookie из запроса.
+Аутентифицирует пользователя по cookie `token` из запроса — выполняет поиск пользователя по токену. Подходит для schemes на основе долгоживущих токенов доступа (например, «запомнить меня»), альтернативных сессиям.
 
 **Параметры**\
 `ctx` — контекст HTTP-запроса.
 
 **Возвращаемое значение**\
 Указатель на модель пользователя при успехе, `NULL` при ошибке.
+
+::: tip Два способа аутентификации
+Фреймворк поддерживает два независимых механизма:
+
+- **Сессионный** — `middleware_http_auth(ctx)` проверяет cookie `session_id`, читает данные сессии через `session_get()` и загружает пользователя в контекст (`httpctx_get_user(ctx)`). Используется в примерах ниже (вход, защищённый маршрут).
+- **Токенный** — `authenticate_by_cookie(ctx)` ищет пользователя напрямую по cookie `token` без участия хранилища сессий.
+:::
 
 ## Примеры использования
 
@@ -104,24 +137,22 @@ user_t* authenticate_by_cookie(httpctx_t* ctx);
 #include "user.h"
 
 void registration(httpctx_t* ctx) {
-    int ok = 0;
-
-    // Получаем данные из формы
-    const char* email = ctx->request->get_payload_text(ctx->request, "email", &ok);
-    if (!ok || email == NULL) {
+    // Получаем данные из тела запроса
+    const char* email = ctx->request->get_payloadf(ctx->request, "email");
+    if (email == NULL) {
         ctx->response->status_code = 400;
         ctx->response->send_data(ctx->response, "Email is required");
         return;
     }
 
-    const char* password = ctx->request->get_payload_text(ctx->request, "password", &ok);
-    if (!ok || password == NULL) {
+    const char* password = ctx->request->get_payloadf(ctx->request, "password");
+    if (password == NULL) {
         ctx->response->status_code = 400;
         ctx->response->send_data(ctx->response, "Password is required");
         return;
     }
 
-    const char* name = ctx->request->get_payload_text(ctx->request, "name", &ok);
+    const char* name = ctx->request->get_payloadf(ctx->request, "name");
 
     // Валидация
     if (!validate_email(email)) {
@@ -132,7 +163,7 @@ void registration(httpctx_t* ctx) {
 
     if (!validate_password(password)) {
         ctx->response->status_code = 400;
-        ctx->response->send_data(ctx->response, "Password must be at least 8 characters");
+        ctx->response->send_data(ctx->response, "Invalid password");
         return;
     }
 
@@ -168,12 +199,10 @@ void registration(httpctx_t* ctx) {
 
 ```c
 void login(httpctx_t* ctx) {
-    int ok = 0;
+    const char* email = ctx->request->get_payloadf(ctx->request, "email");
+    const char* password = ctx->request->get_payloadf(ctx->request, "password");
 
-    const char* email = ctx->request->get_payload_text(ctx->request, "email", &ok);
-    const char* password = ctx->request->get_payload_text(ctx->request, "password", &ok);
-
-    if (!email || !password) {
+    if (email == NULL || password == NULL) {
         ctx->response->status_code = 400;
         ctx->response->send_data(ctx->response, "Email and password are required");
         return;
@@ -187,12 +216,12 @@ void login(httpctx_t* ctx) {
         return;
     }
 
-    // Создаём сессию
+    // Создаём сессию: session_create(<имя>, <данные>, <ttl в секундах>)
     json_doc_t* doc = json_root_create_object();
     json_token_t* root = json_root(doc);
     json_object_set(root, "user_id", json_create_number(user_id(user)));
 
-    char* session_id = session_create(json_stringify(doc));
+    char* session_id = session_create("backend", json_stringify(doc), 86400);
     json_free(doc);
 
     if (session_id == NULL) {
@@ -210,7 +239,7 @@ void login(httpctx_t* ctx) {
         .path = "/",
         .secure = 1,
         .http_only = 1,
-        .same_site = "Strict"
+        .same_site = "Lax"
     });
 
     free(session_id);
@@ -227,7 +256,8 @@ void logout(httpctx_t* ctx) {
     const char* session_id = ctx->request->get_cookie(ctx->request, "session_id");
 
     if (session_id != NULL) {
-        session_destroy(session_id);
+        // session_destroy(<имя>, <id сессии>)
+        session_destroy("backend", session_id);
     }
 
     // Удаляем cookie
@@ -245,27 +275,27 @@ void logout(httpctx_t* ctx) {
 ### Защищённый маршрут
 
 ```c
+#include "http.h"
+#include "auth.h"
+#include "user.h"
+
 void profile(httpctx_t* ctx) {
-    // Проверяем авторизацию через middleware
+    // Проверяем авторизацию через middleware.
+    // При успехе пользователь доступен через httpctx_get_user(ctx).
     middleware(middleware_http_auth(ctx));
 
-    // Получаем пользователя из контекста
     user_t* user = httpctx_get_user(ctx);
 
-    json_doc_t* doc = json_root_create_object();
-    json_token_t* root = json_root(doc);
-    json_object_set(root, "id", json_create_number(user_id(user)));
-    json_object_set(root, "email", json_create_string(user_email(user)));
-    json_object_set(root, "name", json_create_string(user_name(user)));
-
-    ctx->response->header_add(ctx->response, "Content-Type", "application/json");
-    ctx->response->send_data(ctx->response, json_stringify(doc));
-
-    json_free(doc);
+    // send_model сериализует модель в JSON.
+    // display_fields(...) перечисляет поля, которые попадут в ответ,
+    // поэтому secret гарантированно исключается.
+    ctx->response->send_model(ctx->response, user, display_fields("id", "email", "name"));
 }
 ```
 
 ## Ролевой доступ (RBAC)
+
+Модели `role`, `permission`, `role_permission` и `user_role` уже входят в состав приложения (`app/models/`). Ниже — схема связей и примеры проверок на уровне SQL.
 
 ### Структура таблиц
 
@@ -299,6 +329,8 @@ CREATE TABLE user_role (
 
 ### Проверка роли
 
+Параметры запроса передаются по имени (`:name`) и собираются макросами `mparam_*`.
+
 ```c
 int user_has_role(user_t* user, const char* role_name) {
     array_t* params = array_create();
@@ -307,18 +339,18 @@ int user_has_role(user_t* user, const char* role_name) {
         mparam_varchar(role_name, role_name)
     );
 
-    dbresult_t* result = db_query(
+    dbresult_t* result = dbquery(
         "postgresql.p1",
         "SELECT 1 FROM user_role ur "
         "JOIN role r ON r.id = ur.role_id "
-        "WHERE ur.user_id = $1 AND r.name = $2",
+        "WHERE ur.user_id = :user_id AND r.name = :role_name",
         params
     );
 
     array_free(params);
 
-    int has_role = (result != NULL && db_result_row_count(result) > 0);
-    db_result_free(result);
+    int has_role = (result != NULL && dbresult_query_rows(result) > 0);
+    dbresult_free(result);
 
     return has_role;
 }
@@ -334,19 +366,19 @@ int user_has_permission(user_t* user, const char* permission_name) {
         mparam_varchar(permission_name, permission_name)
     );
 
-    dbresult_t* result = db_query(
+    dbresult_t* result = dbquery(
         "postgresql.p1",
         "SELECT 1 FROM user_role ur "
         "JOIN role_permission rp ON rp.role_id = ur.role_id "
         "JOIN permission p ON p.id = rp.permission_id "
-        "WHERE ur.user_id = $1 AND p.name = $2",
+        "WHERE ur.user_id = :user_id AND p.name = :permission_name",
         params
     );
 
     array_free(params);
 
-    int has_permission = (result != NULL && db_result_row_count(result) > 0);
-    db_result_free(result);
+    int has_permission = (result != NULL && dbresult_query_rows(result) > 0);
+    dbresult_free(result);
 
     return has_permission;
 }
@@ -418,7 +450,10 @@ void delete_post(httpctx_t* ctx) {
 int validate_email(const char* email);
 ```
 
-Проверяет корректность email-адреса.
+Проверяет корректность email-адреса: длина до 254 символов, ровно один `@`, корректные локальную часть (до 64 символов, допустимые символы RFC 5322, без точек в начале/конце и подряд) и домен (валидные символы, хотя бы одна точка, корректный TLD из букв длиной от 2 символов).
+
+**Возвращаемое значение**\
+1 — адрес корректен, 0 — нет.
 
 ### Валидация пароля
 
@@ -426,12 +461,20 @@ int validate_email(const char* email);
 int validate_password(const char* password);
 ```
 
-Проверяет соответствие пароля требованиям безопасности.
+Проверяет соответствие пароля требованиям безопасности:
+
+- длина от 8 до 128 символов;
+- минимум по одной заглавной и строчной букве, цифре и спецсимволу;
+- отсутствие подряд повторяющихся символов;
+- отсутствие распространённых шаблонов (`123`, `abc`, `qwe`, `password`, …) и клавиатурных последовательностей (`qwerty`, `asdfgh`, …) — в том числе в обратном порядке.
+
+**Возвращаемое значение**\
+1 — пароль надёжный, 0 — нет.
 
 ## Константы
 
 ```c
-#define SALT_SIZE 16    // Размер соли в байтах
-#define HASH_SIZE 32    // Размер хеша в байтах
-#define ITERATIONS 10000 // Количество итераций PBKDF2
+#define SALT_SIZE 16      // размер соли в байтах
+#define HASH_SIZE 32      // размер хеша в байтах
+#define ITERATIONS 140000 // количество итераций PBKDF2
 ```

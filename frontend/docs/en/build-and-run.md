@@ -10,7 +10,7 @@ description: Building C Web Framework from source code. Release and Debug build 
 ```bash
 # Clone the repository
 git clone git@github.com:fraxer/C-web-framework.git
-cd C-web-framework
+cd C-web-framework/backend
 
 # Create build directory
 mkdir build && cd build
@@ -19,42 +19,77 @@ mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release \
          -DINCLUDE_POSTGRESQL=yes \
          -DINCLUDE_MYSQL=yes \
-         -DINCLUDE_REDIS=yes
+         -DINCLUDE_REDIS=yes \
+         -DINCLUDE_SQLITE=yes
 
 # Build the project
-cmake --build . -j4
+cmake --build . -j$(nproc)
 
-# Run the application
-./exec/cpdy -c /path/to/config.json
+# Run the application (config.json lives at the backend/ root)
+./exec/cpdy -c ../config.json
+```
+
+## Dependencies
+
+Building requires development headers for the libraries looked up via `find_package`: **Threads**, **PCRE**, **ZLIB**, **OpenSSL**, **LibXML2**, **libidn2**, **libunistring**. Database support is opt-in (see below) and needs the matching clients: **PostgreSQL**, **MySQL/MariaDB**, **hiredis** (Redis), **SQLite3**.
+
+Example install on Ubuntu/Debian:
+
+```bash
+sudo apt install build-essential cmake pkg-config \
+                 libpcre3-dev zlib1g-dev libssl-dev libxml2-dev \
+                 libidn2-dev libunistring-dev \
+                 libpq-dev libmariadb-dev libhiredis-dev libsqlite3-dev
 ```
 
 ## Build modes
 
+The mode is set with `CMAKE_BUILD_TYPE`. The behavior of `Debug` and `RelWithDebInfo` is configured in the root `CMakeLists.txt`.
+
 | Mode | Description |
 |------|-------------|
-| `Release` | Performance optimization, no debug information. Recommended for production |
-| `Debug` | Debug information enabled, AddressSanitizer for memory error detection |
-| `RelWithDebInfo` | Performance optimization with debug information |
-| `MinSizeRel` | Binary size optimization |
+| `Release` | Performance optimization, no debug info, no sanitizers. Recommended for production |
+| `Debug` | Debug info, AddressSanitizer + leak detector, `-fanalyzer`, strict warnings (`-Wall -Wextra -Wpedantic`), `DEBUG` macro |
+| `RelWithDebInfo` | Optimized **with** debug info; like `Debug`, enables sanitizers and strict warnings |
+| `MinSizeRel` | Binary size optimization (standard CMake mode, no framework-specific behavior) |
+
+::: tip Sanitizers
+`-fsanitize=address -fsanitize=leak -fanalyzer` are enabled automatically for `Debug` and `RelWithDebInfo`. Use `Release` for production builds.
+:::
 
 ```bash
-# Build in Debug mode
+# Debug build
 cmake .. -DCMAKE_BUILD_TYPE=Debug \
          -DINCLUDE_POSTGRESQL=yes \
          -DINCLUDE_MYSQL=yes \
-         -DINCLUDE_REDIS=yes
+         -DINCLUDE_REDIS=yes \
+         -DINCLUDE_SQLITE=yes
+
+# Build with core unit tests (core/tests)
+cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=yes
+cmake --build . -j$(nproc)
+ctest --test-dir build
 ```
 
 ## CMake parameters
 
 ### Databases
 
-Enable database support:
+Database support is opt-in — only enabled drivers are compiled:
 
 ```bash
--DINCLUDE_POSTGRESQL=yes  # PostgreSQL support
--DINCLUDE_MYSQL=yes       # MySQL support
--DINCLUDE_REDIS=yes       # Redis support
+-DINCLUDE_POSTGRESQL=yes  # PostgreSQL (libpq)
+-DINCLUDE_MYSQL=yes       # MySQL / MariaDB
+-DINCLUDE_REDIS=yes       # Redis (hiredis)
+-DINCLUDE_SQLITE=yes      # SQLite3
+```
+
+When set to `yes`, the framework looks up the corresponding library via `find_package`; if found, the driver macro (`PostgreSQL_FOUND`, `MySQL_FOUND`, `Redis_FOUND`, `SQLite_FOUND`) is defined and the driver is compiled into the core.
+
+### Tests
+
+```bash
+-DBUILD_TESTS=yes         # Enable unit tests (core/tests) and the test/ctest target
 ```
 
 ### Compiler
@@ -67,102 +102,123 @@ cmake .. -DCMAKE_C_COMPILER=/usr/bin/gcc-12
 
 ## Project structure
 
-```
-project/
-├── core/                          # Framework core
-│   ├── framework/                 # Framework components
-│   │   ├── database/             # Database (PostgreSQL, MySQL, Redis)
-│   │   ├── model/                # ORM model system
-│   │   ├── session/              # Session system
-│   │   ├── storage/              # File storage (FS, S3)
-│   │   ├── view/                 # Template engine
-│   │   ├── middleware/           # Middleware system
-│   │   └── query/                # Query builder
-│   ├── protocols/                # Protocol implementations
-│   │   ├── http/                 # HTTP/1.1 server and client
-│   │   ├── websocket/            # WebSocket server
-│   │   └── smtp/                 # SMTP client, DKIM
-│   ├── src/                      # Core components
-│   │   ├── broadcast/            # Broadcasting system
-│   │   ├── connection/           # Connection management
-│   │   ├── server/               # HTTP server
-│   │   ├── route/                # Routing system
-│   │   ├── thread/               # Multithreading
-│   │   └── multiplexing/         # Epoll multiplexing
-│   └── misc/                     # Utilities
-│       ├── str.h                 # Dynamic strings
-│       ├── array.h               # Arrays
-│       ├── hashmap.h/map.h       # Associative arrays
-│       ├── json.h                # JSON parser
-│       ├── log.h                 # Logging
-│       └── gzip.h                # Gzip compression
-│
-└── app/                          # User application
-    ├── routes/                   # HTTP and WebSocket handlers
-    │   ├── auth/                # Authentication (login, registration)
-    │   ├── index/               # Main page
-    │   ├── ws/                  # WebSocket handlers
-    │   ├── files/               # File operations
-    │   ├── models/              # API model operations
-    │   ├── email/               # Email sending
-    │   └── db/                  # Database examples
-    ├── models/                   # Data models
-    │   ├── user.c               # User model
-    │   ├── role.c               # Role model
-    │   ├── permission.c         # Permission model
-    │   └── *view.c              # View models for JOIN queries
-    ├── middlewares/              # Custom middlewares
-    │   ├── httpmiddlewares.c    # HTTP middleware (auth, rate limit)
-    │   └── wsmiddlewares.c      # WebSocket middleware
-    ├── migrations/               # Database migrations
-    │   ├── s1/                  # Migrations for server s1
-    │   └── s2/                  # Migrations for server s2
-    ├── broadcasting/             # Broadcasting channels
-    │   └── mybroadcast.c        # Broadcasting channel example
-    ├── auth/                     # Authentication module
-    │   ├── auth.c               # Authentication functions
-    │   ├── password_validator.c # Password validation
-    │   └── email_validator.c    # Email validation
-    ├── contexts/                 # Request contexts
-    │   ├── httpcontext.c        # HTTP context
-    │   └── wscontext.c          # WebSocket context
-    └── views/                    # Templates
-        ├── index.tpl            # Main page
-        └── header.tpl           # Header
+`backend/` is the build root (it holds `CMakeLists.txt` and `config.json`). `core/` is the framework core (a git submodule); `app/` is the example application.
 
-config.json                       # Application configuration
+```
+backend/
+├── core/                          # Framework core (submodule)
+│   ├── apps/                      # Executable entry points
+│   │   ├── server/                # → cpdy (main.c)
+│   │   └── migrate/               # → migrate (main.c)
+│   ├── framework/                 # Framework components
+│   │   ├── database/              # DB layer (PostgreSQL, MySQL, Redis, SQLite)
+│   │   ├── model/                 # ORM model system
+│   │   ├── session/               # Sessions (FS, Redis, DB; AES-256-GCM)
+│   │   ├── storage/               # Storage (FS, S3)
+│   │   ├── view/                  # Template engine
+│   │   ├── middleware/            # Middleware system
+│   │   ├── taskmanager/           # Background task scheduler
+│   │   └── translation/           # i18n
+│   ├── protocols/                 # Protocol implementations
+│   │   ├── http/                  # HTTP/1.1 server and client
+│   │   ├── websocket/             # WebSocket
+│   │   └── smtp/                  # SMTP client, DKIM
+│   ├── src/                       # Runtime
+│   │   ├── server/                # HTTP server, workers
+│   │   ├── multiplexing/          # Epoll multiplexing
+│   │   ├── thread/                # Thread pool
+│   │   ├── connection/            # Connection management
+│   │   ├── socket/                # Sockets
+│   │   ├── signal/                # Signal handling (incl. hot reload)
+│   │   ├── route/                 # Routing
+│   │   ├── domain/                # Virtual hosts, regex, IDN
+│   │   ├── config/                # Config loading
+│   │   ├── mimetype/              # MIME types
+│   │   ├── moduleloader/          # Dynamic .so loading
+│   │   ├── ratelimiter/           # Rate limiting
+│   │   ├── openssl/               # OpenSSL helpers
+│   │   └── broadcast/             # Broadcasting
+│   ├── misc/                      # Utilities (header-only)
+│   │   ├── str.h                  # Dynamic strings (SSO)
+│   │   ├── array.h, hashmap.h, map.h  # Collections
+│   │   ├── json.h                 # JSON parser/generator
+│   │   ├── jwt.h, sha256.h, base64.h, uuid.h  # Crypto/encoding
+│   │   ├── query.h, queryparser.h # Query-string parsing
+│   │   ├── log.h                  # Logging
+│   │   └── gzip.h                 # Gzip
+│   └── tests/                     # Core unit tests (BUILD_TESTS=yes)
+│
+├── app/                           # User application
+│   ├── routes/                    # HTTP/WebSocket handlers (compiled to .so)
+│   │   ├── auth/                  # Authentication (login, registration, session)
+│   │   ├── index/                 # Main page
+│   │   ├── ws/                    # WebSocket handlers
+│   │   ├── models/                # Model API (modeluser, modeluserview)
+│   │   ├── db/                    # Database examples
+│   │   ├── files/                 # File / storage operations
+│   │   ├── email/                 # Email sending
+│   │   ├── httpclient/            # HTTP client
+│   │   ├── json/                  # JSON examples
+│   │   └── middleware/            # Middleware examples
+│   ├── models/                    # ORM models and view models
+│   │   ├── user.c, userview.c
+│   │   ├── role.c, permission.c
+│   │   ├── user_role.c, role_permission.c
+│   │   └── *view.c                # View models for JOIN queries
+│   ├── middlewares/               # Custom middlewares
+│   │   ├── httpmiddlewares.c      # HTTP middleware (auth, etc.)
+│   │   └── wsmiddlewares.c        # WebSocket middleware
+│   ├── migrations/                # Database migrations
+│   │   ├── s1/                    # Migrations for server s1
+│   │   └── s2/                    # Migrations for server s2
+│   ├── broadcasting/              # Broadcasting channels (mybroadcast)
+│   ├── auth/                      # Authentication module
+│   │   ├── auth.c                 # Hashing, authenticate()
+│   │   ├── password_validator.c   # Password validation
+│   │   └── email_validator.c      # Email validation
+│   ├── contexts/                  # Request contexts
+│   │   ├── httpctx.c              # HTTP context
+│   │   └── wsctx.c                # WebSocket context
+│   └── views/                     # Templates (.tpl)
+│       ├── index.tpl
+│       └── header.tpl
+│
+└── config.json                    # Application configuration
 ```
 
 ## Build results
 
-After building, files are located in the `build/exec` directory:
+After building, executables and libraries are placed in `build/exec`:
 
 ```
 build/exec/
-├── cpdy                          # Main executable
-├── migrate                       # Migration utility
-├── handlers/                     # Compiled handlers
-│   ├── libindexpage.so
-│   ├── libwsindexpage.so
+├── cpdy                           # Main executable
+├── migrate                        # Migration utility
+├── handlers/                      # Compiled handlers (.so)
+│   ├── index/lib_index.so         #   lib_<file_name>.so under the group folder
+│   ├── ws/lib_wsindex.so
+│   ├── auth/lib_auth.so
 │   └── ...
-└── migrations/                   # Compiled migrations
-    ├── s1/
-    │   └── lib2023-04-04_17-55-00_create_users_table.so
-    └── ...
+└── migrations/                    # Compiled migrations (.so)
+    └── s1/
+        ├── lib2023-04-04_17-55-00_create_user_table.so
+        └── ...
 ```
+
+Handlers are compiled one `.so` per source file (`app/routes/<group>/<name>.c` → `handlers/<group>/lib_<name>.so`) and loaded dynamically at runtime.
 
 ## Launch
 
 ```bash
-# Run with configuration file
-./build/exec/cpdy -c /path/to/config.json
+# Run with a configuration file
+./exec/cpdy -c ../config.json
 ```
 
-The application will start and listen on the ports specified in the configuration.
+The application starts and listens on the ports defined in `config.json`. See [Configuration](./config.md) for details.
 
 ## Hot reload
 
-To apply configuration changes without stopping the server:
+`SIGUSR1` reloads the configuration (`config.json`) without stopping the server:
 
 ```bash
 pkill -USR1 cpdy

@@ -1,15 +1,26 @@
 ---
 outline: deep
-description: Пошаговая установка C Web Framework на Linux. Настройка GCC, CMake, OpenSSL, PCRE, Zlib и подключение PostgreSQL, MySQL, Redis.
+description: Пошаговая установка C Web Framework на Linux. Настройка GCC, CMake, OpenSSL, PCRE, Zlib, LibXml2, libidn2, libunistring и подключение PostgreSQL, MySQL, Redis, SQLite.
 ---
 
 # Установка зависимостей
 
-Для работы фреймворка требуются следующие компоненты:
+Для сборки и работы фреймворка требуются следующие компоненты:
 
-**Обязательные:** GCC 9.5+, CMake 3.12+, OpenSSL 1.1.1+, PCRE 8.43, Zlib 1.2.11, LibXml2 2.9.13
+**Обязательные:** GCC 9.5+, CMake 3.12+, OpenSSL 1.1.1+, PCRE 8.43+, Zlib 1.2.11+, LibXml2 2.9.13+, libidn2 2.3.0+, libunistring 0.9.12+
 
-**Опциональные:** PostgreSQL, MySQL, Redis — устанавливаются при необходимости работы с соответствующими базами данных.
+**Опциональные:** PostgreSQL, MySQL/MariaDB, Redis, SQLite — устанавливаются при необходимости работы с соответствующими базами данных.
+
+::: tip Быстрая установка (Ubuntu/Debian)
+Все обязательные библиотеки и клиенты БД одной командой:
+```bash
+sudo apt install build-essential cmake pkg-config \
+                 libpcre3-dev zlib1g-dev libssl-dev libxml2-dev \
+                 libidn2-dev libunistring-dev \
+                 libpq-dev libmariadb-dev libhiredis-dev libsqlite3-dev
+```
+После этого можно переходить к [сборке проекта](./build-and-run.md).
+:::
 
 Начните с обновления списка пакетов:
 
@@ -19,15 +30,15 @@ sudo apt update
 
 ## GCC
 
-Установите пакет build-essential, набрав:
+Установите пакет build-essential:
 
 ```bash
 sudo apt install build-essential
 ```
 
-Команда устанавливает много новых пакетов, включая `gcc`, `g++` and `make`
+Команда устанавливает `gcc`, `g++` и `make`.
 
-Чтобы убедиться, что компилятор GCC успешно установлен, используйте команду gcc --version, которая выводит версию GCC.
+Чтобы убедиться, что компилятор GCC успешно установлен, используйте команду `gcc --version`, которая выводит версию GCC:
 
 ```bash
 gcc --version
@@ -35,11 +46,11 @@ gcc --version
 
 Теперь GCC установлен в вашей системе, и вы можете начать его использовать.
 
-## Cmake
+## CMake
 
 ### Менеджер пакетов
 
-Установка cmake из официальных репозиториев выполняется командой:
+Установка cmake из официальных репозиториев:
 
 ```bash
 sudo apt install cmake
@@ -47,46 +58,48 @@ sudo apt install cmake
 
 ### Сборка из исходных файлов
 
-Скачайте архив с официального сайта:
+Если в репозиториях дистрибутива старая версия CMake, соберите его из исходников. Скачайте архив с официального сайта:
 
 ```bash
-wget https://github.com/Kitware/CMake/releases/download/v3.27.0-rc3/cmake-3.27.0-rc3.tar.gz
+wget https://github.com/Kitware/CMake/releases/download/v3.27.0/cmake-3.27.0.tar.gz
 ```
 
 Распакуйте:
 
 ```bash
-tar -zxvf cmake-3.27.0-rc3.tar.gz
+tar -zxvf cmake-3.27.0.tar.gz
 ```
 
 Перейдите в распакованную директорию:
 
 ```bash
-cd cmake-3.27.0-rc3
+cd cmake-3.27.0
 ```
 
-Запустите процесс сборки
+Запустите процесс сборки:
 
 ```bash
 ./bootstrap
 ```
 
-Запустите процесс установки
+Скомпилируйте и установите:
 
 ```bash
 make
+sudo make install
 ```
 
-Скопируйте скомпилированные файлы в соответствующие места
+## pkg-config
+
+Утилита `pkg-config` используется системой сборки для поиска заголовков и библиотек (ищутся через `find_package`):
 
 ```bash
-make install
+sudo apt install pkg-config
 ```
-
 
 ## PCRE
 
-Установка pcre из официальных репозиториев выполняется командой:
+Библиотека регулярных выражений (используется для маршрутизации и виртуальных хостов с regex):
 
 ```bash
 sudo apt install libpcre3-dev
@@ -95,8 +108,6 @@ sudo apt install libpcre3-dev
 ## Zlib
 
 ### Менеджер пакетов
-
-Установка zlib из официальных репозиториев выполняется командой:
 
 ```bash
 sudo apt install zlib1g-dev
@@ -122,27 +133,22 @@ tar -zxvf zlib-1.2.13.tar.gz
 cd zlib-1.2.13
 ```
 
-Запустите процесс сборки
+Запустите процесс сборки:
 
 ```bash
 ./configure
 ```
 
-Запустите процесс установки
+Скомпилируйте и установите:
 
 ```bash
 make
-```
-
-Скопируйте скомпилированные файлы в соответствующие места
-
-```bash
-make install
+sudo make install
 ```
 
 ## OpenSSL
 
-Установка openssl из официальных репозиториев выполняется командой:
+Библиотека TLS и криптографии (HTTPS, сессии с AES-256-GCM, JWT и др.):
 
 ```bash
 sudo apt install openssl libssl-dev
@@ -151,8 +157,6 @@ sudo apt install openssl libssl-dev
 ## LibXml2
 
 ### Менеджер пакетов
-
-Установка libxml2 из официальных репозиториев выполняется командой:
 
 ```bash
 sudo apt install libxml2-dev
@@ -163,58 +167,95 @@ sudo apt install libxml2-dev
 Скачайте архив с официального сайта:
 
 ```bash
-wget https://github.com/GNOME/libxml2/releases/download/v2.9.13/libxml2-2.9.13.tar.gz
+wget https://github.com/GNOME/libxml2/releases/download/v2.9.14/libxml2-2.9.14.tar.gz
 ```
 
 Распакуйте:
 
 ```bash
-tar -zxvf libxml2-2.9.13.tar.gz
+tar -zxvf libxml2-2.9.14.tar.gz
 ```
 
 Перейдите в распакованную директорию:
 
 ```bash
-cd libxml2-2.9.13
+cd libxml2-2.9.14
 ```
 
-Запустите процесс сборки
+Запустите процесс сборки:
 
 ```bash
 ./configure
 ```
 
-Запустите процесс установки
+Скомпилируйте и установите:
 
 ```bash
 make
+sudo make install
 ```
 
-Скопируйте скомпилированные файлы в соответствующие места
+## libidn2
+
+Библиотека для поддержки интернационализованных доменных имён (IDN):
 
 ```bash
-make install
+sudo apt install libidn2-dev
 ```
 
-## MySQL
+## libunistring
+
+Библиотека для работы с Unicode-строками (требуется для IDN и i18n):
 
 ```bash
-sudo apt install mysql-server
+sudo apt install libunistring-dev
 ```
 
-Подробная инструкция представлена на [DigitalOcean](https://www.digitalocean.com/community/tutorials/how-to-install-mysql-on-ubuntu-20-04)
+## Базы данных
 
-## PostgreSQL
+Поддержка баз данных включается опционально через параметры CMake (`-DINCLUDE_POSTGRESQL=yes`, `-DINCLUDE_MYSQL=yes`, `-DINCLUDE_REDIS=yes`, `-DINCLUDE_SQLITE=yes`). Для сборки соответствующего драйвера требуется клиентская библиотека разработки (`-dev`), а для запуска — сам сервер.
+
+### PostgreSQL
+
+Клиентская библиотека для сборки драйвера (libpq):
+
+```bash
+sudo apt install libpq-dev
+```
+
+Сервер PostgreSQL:
 
 ```bash
 sudo apt install postgresql postgresql-contrib
 ```
 
-Подробная инструкция представлена на [DigitalOcean](https://www.digitalocean.com/community/tutorials/how-to-install-postgresql-on-ubuntu-20-04-quickstart)
+Подробная инструкция представлена на [DigitalOcean](https://www.digitalocean.com/community/tutorials/how-to-install-postgresql-on-ubuntu-20-04-quickstart).
 
-## Redis
+### MySQL / MariaDB
 
-Добавьте репозиторий в индекс apt:
+Клиентская библиотека для сборки драйвера:
+
+```bash
+sudo apt install libmariadb-dev
+```
+
+Сервер MySQL:
+
+```bash
+sudo apt install mysql-server
+```
+
+Подробная инструкция представлена на [DigitalOcean](https://www.digitalocean.com/community/tutorials/how-to-install-mysql-on-ubuntu-20-04).
+
+### Redis
+
+Клиентская библиотека hiredis для сборки драйвера:
+
+```bash
+sudo apt install libhiredis-dev
+```
+
+Сервер Redis. Добавьте официальный репозиторий в индекс apt:
 
 ```bash
 curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
@@ -225,7 +266,26 @@ echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://pack
 Затем установите:
 
 ```bash
-sudo apt-get install redis
+sudo apt update
+sudo apt install redis
 ```
 
-Подробная инструкция представлена на [Redis](https://redis.io/docs/getting-started/installation/install-redis-on-linux/)
+Подробная инструкция представлена на [Redis](https://redis.io/docs/getting-started/installation/install-redis-on-linux/).
+
+### SQLite
+
+Клиентская библиотека для сборки драйвера:
+
+```bash
+sudo apt install libsqlite3-dev
+```
+
+Для работы с базой достаточно самого файла SQLite — отдельный сервер не требуется. При необходимости установите консольный клиент:
+
+```bash
+sudo apt install sqlite3
+```
+
+## Что дальше
+
+После установки зависимостей переходите к [сборке и запуску проекта](./build-and-run.md).

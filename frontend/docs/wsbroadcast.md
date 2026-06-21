@@ -77,7 +77,7 @@ void channel_send(wsctx_t* ctx) {
 
 ## Обработчик ответа
 
-Функция формирования ответа для клиентов канала:
+Обработчик определяет, в каком виде подписчик получит сообщение. Это пользовательская функция с сигнатурой `void(*)(response_t*, const char*, size_t)`, которая вызывается отдельно для каждого получателя. Типовые реализации — отправка текстовым или бинарным кадром:
 
 ```c
 void broadcast_send_text(response_t* response, const char* data, size_t size) {
@@ -93,7 +93,13 @@ void broadcast_send_binary(response_t* response, const char* data, size_t size) 
 
 ## Фильтрация получателей
 
-Для отправки сообщений определённым клиентам используйте структуру идентификации.
+Для отправки сообщений определённым клиентам используйте структуру идентификации. Она наследуется от `broadcast_id_t` (обязательно первым полем) и участвует в двух ролях: при подписке клиента (`broadcast_add`) и как фильтр при отправке (`broadcast_send`).
+
+::: warning Время жизни идентификатора
+У этих ролей разное время жизни:
+- идентификатор из `broadcast_add` освобождается через заданный `free` при удалении подписчика — при отключении клиента или `broadcast_remove`;
+- идентификатор-фильтр из `broadcast_send` **освобождается самой функцией** через `free` сразу после рассылки — не освобождайте его вручную и не переиспользуйте после вызова.
+:::
 
 ### Определение структуры
 
@@ -132,14 +138,14 @@ void chat_broadcast_id_free(void* ptr) {
 ### Подключение с идентификацией
 
 ```c
-#include "query.h"
+#include "websockets.h"
 
 void join_room(wsctx_t* ctx) {
-    int ok = 0;
-    const char* room_id_str = query_param_char(ctx->request, "room", &ok);
-    const char* user_id_str = query_param_char(ctx->request, "user", &ok);
+    websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)ctx->request->protocol;
+    const char* room_id_str = protocol->get_query(protocol, "room");
+    const char* user_id_str = protocol->get_query(protocol, "user");
 
-    if (!ok) {
+    if (!room_id_str || !user_id_str) {
         ctx->response->send_text(ctx->response, "Missing parameters");
         return;
     }
@@ -179,13 +185,13 @@ int compare_by_user(void* source, void* target) {
 ### Отправка с фильтрацией
 
 ```c
-#include "query.h"
+#include "websockets.h"
 
 void send_to_room(wsctx_t* ctx) {
-    int ok = 0;
-    const char* room_id_str = query_param_char(ctx->request, "room", &ok);
+    websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)ctx->request->protocol;
+    const char* room_id_str = protocol->get_query(protocol, "room");
 
-    if (!ok) {
+    if (!room_id_str) {
         ctx->response->send_text(ctx->response, "Missing room parameter");
         return;
     }
@@ -197,7 +203,8 @@ void send_to_room(wsctx_t* ctx) {
         return;
     }
 
-    // Создаём фильтр для комнаты
+    // Создаём фильтр для комнаты.
+    // Внимание: broadcast_send сам освободит filter через его free — не делайте это вручную.
     chat_broadcast_id_t* filter = chat_broadcast_id_create(0, atoi(room_id_str));
 
     // Отправляем только клиентам в указанной комнате
@@ -213,10 +220,15 @@ void send_to_room(wsctx_t* ctx) {
 
 | Функция | Описание |
 |---------|----------|
-| `broadcast_add(channel, conn, id, handler)` | Добавить клиента в канал |
-| `broadcast_remove(channel, conn)` | Удалить клиента из канала |
-| `broadcast_send_all(channel, sender, data, len)` | Отправить всем (кроме sender) |
-| `broadcast_send(channel, sender, data, len, filter, cmp)` | Отправить с фильтрацией |
+| `broadcast_add(channel, conn, id, handler)` | Подписать соединение на канал; канал создаётся автоматически. Возвращает `1` при успехе, `0` при ошибке или если соединение уже подписано |
+| `broadcast_remove(channel, conn)` | Отписать соединение от канала; пустой канал удаляется |
+| `broadcast_clear(conn)` | Отписать соединение сразу от всех каналов (вызывается автоматически при закрытии соединения) |
+| `broadcast_send_all(channel, sender, data, len)` | Отправить всем подписчикам канала, кроме отправителя |
+| `broadcast_send(channel, sender, data, len, filter, cmp)` | Отправить подписчикам с фильтрацией по `filter`. Если `filter` или `cmp` равны `NULL` — уходит всем (кроме отправителя). Функция забирает владение `filter` и освобождает его |
+
+::: tip Фильтрация применяется только к получателям
+Сравнение выполняется между идентификатором подписчика (первый аргумент `cmp`) и переданным `filter` (второй аргумент). Сообщение получает каждый подписчик, для которого `cmp` вернул ненулевое значение; отправитель исключается всегда.
+:::
 
 ## Пример: Чат-комната
 
@@ -226,13 +238,12 @@ void send_to_room(wsctx_t* ctx) {
 #include "websockets.h"
 #include "broadcast.h"
 #include "json.h"
-#include "query.h"
 
 void ws_join_chat(wsctx_t* ctx) {
-    int ok = 0;
-    const char* username = query_param_char(ctx->request, "username", &ok);
+    websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)ctx->request->protocol;
+    const char* username = protocol->get_query(protocol, "username");
 
-    if (!ok) {
+    if (!username) {
         ctx->response->send_text(ctx->response, "Missing username parameter");
         return;
     }
@@ -285,7 +296,8 @@ function sendMessage(text) {
 
 ## Важно
 
-- Память структуры идентификации освобождается автоматически при отключении клиента
-- Клиент-отправитель не получает своё сообщение при broadcast
-- Каналы создаются автоматически при первом `broadcast_add`
-- Каналы удаляются автоматически когда последний клиент отключается
+- Идентификатор из `broadcast_add` освобождается автоматически при удалении подписчика (отключение клиента или `broadcast_remove`), а идентификатор-фильтр из `broadcast_send` — сразу после рассылки самой функцией `broadcast_send`
+- Одно соединение может быть подписано на канал только один раз — повторный `broadcast_add` вернёт `0` и не добавит дубль
+- При отключении соединение отписывается от всех каналов через `broadcast_clear`, поэтому явная очистка в обработчике закрытия не требуется
+- Клиент-отправитель никогда не получает собственное сообщение
+- Каналы создаются автоматически при первом `broadcast_add` и удаляются автоматически, когда уходит последний подписчик

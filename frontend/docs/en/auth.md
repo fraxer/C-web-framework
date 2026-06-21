@@ -5,9 +5,17 @@ description: Authentication in C Web Framework. Password hashing, sessions, RBAC
 
 # Authentication
 
-The framework provides tools for implementing user authentication: password hashing (PBKDF2-SHA256), session management, and role-based access control (RBAC).
+The framework provides tools for implementing user authentication: password hashing (PBKDF2-HMAC-SHA256), session management, credential validation, and role-based access control (RBAC).
 
 ## Password Hashing
+
+Hashing uses PBKDF2-HMAC-SHA256. The salt and hash are stored together in a single `user` field formatted as `iterations$salt$hash` (the salt and hash are hex-encoded). Default parameters are defined in `auth.h`:
+
+```c
+#define SALT_SIZE 16      // salt size in bytes
+#define HASH_SIZE 32      // hash size in bytes
+#define ITERATIONS 140000 // number of PBKDF2 iterations
+```
 
 ### Generating a Secret
 
@@ -17,13 +25,31 @@ The framework provides tools for implementing user authentication: password hash
 str_t* generate_secret(const char* password);
 ```
 
-Generates a secure secret from a password using PBKDF2-SHA256 with a random salt.
+Generates a secure secret from a password: creates a random salt, hashes the password, and assembles the `iterations$salt$hash` string.
 
 **Parameters**\
 `password` — user's password.
 
 **Return Value**\
-String in format `iterations$salt$hash`. Must be freed with `str_free()`.
+String in the format `iterations$salt$hash`. Must be freed with `str_free()`. `NULL` on failure.
+
+<br>
+
+### Assembling a Secret From Existing Values
+
+```c
+str_t* create_secret(int iterations, const char* hash_hex, const char* salt_hex);
+```
+
+Assembles a secret from an iteration count, a hash, and a salt (both hex strings), separated by `$`. Used internally by `generate_secret()`, but also available for direct use — for example, when changing the iteration count.
+
+**Parameters**\
+`iterations` — number of PBKDF2 iterations.\
+`hash_hex` — password hash as hex.\
+`salt_hex` — salt as hex.
+
+**Return Value**\
+The secret string. Must be freed with `str_free()`. `NULL` on failure.
 
 <br>
 
@@ -33,13 +59,13 @@ String in format `iterations$salt$hash`. Must be freed with `str_free()`.
 int password_hash(const char* password, unsigned char* salt, int salt_size, unsigned char* hash);
 ```
 
-Hashes a password with the specified salt.
+Hashes a password with the given salt and `ITERATIONS` iterations.
 
 **Parameters**\
 `password` — password.\
 `salt` — salt.\
 `salt_size` — salt size.\
-`hash` — buffer for writing the hash.
+`hash` — buffer of `HASH_SIZE` bytes for writing the hash.
 
 **Return Value**\
 1 on success, 0 on error.
@@ -52,7 +78,7 @@ Hashes a password with the specified salt.
 int generate_salt(unsigned char* salt, int size);
 ```
 
-Generates a cryptographically secure random salt.
+Generates a cryptographically secure random salt (OpenSSL `RAND_bytes`).
 
 **Parameters**\
 `salt` — buffer for writing the salt.\
@@ -69,30 +95,37 @@ Generates a cryptographically secure random salt.
 user_t* authenticate(const char* email, const char* password);
 ```
 
-Authenticates a user by email and password.
+Validates the email and password, loads the user from the database, extracts the salt from the secret, hashes the password, and compares it with the stored hash.
 
 **Parameters**\
 `email` — user's email.\
 `password` — password.
 
 **Return Value**\
-Pointer to user model on success, `NULL` on error.
+Pointer to the user model on success, `NULL` on error (invalid input, user not found, hash mismatch). The user must be freed with `user_free()`.
 
 <br>
 
-### By Cookie
+### By `token` Cookie
 
 ```c
 user_t* authenticate_by_cookie(httpctx_t* ctx);
 ```
 
-Authenticates a user by cookie from the request.
+Authenticates a user by the `token` cookie from the request — performs a user lookup by token. Suited to long-lived access-token schemes (e.g. "remember me") as an alternative to sessions.
 
 **Parameters**\
 `ctx` — HTTP request context.
 
 **Return Value**\
-Pointer to user model on success, `NULL` on error.
+Pointer to the user model on success, `NULL` on error.
+
+::: tip Two authentication mechanisms
+The framework supports two independent mechanisms:
+
+- **Session-based** — `middleware_http_auth(ctx)` checks the `session_id` cookie, reads session data via `session_get()`, and loads the user into the context (`httpctx_get_user(ctx)`). Used in the examples below (login, protected route).
+- **Token-based** — `authenticate_by_cookie(ctx)` looks the user up directly by the `token` cookie, without involving the session store.
+:::
 
 ## Usage Examples
 
@@ -104,24 +137,22 @@ Pointer to user model on success, `NULL` on error.
 #include "user.h"
 
 void registration(httpctx_t* ctx) {
-    int ok = 0;
-
-    // Get data from form
-    const char* email = ctx->request->get_payload_text(ctx->request, "email", &ok);
-    if (!ok || email == NULL) {
+    // Read data from the request body
+    const char* email = ctx->request->get_payloadf(ctx->request, "email");
+    if (email == NULL) {
         ctx->response->status_code = 400;
         ctx->response->send_data(ctx->response, "Email is required");
         return;
     }
 
-    const char* password = ctx->request->get_payload_text(ctx->request, "password", &ok);
-    if (!ok || password == NULL) {
+    const char* password = ctx->request->get_payloadf(ctx->request, "password");
+    if (password == NULL) {
         ctx->response->status_code = 400;
         ctx->response->send_data(ctx->response, "Password is required");
         return;
     }
 
-    const char* name = ctx->request->get_payload_text(ctx->request, "name", &ok);
+    const char* name = ctx->request->get_payloadf(ctx->request, "name");
 
     // Validation
     if (!validate_email(email)) {
@@ -132,7 +163,7 @@ void registration(httpctx_t* ctx) {
 
     if (!validate_password(password)) {
         ctx->response->status_code = 400;
-        ctx->response->send_data(ctx->response, "Password must be at least 8 characters");
+        ctx->response->send_data(ctx->response, "Invalid password");
         return;
     }
 
@@ -168,12 +199,10 @@ void registration(httpctx_t* ctx) {
 
 ```c
 void login(httpctx_t* ctx) {
-    int ok = 0;
+    const char* email = ctx->request->get_payloadf(ctx->request, "email");
+    const char* password = ctx->request->get_payloadf(ctx->request, "password");
 
-    const char* email = ctx->request->get_payload_text(ctx->request, "email", &ok);
-    const char* password = ctx->request->get_payload_text(ctx->request, "password", &ok);
-
-    if (!email || !password) {
+    if (email == NULL || password == NULL) {
         ctx->response->status_code = 400;
         ctx->response->send_data(ctx->response, "Email and password are required");
         return;
@@ -187,12 +216,12 @@ void login(httpctx_t* ctx) {
         return;
     }
 
-    // Create session
+    // Create session: session_create(<name>, <data>, <ttl in seconds>)
     json_doc_t* doc = json_root_create_object();
     json_token_t* root = json_root(doc);
     json_object_set(root, "user_id", json_create_number(user_id(user)));
 
-    char* session_id = session_create(json_stringify(doc));
+    char* session_id = session_create("backend", json_stringify(doc), 86400);
     json_free(doc);
 
     if (session_id == NULL) {
@@ -210,7 +239,7 @@ void login(httpctx_t* ctx) {
         .path = "/",
         .secure = 1,
         .http_only = 1,
-        .same_site = "Strict"
+        .same_site = "Lax"
     });
 
     free(session_id);
@@ -227,7 +256,8 @@ void logout(httpctx_t* ctx) {
     const char* session_id = ctx->request->get_cookie(ctx->request, "session_id");
 
     if (session_id != NULL) {
-        session_destroy(session_id);
+        // session_destroy(<name>, <session id>)
+        session_destroy("backend", session_id);
     }
 
     // Delete cookie
@@ -245,27 +275,27 @@ void logout(httpctx_t* ctx) {
 ### Protected Route
 
 ```c
+#include "http.h"
+#include "auth.h"
+#include "user.h"
+
 void profile(httpctx_t* ctx) {
-    // Check authorization via middleware
+    // Check authorization via middleware.
+    // On success the user is available via httpctx_get_user(ctx).
     middleware(middleware_http_auth(ctx));
 
-    // Get user from context
     user_t* user = httpctx_get_user(ctx);
 
-    json_doc_t* doc = json_root_create_object();
-    json_token_t* root = json_root(doc);
-    json_object_set(root, "id", json_create_number(user_id(user)));
-    json_object_set(root, "email", json_create_string(user_email(user)));
-    json_object_set(root, "name", json_create_string(user_name(user)));
-
-    ctx->response->header_add(ctx->response, "Content-Type", "application/json");
-    ctx->response->send_data(ctx->response, json_stringify(doc));
-
-    json_free(doc);
+    // send_model serializes the model to JSON.
+    // display_fields(...) lists the fields included in the response,
+    // so secret is guaranteed to be excluded.
+    ctx->response->send_model(ctx->response, user, display_fields("id", "email", "name"));
 }
 ```
 
 ## Role-Based Access Control (RBAC)
+
+The `role`, `permission`, `role_permission`, and `user_role` models ship with the application (`app/models/`). Below is the relationship schema and SQL-level check examples.
 
 ### Table Structure
 
@@ -299,6 +329,8 @@ CREATE TABLE user_role (
 
 ### Role Check
 
+Query parameters are passed by name (`:name`) and assembled with the `mparam_*` macros.
+
 ```c
 int user_has_role(user_t* user, const char* role_name) {
     array_t* params = array_create();
@@ -307,18 +339,18 @@ int user_has_role(user_t* user, const char* role_name) {
         mparam_varchar(role_name, role_name)
     );
 
-    dbresult_t* result = db_query(
+    dbresult_t* result = dbquery(
         "postgresql.p1",
         "SELECT 1 FROM user_role ur "
         "JOIN role r ON r.id = ur.role_id "
-        "WHERE ur.user_id = $1 AND r.name = $2",
+        "WHERE ur.user_id = :user_id AND r.name = :role_name",
         params
     );
 
     array_free(params);
 
-    int has_role = (result != NULL && db_result_row_count(result) > 0);
-    db_result_free(result);
+    int has_role = (result != NULL && dbresult_query_rows(result) > 0);
+    dbresult_free(result);
 
     return has_role;
 }
@@ -334,19 +366,19 @@ int user_has_permission(user_t* user, const char* permission_name) {
         mparam_varchar(permission_name, permission_name)
     );
 
-    dbresult_t* result = db_query(
+    dbresult_t* result = dbquery(
         "postgresql.p1",
         "SELECT 1 FROM user_role ur "
         "JOIN role_permission rp ON rp.role_id = ur.role_id "
         "JOIN permission p ON p.id = rp.permission_id "
-        "WHERE ur.user_id = $1 AND p.name = $2",
+        "WHERE ur.user_id = :user_id AND p.name = :permission_name",
         params
     );
 
     array_free(params);
 
-    int has_permission = (result != NULL && db_result_row_count(result) > 0);
-    db_result_free(result);
+    int has_permission = (result != NULL && dbresult_query_rows(result) > 0);
+    dbresult_free(result);
 
     return has_permission;
 }
@@ -418,7 +450,10 @@ void delete_post(httpctx_t* ctx) {
 int validate_email(const char* email);
 ```
 
-Checks if an email address is valid.
+Checks that an email address is valid: length up to 254 characters, exactly one `@`, a valid local part (up to 64 characters, RFC 5322 allowed characters, no leading/trailing or consecutive dots) and domain (valid characters, at least one dot, a letter-only TLD of at least 2 characters).
+
+**Return Value**\
+1 if the address is valid, 0 otherwise.
 
 ### Password Validation
 
@@ -426,12 +461,20 @@ Checks if an email address is valid.
 int validate_password(const char* password);
 ```
 
-Checks if a password meets security requirements.
+Checks that a password meets the security requirements:
+
+- length from 8 to 128 characters;
+- at least one uppercase letter, one lowercase letter, one digit, and one special character;
+- no consecutively repeated characters;
+- no common patterns (`123`, `abc`, `qwe`, `password`, …) or keyboard sequences (`qwerty`, `asdfgh`, …) — including reversed.
+
+**Return Value**\
+1 if the password is strong, 0 otherwise.
 
 ## Constants
 
 ```c
-#define SALT_SIZE 16    // Salt size in bytes
-#define HASH_SIZE 32    // Hash size in bytes
-#define ITERATIONS 10000 // Number of PBKDF2 iterations
+#define SALT_SIZE 16      // salt size in bytes
+#define HASH_SIZE 32      // hash size in bytes
+#define ITERATIONS 140000 // number of PBKDF2 iterations
 ```

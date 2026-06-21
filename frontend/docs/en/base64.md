@@ -5,82 +5,109 @@ description: Base64 library in C Web Framework. Encoding and decoding data in Ba
 
 # Base64 library
 
-Library for encoding and decoding data in Base64 format.
+Library for encoding and decoding data to/from Base64 (RFC 4648). The alphabet is the standard `A–Z`, `a–z`, `0–9`, `+`, `/`, with `=` padding.
+
+::: tip Null terminator
+All encoding and decoding functions **null-terminate the result**. The `*_len` functions return the required buffer size **including** the null terminator — so `malloc(base64_*_len(...))` allocates exactly as much memory as needed. The `encode`/`decode` functions themselves return the length of the payload **excluding** the null terminator.
+:::
 
 ## Encoding
 
-### Calculating encoded string length
+### Calculating buffer size
 
 ```c
 #include "base64.h"
 
-int base64_encode_inline_len(int len);
+int base64_encode_len(const int len);
 ```
 
-Calculates the length of the encoded string based on the source length.
+Returns the buffer size required to encode `len` bytes, including the null terminator.
 
 **Parameters**\
-`len` — source string length.
+`len` — length of the source data.
 
 **Return value**\
-Encoded string length.
+Buffer size in bytes (including `\0`).
 
 <br>
 
-### Encoding a string
+### Encoding
 
 ```c
-int base64_encode_inline(char* coded_dst, const char* plain_src, int len_plain_src);
+int base64_encode(char* encoded, const char* string, const int string_len);
 ```
 
-Encodes string `plain_src` to Base64.
+Encodes `string_len` bytes from `string` into Base64 and appends a null terminator.
 
 **Parameters**\
-`coded_dst` — pointer to the buffer for writing the encoded string.\
-`plain_src` — pointer to the source string.\
-`len_plain_src` — source string length.
+`encoded` — destination buffer (at least `base64_encode_len(string_len)` bytes).\
+`string` — source data.\
+`string_len` — length of the source data.
 
 **Return value**\
-Encoded string length.
+Length of the encoded string **excluding** the null terminator.
+
+<br>
+
+### Encoding with line wrapping
+
+```c
+int base64_encode_nl_len(const int len, int wrap);
+int base64_encode_nl(char* encoded, const char* string, const int string_len, const int wrap);
+```
+
+Encodes data, inserting `\r\n` every `wrap` characters of output — the format used by PEM and MIME (RFC 2045; a typical line width is 76 characters). With `wrap == 0` it behaves like plain encoding.
+
+**Parameters**\
+`len` — length of the source data (for `*_len`).\
+`encoded` — destination buffer.\
+`string` — source data.\
+`string_len` — length of the source data.\
+`wrap` — line width in characters; `0` disables wrapping.
+
+**Return value**\
+`base64_encode_nl_len` — buffer size including `\0` and the line-break characters.\
+`base64_encode_nl` — length of the encoded data **excluding** the null terminator.
 
 ## Decoding
 
-### Calculating decoded string length
+### Calculating buffer size
 
 ```c
-int base64_decode_inline_len(const char* coded_src);
+int base64_decode_len(const char* bufcoded);
 ```
 
-Calculates the length of the source string based on the encoded length.
+Returns an upper bound for the decoded size based on the encoded string, including the null terminator. `\r` and `\n` in `bufcoded` are skipped, so the input may contain line breaks.
 
 **Parameters**\
-`coded_src` — pointer to the encoded string.
+`bufcoded` — encoded string (null-terminated).
 
 **Return value**\
-Decoded string length.
+Buffer size in bytes (including `\0`).
 
 <br>
 
-### Decoding a string
+### Decoding
 
 ```c
-int base64_decode_inline(char* plain_dst, const char* coded_src);
+int base64_decode(char* bufplain, const char* bufcoded);
 ```
 
-Decodes string `coded_src` from Base64.
+Decodes `bufcoded` from Base64 and appends a null terminator. `\r` and `\n` characters in the input are ignored.
 
 **Parameters**\
-`plain_dst` — pointer to the buffer for writing the decoded string.\
-`coded_src` — pointer to the encoded string.
+`bufplain` — destination buffer (at least `base64_decode_len(bufcoded)` bytes).\
+`bufcoded` — encoded string (null-terminated).
 
 **Return value**\
-Decoded string length.
+Length of the decoded data **excluding** the null terminator.
 
 ## Usage examples
 
 ### Encoding data
 
 ```c
+#include "http.h"
 #include "base64.h"
 #include <stdlib.h>
 #include <string.h>
@@ -89,18 +116,15 @@ void encode_example(httpctx_t* ctx) {
     const char* original = "Hello, World!";
     int original_len = strlen(original);
 
-    // Calculate buffer size for result
-    int encoded_len = base64_encode_inline_len(original_len);
-    char* encoded = malloc(encoded_len + 1);
-
+    // base64_encode_len already accounts for the null terminator
+    char* encoded = malloc(base64_encode_len(original_len));
     if (encoded == NULL) {
         ctx->response->send_data(ctx->response, "Memory error");
         return;
     }
 
-    // Encode
-    int result_len = base64_encode_inline(encoded, original, original_len);
-    encoded[result_len] = '\0';
+    // Encode — the result is null-terminated
+    base64_encode(encoded, original, original_len);
 
     // encoded = "SGVsbG8sIFdvcmxkIQ=="
     ctx->response->send_data(ctx->response, encoded);
@@ -115,18 +139,15 @@ void encode_example(httpctx_t* ctx) {
 void decode_example(httpctx_t* ctx) {
     const char* encoded = "SGVsbG8sIFdvcmxkIQ==";
 
-    // Calculate buffer size for result
-    int decoded_len = base64_decode_inline_len(encoded);
-    char* decoded = malloc(decoded_len + 1);
-
+    // base64_decode_len already accounts for the null terminator
+    char* decoded = malloc(base64_decode_len(encoded));
     if (decoded == NULL) {
         ctx->response->send_data(ctx->response, "Memory error");
         return;
     }
 
-    // Decode
-    int result_len = base64_decode_inline(decoded, encoded);
-    decoded[result_len] = '\0';
+    // Decode — the result is null-terminated
+    base64_decode(decoded, encoded);
 
     // decoded = "Hello, World!"
     ctx->response->send_data(ctx->response, decoded);
@@ -139,20 +160,39 @@ void decode_example(httpctx_t* ctx) {
 
 ```c
 void encode_binary(httpctx_t* ctx) {
-    // Binary data (e.g., image)
+    // Binary data (e.g. a PNG signature)
     unsigned char binary_data[] = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
     int data_len = sizeof(binary_data);
 
-    int encoded_len = base64_encode_inline_len(data_len);
-    char* encoded = malloc(encoded_len + 1);
-
+    char* encoded = malloc(base64_encode_len(data_len));
     if (encoded == NULL) {
         ctx->response->send_data(ctx->response, "Memory error");
         return;
     }
 
-    int result_len = base64_encode_inline(encoded, (const char*)binary_data, data_len);
-    encoded[result_len] = '\0';
+    base64_encode(encoded, (const char*)binary_data, data_len);
+
+    ctx->response->send_data(ctx->response, encoded);
+
+    free(encoded);
+}
+```
+
+### Encoding with line wrapping (PEM/MIME)
+
+```c
+void encode_pem(httpctx_t* ctx) {
+    const char* original = "Very long payload ...";
+    int original_len = strlen(original);
+
+    // 76 is the standard PEM/MIME line width
+    char* encoded = malloc(base64_encode_nl_len(original_len, 76));
+    if (encoded == NULL) {
+        ctx->response->send_data(ctx->response, "Memory error");
+        return;
+    }
+
+    base64_encode_nl(encoded, original, original_len, 76);
 
     ctx->response->send_data(ctx->response, encoded);
 
@@ -163,29 +203,30 @@ void encode_binary(httpctx_t* ctx) {
 ### Using in API
 
 ```c
+#include "http.h"
+#include "base64.h"
+#include "storage.h"
+#include <stdlib.h>
+
 void get_file_base64(httpctx_t* ctx) {
     // Get file from storage
     file_t file = storage_file_get("local", "images/logo.png");
     if (!file.ok) {
-        ctx->response->statusCode = 404;
+        ctx->response->status_code = 404;
         ctx->response->send_data(ctx->response, "File not found");
         return;
     }
 
     // Read file content
-    char* content = malloc(file.size);
+    char* content = file.content(&file);
     if (content == NULL) {
         file.close(&file);
-        ctx->response->send_data(ctx->response, "Memory error");
+        ctx->response->send_data(ctx->response, "Read error");
         return;
     }
 
-    // ... read file into content ...
-
     // Encode to Base64
-    int encoded_len = base64_encode_inline_len(file.size);
-    char* encoded = malloc(encoded_len + 1);
-
+    char* encoded = malloc(base64_encode_len(file.size));
     if (encoded == NULL) {
         free(content);
         file.close(&file);
@@ -193,8 +234,7 @@ void get_file_base64(httpctx_t* ctx) {
         return;
     }
 
-    int result_len = base64_encode_inline(encoded, content, file.size);
-    encoded[result_len] = '\0';
+    base64_encode(encoded, content, file.size);
 
     // Form JSON response
     json_doc_t* doc = json_root_create_object();
@@ -219,20 +259,17 @@ void get_image_data_url(httpctx_t* ctx) {
     const char* image_data = "..."; // binary image data
     int image_size = 1024;          // data size
 
-    int encoded_len = base64_encode_inline_len(image_size);
-    // +30 for prefix "data:image/png;base64,"
-    char* data_url = malloc(encoded_len + 30);
-
+    const char* prefix = "data:image/png;base64,";
+    // base64_encode_len already accounts for the null terminator; +strlen(prefix) for the prefix
+    char* data_url = malloc(base64_encode_len(image_size) + strlen(prefix));
     if (data_url == NULL) {
         ctx->response->send_data(ctx->response, "Memory error");
         return;
     }
 
-    // Form Data URL
-    strcpy(data_url, "data:image/png;base64,");
-    int offset = strlen(data_url);
-
-    base64_encode_inline(data_url + offset, image_data, image_size);
+    // Write the prefix, then encode the data right after it
+    strcpy(data_url, prefix);
+    base64_encode(data_url + strlen(prefix), image_data, image_size);
 
     ctx->response->send_data(ctx->response, data_url);
 

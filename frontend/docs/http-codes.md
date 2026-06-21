@@ -1,83 +1,99 @@
 ---
 outline: deep
-description: Перечень доступных http-кодов состояния
+description: Перечень HTTP-кодов состояния, поддерживаемых cpdy для использования в ответах
 ---
 
 # HTTP-коды состояния
 
+Ниже перечислены коды состояния, поддерживаемые фреймворком. Они присваиваются ответу через
+`ctx->response->statusCode` или передаются в `send_default()`. Коды, не входящие в список, формируют
+пустую строку состояния, поэтому используйте только перечисленные ниже.
+
+О том, как применять эти коды в обработчиках, читайте в разделе [HTTP-ответы](/responses).
+
 ### Информационные
 
-* 100 Continue
-* 101 Switching Protocols
-* 102 Processing
-* 103 Early Hints
+| Код | Описание |
+| --- | --- |
+| 100 Continue | Клиент должен продолжить передачу тела запроса |
+| 101 Switching Protocols | Сервер переключает протокол по запросу (например, WebSocket) |
+| 102 Processing | Сервер получил запрос и продолжает его обработку |
+| 103 Early Hints | Предварительные заголовки перед финальным ответом |
 
 ### Успешные
 
-* 200 OK
-* 201 Created
-* 202 Accepted
-* 203 Non-Authoritative Information
-* 204 No Content
-* 205 Reset Content
-* 206 Partial Content
-* 207 Multi-Status
-* 208 Already Reported
-* 226 IM Used
+| Код | Описание |
+| --- | --- |
+| 200 OK | Запрос выполнен успешно |
+| 201 Created | Запрос выполнен, и был создан новый ресурс |
+| 202 Accepted | Запрос принят к обработке, но ещё не завершён |
+| 203 Non-Authoritative Information | Возвращаемые данные — преобразованная копия ответа источника |
+| 204 No Content | Запрос выполнен; тело ответа намеренно пустое |
+| 205 Reset Content | Клиент должен сбросить документ, отправивший запрос |
+| 206 Partial Content | Передаётся только часть ресурса (запрос диапазона) |
+| 207 Multi-Status | Тело содержит несколько отдельных кодов состояния (WebDAV) |
+| 208 Already Reported | Элементы привязки уже были перечислены ранее (WebDAV) |
+| 226 IM Used | Сервер выполнил GET-запрос с использованием преобразования экземпляра |
 
 ### Перенаправления
 
-* 300 Multiple Choices
-* 301 Moved Permanently
-* 302 Found
-* 303 See Other
-* 304 Not Modified
-* 305 Use Proxy
-* 306 Switch Proxy
-* 307 Temporary Redirect
-* 308 Permanent Redirect
+| Код | Описание |
+| --- | --- |
+| 300 Multiple Choices | Запрос имеет более одного возможного ответа |
+| 301 Moved Permanently | Ресурс окончательно перемещён на новый URL |
+| 302 Found | Ресурс временно доступен по другому URL |
+| 303 See Other | Клиент должен запросить ответ по другому URL методом GET |
+| 304 Not Modified | Кэшированный ответ актуален; тело не передаётся |
+| 305 Use Proxy | Доступ к ресурсу возможен только через прокси (устарел) |
+| 306 Switch Proxy | Ранее означал переключение на прокси; больше не используется |
+| 307 Temporary Redirect | Повторите запрос по другому URL, сохранив метод |
+| 308 Permanent Redirect | Ресурс окончательно доступен по другому URL, метод сохраняется |
 
 ### Клиентские ошибки
 
-* 400 Bad Request
-* 401 Unauthorized
-* 402 Payment Required
-* 403 Forbidden
-* 404 Not Found
-* 405 Method Not Allowed
-* 406 Not Acceptable
-* 407 Proxy Authentication Required
-* 408 Request Timeout
-* 409 Conflict
-* 410 Gone
-* 411 Length Required
-* 412 Precondition Failed
-* 413 Payload Too Large
-* 414 URI Too Long
-* 415 Unsupported Media Type
-* 416 Range Not Satisfiable
-* 417 Expectation Failed
-* 418 I'm a teapot
-* 421 Misdirected Request
-* 422 Unprocessable Entity
-* 423 Locked
-* 424 Failed Dependency
-* 426 Upgrade Required
-* 428 Precondition Required
-* 429 Too Many Requests
-* 431 Request Header Fields Too Large
-* 451 Unavailable For Legal Reasons
+| Код | Описание |
+| --- | --- |
+| 400 Bad Request | Сервер не может обработать запрос из-за неверного синтаксиса |
+| 401 Unauthorized | Требуется аутентификация — она не предоставлена или не пройдена |
+| 402 Payment Required | Зарезервировано на будущее; иногда используется для платного доступа |
+| 403 Forbidden | У клиента нет прав на доступ к содержимому |
+| 404 Not Found | Соответствующий ресурс на сервере не найден |
+| 405 Method Not Allowed | Метод запроса не поддерживается для данного ресурса |
+| 406 Not Acceptable | Ответ не соответствует критериям заголовка `Accept` клиента |
+| 407 Proxy Authentication Required | Требуется аутентификация на прокси-сервере |
+| 408 Request Timeout | Сервер превысил время ожидания запроса |
+| 409 Conflict | Запрос конфликтует с текущим состоянием сервера |
+| 410 Gone | Ресурс удалён и больше не будет доступен |
+| 411 Length Required | В запросе должен быть указан `Content-Length` |
+| 412 Precondition Failed | Одно из условий-предпосылок в заголовках ложно |
+| 413 Payload Too Large | Тело запроса превышает допустимый размер |
+| 414 URI Too Long | URI запроса длиннее, чем сервер может обработать |
+| 415 Unsupported Media Type | Тип данных запроса не поддерживается |
+| 416 Range Not Satisfiable | Запрошенный диапазон байтов не может быть предоставлен |
+| 417 Expectation Failed | Заголовок `Expect` не может быть выполнен |
+| 418 I'm a teapot | Сервер отказывается варить кофе, так как это чайник (шуточный RFC) |
+| 421 Misdirected Request | Запрос направлен серверу, который не может дать ответ |
+| 422 Unprocessable Entity | Запрос корректен по форме, но семантически ошибочен (WebDAV) |
+| 423 Locked | Доступ к ресурсу заблокирован (WebDAV) |
+| 424 Failed Dependency | Запрос не выполнен из-за сбоя предыдущей зависимости (WebDAV) |
+| 426 Upgrade Required | Клиент должен переключиться на другой протокол |
+| 428 Precondition Required | Сервер требует, чтобы запрос был условным |
+| 429 Too Many Requests | Клиент отправил слишком много запросов за период |
+| 431 Request Header Fields Too Large | Поля заголовка запроса слишком велики |
+| 451 Unavailable For Legal Reasons | Ресурс недоступен по юридическим причинам |
 
 ### Серверные ошибки
 
-* 500 Internal Server Error
-* 501 Not Implemented
-* 502 Bad Gateway
-* 503 Service Unavailable
-* 504 Gateway Timeout
-* 505 HTTP Version Not Supported
-* 506 Variant Also Negotiates
-* 507 Insufficient Storage
-* 508 Loop Detected
-* 510 Not Extended
-* 511 Network Authentication Required
+| Код | Описание |
+| --- | --- |
+| 500 Internal Server Error | На сервере произошла непредвиденная ошибка |
+| 501 Not Implemented | Сервер не поддерживает используемый метод запроса |
+| 502 Bad Gateway | Шлюз получил некорректный ответ от вышестоящего сервера |
+| 503 Service Unavailable | Сервер временно не может обработать запрос |
+| 504 Gateway Timeout | Вышестоящий сервер не ответил вовремя |
+| 505 HTTP Version Not Supported | Используемая версия HTTP не поддерживается |
+| 506 Variant Also Negotiates | Ошибка прозрачного согласования содержимого |
+| 507 Insufficient Storage | Серверу не хватает места для сохранения представления (WebDAV) |
+| 508 Loop Detected | Сервер обнаружил бесконечный цикл при обработке запроса (WebDAV) |
+| 510 Not Extended | Требуются дополнительные расширения протокола |
+| 511 Network Authentication Required | Для доступа требуется сетевая аутентификация |

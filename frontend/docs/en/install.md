@@ -1,15 +1,26 @@
 ---
 outline: deep
-description: Step-by-step C Web Framework installation on Linux. Setting up GCC, CMake, OpenSSL, PCRE, Zlib and connecting PostgreSQL, MySQL, Redis.
+description: Step-by-step C Web Framework installation on Linux. Setting up GCC, CMake, OpenSSL, PCRE, Zlib, LibXml2, libidn2, libunistring and connecting PostgreSQL, MySQL, Redis, SQLite.
 ---
 
 # Install dependencies
 
-The framework requires the following components:
+The framework requires the following components to build and run:
 
-**Required:** GCC 9.5+, CMake 3.12+, OpenSSL 1.1.1+, PCRE 8.43, Zlib 1.2.11, LibXml2 2.9.13
+**Required:** GCC 9.5+, CMake 3.12+, OpenSSL 1.1.1+, PCRE 8.43+, Zlib 1.2.11+, LibXml2 2.9.13+, libidn2 2.3.0+, libunistring 0.9.12+
 
-**Optional:** PostgreSQL, MySQL, Redis — install if you need to work with the corresponding databases.
+**Optional:** PostgreSQL, MySQL/MariaDB, Redis, SQLite — install if you need to work with the corresponding databases.
+
+::: tip Quick install (Ubuntu/Debian)
+All required libraries and DB clients in a single command:
+```bash
+sudo apt install build-essential cmake pkg-config \
+                 libpcre3-dev zlib1g-dev libssl-dev libxml2-dev \
+                 libidn2-dev libunistring-dev \
+                 libpq-dev libmariadb-dev libhiredis-dev libsqlite3-dev
+```
+You can then jump straight to [building the project](./build-and-run.md).
+:::
 
 Start by updating the package list:
 
@@ -19,15 +30,15 @@ sudo apt update
 
 ## GCC
 
-Install the build-essential package by typing:
+Install the build-essential package:
 
 ```bash
 sudo apt install build-essential
 ```
 
-The command installs many new packages, including `gcc`, `g++` and `make`
+The command installs `gcc`, `g++` and `make`.
 
-To verify that the GCC compiler has been successfully installed, use the gcc --version command, which displays the GCC version.
+To verify that the GCC compiler has been successfully installed, use the `gcc --version` command, which displays the GCC version:
 
 ```bash
 gcc --version
@@ -35,58 +46,60 @@ gcc --version
 
 GCC is now installed on your system and you can start using it.
 
-## Cmake
+## CMake
 
-### Package Manager
+### Package manager
 
-Installing cmake from the official repositories is done with the command:
+Install cmake from the official repositories:
 
 ```bash
 sudo apt install cmake
 ```
 
-### Build from source files
+### Build from source
 
-Download the archive from the official site:
+If your distro's repositories ship an outdated CMake, build it from source. Download the archive from the official site:
 
 ```bash
-wget https://github.com/Kitware/CMake/releases/download/v3.27.0-rc3/cmake-3.27.0-rc3.tar.gz
+wget https://github.com/Kitware/CMake/releases/download/v3.27.0/cmake-3.27.0.tar.gz
 ```
 
 Unpack:
 
 ```bash
-tar -zxvf cmake-3.27.0-rc3.tar.gz
+tar -zxvf cmake-3.27.0.tar.gz
 ```
 
 Change to the unpacked directory:
 
 ```bash
-cd cmake-3.27.0-rc3
+cd cmake-3.27.0
 ```
 
-Start the build process
+Start the build process:
 
 ```bash
 ./bootstrap
 ```
 
-Start the installation process
+Compile and install:
 
 ```bash
 make
+sudo make install
 ```
 
-Copy the compiled files to the appropriate locations
+## pkg-config
+
+The `pkg-config` utility is used by the build system to locate headers and libraries (looked up via `find_package`):
 
 ```bash
-make install
+sudo apt install pkg-config
 ```
-
 
 ## PCRE
 
-Installing pcre from the official repositories is done with the command:
+Regular expression library (used for routing and regex-based virtual hosts):
 
 ```bash
 sudo apt install libpcre3-dev
@@ -94,15 +107,13 @@ sudo apt install libpcre3-dev
 
 ## Zlib
 
-### Package Manager
-
-Installing zlib from the official repositories is done with the command:
+### Package manager
 
 ```bash
 sudo apt install zlib1g-dev
 ```
 
-### Building from source files
+### Build from source
 
 Download the archive from the official site:
 
@@ -122,27 +133,22 @@ Change to the unpacked directory:
 cd zlib-1.2.13
 ```
 
-Start the build process
+Start the build process:
 
 ```bash
 ./configure
 ```
 
-Start the installation process
+Compile and install:
 
 ```bash
 make
-```
-
-Copy the compiled files to the appropriate locations
-
-```bash
-make install
+sudo make install
 ```
 
 ## OpenSSL
 
-Installing openssl from the official repositories is done with the command:
+TLS and cryptography library (HTTPS, AES-256-GCM sessions, JWT, etc.):
 
 ```bash
 sudo apt install openssl libssl-dev
@@ -150,71 +156,106 @@ sudo apt install openssl libssl-dev
 
 ## LibXml2
 
-### Package Manager
-
-Installing libxml2 from the official repositories is done with the command:
+### Package manager
 
 ```bash
 sudo apt install libxml2-dev
 ```
 
-### Building from source files
+### Build from source
 
 Download the archive from the official site:
 
 ```bash
-wget https://github.com/GNOME/libxml2/releases/download/v2.9.13/libxml2-2.9.13.tar.gz
+wget https://github.com/GNOME/libxml2/releases/download/v2.9.14/libxml2-2.9.14.tar.gz
 ```
 
 Unpack:
 
 ```bash
-tar -zxvf libxml2-2.9.13.tar.gz
+tar -zxvf libxml2-2.9.14.tar.gz
 ```
 
 Change to the unpacked directory:
 
 ```bash
-cd libxml2-2.9.13
+cd libxml2-2.9.14
 ```
 
-Start the build process
+Start the build process:
 
 ```bash
 ./configure
 ```
 
-Start the installation process
+Compile and install:
 
 ```bash
 make
+sudo make install
 ```
 
-Copy the compiled files to the appropriate locations
+## libidn2
+
+Library for internationalized domain name (IDN) support:
 
 ```bash
-make install
+sudo apt install libidn2-dev
 ```
 
-## MySQL
+## libunistring
+
+Unicode string library (required for IDN and i18n):
 
 ```bash
-sudo apt install mysql-server
+sudo apt install libunistring-dev
 ```
 
-Detailed instructions are available on [DigitalOcean](https://www.digitalocean.com/community/tutorials/how-to-install-mysql-on-ubuntu-20-04)
+## Databases
 
-## PostgreSQL
+Database support is enabled opt-in through CMake parameters (`-DINCLUDE_POSTGRESQL=yes`, `-DINCLUDE_MYSQL=yes`, `-DINCLUDE_REDIS=yes`, `-DINCLUDE_SQLITE=yes`). Building a driver requires its development client library (`-dev`), while running requires the server itself.
+
+### PostgreSQL
+
+Client library to build the driver (libpq):
+
+```bash
+sudo apt install libpq-dev
+```
+
+PostgreSQL server:
 
 ```bash
 sudo apt install postgresql postgresql-contrib
 ```
 
-Detailed instructions are available on [DigitalOcean](https://www.digitalocean.com/community/tutorials/how-to-install-postgresql-on-ubuntu-20-04-quickstart)
+Detailed instructions are available on [DigitalOcean](https://www.digitalocean.com/community/tutorials/how-to-install-postgresql-on-ubuntu-20-04-quickstart).
 
-## Redis
+### MySQL / MariaDB
 
-Add the repository to the apt index:
+Client library to build the driver:
+
+```bash
+sudo apt install libmariadb-dev
+```
+
+MySQL server:
+
+```bash
+sudo apt install mysql-server
+```
+
+Detailed instructions are available on [DigitalOcean](https://www.digitalocean.com/community/tutorials/how-to-install-mysql-on-ubuntu-20-04).
+
+### Redis
+
+hiredis client library to build the driver:
+
+```bash
+sudo apt install libhiredis-dev
+```
+
+Redis server. Add the official repository to the apt index:
 
 ```bash
 curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
@@ -225,7 +266,26 @@ echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://pack
 Then install:
 
 ```bash
-sudo apt-get install redis
+sudo apt update
+sudo apt install redis
 ```
 
-Detailed instructions are available on [Redis](https://redis.io/docs/getting-started/installation/install-redis-on-linux/)
+Detailed instructions are available on [Redis](https://redis.io/docs/getting-started/installation/install-redis-on-linux/).
+
+### SQLite
+
+Client library to build the driver:
+
+```bash
+sudo apt install libsqlite3-dev
+```
+
+SQLite works directly with a file — no separate server is required. If needed, install the command-line client:
+
+```bash
+sudo apt install sqlite3
+```
+
+## Next steps
+
+Once the dependencies are installed, proceed to [building and running the project](./build-and-run.md).

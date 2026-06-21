@@ -5,18 +5,25 @@ description: Examples of processing requests and responses using the Http and We
 
 # Request examples
 
+Ready-to-use examples for handling HTTP and WebSocket requests: reading parameters,
+headers, cookies, and the request body, plus sending responses, files, and redirects.
+For the full function reference, see [HTTP requests](/en/requests),
+[HTTP responses](/en/responses), and [Request data](/en/payload).
+
 ## GET
+
+Returns a string as the response body via `send_data`:
 
 **Route**
 
 ```json
 // config.json
 "/get": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "get" }
+    "GET": { "file": "handlers/libindexpage.so", "function": "get" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/get \
@@ -25,7 +32,7 @@ curl http://example.com/get \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 
@@ -36,15 +43,18 @@ void get(httpctx_t* ctx) {
 
 ## POST get_payload
 
+`get_payload` returns the entire request body as a single string. It fits `text/plain`
+and raw data; the result must be released with `free`:
+
 **Route**
 
 ```json
 "/post": {
-    "POST": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "post" }
+    "POST": { "file": "handlers/libindexpage.so", "function": "post" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/post \
@@ -55,7 +65,7 @@ curl http://example.com/post \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 
@@ -75,15 +85,18 @@ void post(httpctx_t* ctx) {
 
 ## POST get_payloadf
 
+`get_payloadf` extracts a single named field from `multipart/form-data` or
+`application/x-www-form-urlencoded`:
+
 **Route**
 
 ```json
 "/post": {
-    "POST": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "post" }
+    "POST": { "file": "handlers/libindexpage.so", "function": "post" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/post \
@@ -94,7 +107,7 @@ curl http://example.com/post \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 
@@ -123,15 +136,19 @@ void post(httpctx_t* ctx) {
 
 ## POST get_payload_file
 
+`get_payload_file` returns an uploaded file as a `file_content_t`. The `make_file(dir, name)`
+method writes it to disk (pass `NULL` as the name to keep the original), and `content`
+reads the bytes into memory. Always check the `.ok` flag:
+
 **Route**
 
 ```json
 "/post": {
-    "POST": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "post" }
+    "POST": { "file": "handlers/libindexpage.so", "function": "post" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/post \
@@ -142,7 +159,7 @@ curl http://example.com/post \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 
@@ -154,12 +171,16 @@ void post(httpctx_t* ctx) {
         return;
     }
 
-    if (!payloadfile.save(&payloadfile, "files", "file.txt")) {
+    // make_file(dir, name) writes the data to disk and returns an open file_t
+    file_t saved = payloadfile.make_file(&payloadfile, "files", "file.txt");
+    if (!saved.ok) {
         ctx->response->send_data(ctx->response, "Error save file");
         return;
     }
+    saved.close(&saved);
 
-    char* data = payloadfile.read(&payloadfile);
+    // content reads the bytes into an allocated buffer (freed with free)
+    char* data = payloadfile.content(&payloadfile);
 
     ctx->response->send_data(ctx->response, data);
 
@@ -169,15 +190,18 @@ void post(httpctx_t* ctx) {
 
 ## POST get_payload_filef
 
+Same as `get_payload_file`, but the file is selected by its field name from
+`multipart/form-data`:
+
 **Route**
 
 ```json
 "/post": {
-    "POST": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "post" }
+    "POST": { "file": "handlers/libindexpage.so", "function": "post" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/post \
@@ -187,7 +211,7 @@ curl http://example.com/post \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 
@@ -199,13 +223,15 @@ void post(httpctx_t* ctx) {
         return;
     }
 
-    const char* filenameFromPayload = NULL;
-    if (!payloadfile.save(&payloadfile, "files", filenameFromPayload)) {
+    // NULL keeps the original filename from the request
+    file_t saved = payloadfile.make_file(&payloadfile, "files", NULL);
+    if (!saved.ok) {
         ctx->response->send_data(ctx->response, "Error save file");
         return;
     }
+    saved.close(&saved);
 
-    char* data = payloadfile.read(&payloadfile);
+    char* data = payloadfile.content(&payloadfile);
 
     ctx->response->send_data(ctx->response, data);
 
@@ -215,15 +241,18 @@ void post(httpctx_t* ctx) {
 
 ## POST get_payload_json
 
+`get_payload_json` parses the request body (`application/json`) and returns a
+`json_doc_t*`. Validate it with `json_ok`:
+
 **Route**
 
 ```json
 "/post": {
-    "POST": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "post" }
+    "POST": { "file": "handlers/libindexpage.so", "function": "post" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/post \
@@ -234,7 +263,7 @@ curl http://example.com/post \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 #include "json.h"
@@ -254,7 +283,7 @@ void post(httpctx_t* ctx) {
         return;
     }
 
-    json_object_set(object, "mykey", json_create_string(document, "Hello"));
+    json_object_set(object, "mykey", json_create_string("Hello"));
 
     ctx->response->add_header(ctx->response, "Content-Type", "application/json");
 
@@ -266,15 +295,17 @@ void post(httpctx_t* ctx) {
 
 ## POST get_payload_jsonf
 
+Parses JSON from a single `multipart/form-data` field by key:
+
 **Route**
 
 ```json
 "/post": {
-    "POST": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "post" }
+    "POST": { "file": "handlers/libindexpage.so", "function": "post" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/post \
@@ -284,7 +315,7 @@ curl http://example.com/post \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 #include "json.h"
@@ -304,7 +335,7 @@ void post(httpctx_t* ctx) {
         return;
     }
 
-    json_object_set(object, "mykey", json_create_string(document, "Hello"));
+    json_object_set(object, "mykey", json_create_string("Hello"));
 
     ctx->response->add_header(ctx->response, "Content-Type", "application/json");
 
@@ -316,22 +347,26 @@ void post(httpctx_t* ctx) {
 
 ## Query
 
+Query string parameters and route parameters are read the same way — with
+`query_param_char` from `query.h`, against the same `ctx->request->query_`. The `ok`
+out-parameter tells "parameter is missing" apart from an empty value:
+
 **Route**
 
 ```json
 // config.json
 "/query": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "query" }
+    "GET": { "file": "handlers/libindexpage.so", "function": "query" }
 },
 "^/users/{id|\\d+}$": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "user" }
+    "GET": { "file": "handlers/libindexpage.so", "function": "user" }
 },
 "^/params/{param1|\\d+}/{param2|[a-zA-Z0-9]+}$": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "params" }
+    "GET": { "file": "handlers/libindexpage.so", "function": "params" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/query?param=text \
@@ -350,14 +385,14 @@ curl http://example.com/params/100/param_value \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 #include "query.h"
 
 void query(httpctx_t* ctx) {
     int ok = 0;
-    const char* data = query_param_char(ctx->request, "param", &ok);
+    const char* data = query_param_char(ctx->request->query_, "param", &ok);
 
     if (ok) {
         ctx->response->send_data(ctx->response, data);
@@ -369,7 +404,7 @@ void query(httpctx_t* ctx) {
 
 void user(httpctx_t* ctx) {
     int ok = 0;
-    const char* data = query_param_char(ctx->request, "id", &ok);
+    const char* data = query_param_char(ctx->request->query_, "id", &ok);
 
     if (ok) {
         ctx->response->send_data(ctx->response, data);
@@ -381,14 +416,14 @@ void user(httpctx_t* ctx) {
 
 void params(httpctx_t* ctx) {
     int ok = 0;
-    const char* param1 = query_param_char(ctx->request, "param1", &ok);
+    const char* param1 = query_param_char(ctx->request->query_, "param1", &ok);
 
     if (!ok) {
         ctx->response->send_data(ctx->response, "Param1 not found");
         return;
     }
 
-    const char* param2 = query_param_char(ctx->request, "param2", &ok);
+    const char* param2 = query_param_char(ctx->request->query_, "param2", &ok);
     if (!ok) {
         ctx->response->send_data(ctx->response, "Param2 not found");
         return;
@@ -400,15 +435,17 @@ void params(httpctx_t* ctx) {
 
 ## Reading cookies
 
+`get_cookie` returns a cookie value by name, or `NULL`:
+
 **Route**
 
 ```json
 "/cookie": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "cookie" }
+    "GET": { "file": "handlers/libindexpage.so", "function": "cookie" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/cookie \
@@ -417,7 +454,7 @@ curl http://example.com/cookie \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 
@@ -435,15 +472,17 @@ void cookie(httpctx_t* ctx) {
 
 ## Set cookie
 
+`add_cookie` adds a `Set-Cookie` header through a `cookie_t` struct:
+
 **Route**
 
 ```json
 "/set_cookie": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "set_cookie" }
+    "GET": { "file": "handlers/libindexpage.so", "function": "set_cookie" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/set_cookie \
@@ -452,7 +491,7 @@ curl http://example.com/set_cookie \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 
@@ -480,15 +519,17 @@ void set_cookie(httpctx_t* ctx) {
 
 ## Redirect
 
+`redirect(url, code)` sends a redirect with the given status code:
+
 **Route**
 
 ```json
 "/old-resource": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "redirect" }
+    "GET": { "file": "handlers/libindexpage.so", "function": "redirect" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/old-resource \
@@ -497,7 +538,7 @@ curl http://example.com/old-resource \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 
@@ -508,15 +549,17 @@ void redirect(httpctx_t* ctx) {
 
 ## Default response
 
+`send_default(code)` sends a standard response with the given status code and no body:
+
 **Route**
 
 ```json
 "/default": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "def" }
+    "GET": { "file": "handlers/libindexpage.so", "function": "def" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/default \
@@ -525,7 +568,7 @@ curl http://example.com/default \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 
@@ -536,15 +579,17 @@ void def(httpctx_t* ctx) {
 
 ## Reading headers
 
+`get_header` returns an `http_header_t*` struct, or `NULL`:
+
 **Route**
 
 ```json
 "/header": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "header" }
+    "GET": { "file": "handlers/libindexpage.so", "function": "header" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/header \
@@ -553,7 +598,7 @@ curl http://example.com/header \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 
@@ -571,15 +616,17 @@ void header(httpctx_t* ctx) {
 
 ## Set headers
 
+`add_header(key, value)` adds a response header:
+
 **Route**
 
 ```json
 "/set_header": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "set_header" }
+    "GET": { "file": "handlers/libindexpage.so", "function": "set_header" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/set_header \
@@ -588,7 +635,7 @@ curl http://example.com/set_header \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 
@@ -601,16 +648,18 @@ void set_header(httpctx_t* ctx) {
 
 ## Send file
 
+`send_file(path)` sends a file to the client:
+
 **Route**
 
 ```json
 // config.json
 "/file": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "file" }
+    "GET": { "file": "handlers/libindexpage.so", "function": "file" }
 }
 ```
 
-**request**
+**Request**
 
 ```curl
 curl http://example.com/file \
@@ -619,7 +668,7 @@ curl http://example.com/file \
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 
@@ -630,16 +679,19 @@ void file(httpctx_t* ctx) {
 
 ## WebSocket connection
 
+`switch_to_websockets` upgrades the HTTP connection to a WebSocket. Subsequent messages
+are handled by `wsctx_t*` WebSocket handlers:
+
 **Route**
 
 ```json
 // config.json
 "/wss": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libindexpage.so", "function": "wss" }
+    "GET": { "file": "handlers/libindexpage.so", "function": "wss" }
 }
 ```
 
-**request**
+**Request**
 
 ```js
 const socket = new WebSocket("wss://example.com/wss", "resource");
@@ -647,40 +699,43 @@ const socket = new WebSocket("wss://example.com/wss", "resource");
 
 **Handler**
 
-```C
+```c
 // handlers/indexpage.c
 #include "http.h"
 #include "websockets.h"
 
 void wss(httpctx_t* ctx) {
-    switch_to_websockets(ctx->request, ctx->response);
+    switch_to_websockets(ctx);
 }
 ```
 
 ## WebSocket request
+
+The text body of a message is read with `websocketsrequest_payload(protocol)` and sent
+back through `send_text`:
 
 **Route**
 
 ```json
 // config.json
 "/wss_request": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libwsindexpage.so", "function": "wss_request" }
+    "GET": { "file": "handlers/libwsindexpage.so", "function": "wss_request" }
 }
 ```
 
-**request**
+**Request**
 
 ```js
 const socket = new WebSocket("wss://example.com/wss", "resource");
 
 socket.onopen = (event) => {
-	socket.send("GET /wss_request {\"key\": \"value\"}");
+    socket.send("GET /wss_request {\"key\": \"value\"}");
 };
 ```
 
 **Handler**
 
-```C
+```c
 // handlers/wsindexpage.c
 #include "websockets.h"
 
@@ -696,35 +751,41 @@ void wss_request(wsctx_t* ctx) {
 
 ## WebSocket query
 
+WebSocket request parameters are available through `protocol->query_`. The protocol
+struct must be cast to `websockets_protocol_resource_t*` — the same `query_param_char`
+then reads both query string and route parameters:
+
 **Route**
 
 ```json
 // config.json
 "/wss_query": {
-    "GET": { "file": "/var/www/server/build/exec/handlers/libwsindexpage.so", "function": "wss_query" }
+    "GET": { "file": "handlers/libwsindexpage.so", "function": "wss_query" }
 }
 ```
 
-**request**
+**Request**
 
 ```js
 const socket = new WebSocket("wss://example.com/wss", "resource");
 
 socket.onopen = (event) => {
-	socket.send("GET /wss_query?q=text");
+    socket.send("GET /wss_query?q=text");
 };
 ```
 
 **Handler**
 
-```C
+```c
 // handlers/wsindexpage.c
 #include "websockets.h"
 #include "query.h"
 
 void wss_query(wsctx_t* ctx) {
+    websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)ctx->request->protocol;
+
     int ok = 0;
-    const char* data = query_param_char(ctx->request, "q", &ok);
+    const char* data = query_param_char(protocol->query_, "q", &ok);
 
     if (!ok)
         data = "Empty query";

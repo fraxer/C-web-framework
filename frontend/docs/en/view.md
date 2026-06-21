@@ -1,17 +1,36 @@
 ---
 outline: deep
-description: Template engine in C Web Framework. Rendering HTML templates with variables, conditions, loops and includes.
+description: Template engine in C Web Framework. Rendering HTML with variables, conditions, loops and includes driven by a JSON document.
 ---
 
 # Template Engine
 
-The framework includes a built-in template engine for rendering HTML pages with dynamic data.
+The framework includes a built-in template engine for rendering text (HTML, emails, any text format) with dynamic data taken from a JSON document.
 
-## Basics
+## How It Works
 
-Templates are HTML files with special tags for inserting variables, conditions, and loops. Templates are stored in storage and rendered using the `render()` function.
+A template is a text file containing special tags. The data source is a `json_doc_t*`, and the file itself is read from a [storage](./storage.md) declared in `config.json`.
+
+Parsing and compiling a template into a tag tree happens once; the result is cached in `viewstore` keyed by the file path. Subsequent `render()` calls with the same path reuse the compiled tree, so repeated rendering stays fast.
+
+## Storage Configuration
+
+Templates live in a regular storage (`filesystem` or `s3`). The storage name is then passed to the rendering functions.
+
+```json
+{
+    "storages": {
+        "views": {
+            "type": "filesystem",
+            "root": "/var/www/app/views"
+        }
+    }
+}
+```
 
 ## API
+
+### `render()`
 
 ```c
 #include "view.h"
@@ -19,46 +38,82 @@ Templates are HTML files with special tags for inserting variables, conditions, 
 char* render(json_doc_t* document, const char* storage_name, const char* path_format, ...);
 ```
 
-Renders a template with the specified data.
+Renders a template and returns the resulting string.
 
-**Parameters**\
-`document` — JSON document with data for the template.\
-`storage_name` — name of the storage where the template is located.\
-`path_format` — path to the template file (supports formatting).
+**Parameters**
 
-**Return Value**\
-Pointer to a string with rendered HTML. Memory must be freed with `free()`.
+- `document` — JSON document with data for the template.
+- `storage_name` — name of the storage where the template is located.
+- `path_format` — path to the template file inside the storage. Supports `printf`-style formatting through variadic arguments.
 
-## Template Syntax
+**Return value**
+
+Pointer to a string with the rendered result, or `NULL` on error (file not found, syntax error). The memory must be freed with `free()`.
+
+### `send_view()`
+
+A method on the response object — renders a template and immediately sends the result to the client.
+
+```c
+void (*send_view)(struct httpresponse* response, json_doc_t* document,
+                  const char* storage_name, const char* path_format, ...);
+```
+
+```c
+ctx->response->send_view(ctx->response, document, "views", "/index.tpl");
+```
+
+## Syntax
+
+The engine recognizes three kinds of tags:
+
+| Tag | Purpose | Example |
+| --- | --- | --- |
+| <code v-pre>{{ ... }}</code> | Output a variable value | <code v-pre>{{ user.name }}</code> |
+| `{% ... %}` | Control structures (`if`, `for`) | `{% if active %}` |
+| `{* include ... *}` | Include another template | `{* include /header.tpl *}` |
 
 ### Variables
 
-Output a variable value:
+A value is printed with <code v-pre>{{ }}</code>. Nested fields are accessed with a dot, and array elements by index in square brackets.
 
 ```html
 <p>Hello, {{ name }}!</p>
 <p>Email: {{ user.email }}</p>
 <p>First item: {{ items[0] }}</p>
+<p>First user's name: {{ users[0].name }}</p>
 ```
+
+::: tip Strings and numbers only
+The values of string and numeric JSON fields are printed. If a value is missing or is an object/array, nothing is output.
+:::
 
 ### Conditions
 
 ```html
-{{ if is_authenticated }}
+{% if is_authenticated %}
     <p>Welcome, {{ user.name }}!</p>
-{{ elseif is_guest }}
+{% elseif is_guest %}
     <p>You are logged in as a guest</p>
-{{ else }}
+{% else %}
     <p>Please log in</p>
-{{ endif }}
+{% endif %}
 ```
 
-Condition inversion:
+Condition inversion with `!`:
 
 ```html
-{{ if !is_authenticated }}
+{% if !is_authenticated %}
     <a href="/login">Log in</a>
-{{ endif }}
+{% endif %}
+```
+
+A condition is true when the variable equals boolean `true`. The condition expression supports nested field and index access just like regular variables:
+
+```html
+{% if users[0].authorized %}
+    {{ users[0].name }} is authorized
+{% endif %}
 ```
 
 ### Loops
@@ -67,31 +122,57 @@ Iterating over an array:
 
 ```html
 <ul>
-{{ for item in items }}
-    <li>{{ item.name }} - {{ item.price }}</li>
-{{ endfor }}
+{% for product in products %}
+    <li>{{ product.name }} — {{ product.price }}</li>
+{% endfor %}
 </ul>
 ```
 
-With index access:
+With access to the index (the second name after the comma):
 
 ```html
-{{ for item, index in items }}
-    <li>{{ index }}: {{ item.name }}</li>
-{{ endfor }}
+<ol>
+{% for product, i in products %}
+    <li>{{ i }}: {{ product.name }}</li>
+{% endfor %}
+</ol>
 ```
 
-### Including Other Templates
+If the index name is omitted, it defaults to `index`:
 
 ```html
-{{ include "partials/header.html" }}
+{% for product in products %}
+    <p>#{{ index }}: {{ product.name }}</p>
+{% endfor %}
+```
+
+Loops also iterate over **objects** — in that case the index holds the key name (a string), and the element holds the property value:
+
+```html
+{% for value, key in settings %}
+    <p>{{ key }} = {{ value }}</p>
+{% endfor %}
+```
+
+Inside a loop, variables named after the element and the index become available; their fields are accessed like any other variable.
+
+### Including Templates
+
+Including another file is done with the `{* include ... *}` tag. The path is given as-is, without quotes — it is a path within the template storage.
+
+```html
+{* include /partials/header.tpl *}
 
 <main>
     <h1>{{ title }}</h1>
 </main>
 
-{{ include "partials/footer.html" }}
+{* include /partials/footer.tpl *}
 ```
+
+::: warning Include depth limit
+Include depth is limited to 100 levels. Circular includes (a template including itself unconditionally) will fail at parse time.
+:::
 
 ## Usage Examples
 
@@ -102,29 +183,36 @@ With index access:
 #include "view.h"
 
 void home(httpctx_t* ctx) {
-    // Create data for template
     json_doc_t* doc = json_root_create_object();
     json_token_t* root = json_root(doc);
 
     json_object_set(root, "title", json_create_string("Home"));
     json_object_set(root, "username", json_create_string("John"));
 
-    // Render template
-    char* html = render(doc, "templates", "pages/home.html");
+    ctx->response->send_view(ctx->response, doc, "views", "/pages/home.tpl");
+
     json_free(doc);
-
-    if (html == NULL) {
-        ctx->response->send_default(ctx->response, 500);
-        return;
-    }
-
-    ctx->response->header_add(ctx->response, "Content-Type", "text/html; charset=utf-8");
-    ctx->response->send_data(ctx->response, html);
-    free(html);
 }
 ```
 
-### Template with List
+### Rendering with a Formatted Path
+
+The path supports `printf`-style formatting — handy when the template name depends on input:
+
+```c
+char* html = render(doc, "views", "/pages/%s.tpl", page_name);
+
+if (html == NULL) {
+    ctx->response->send_default(ctx->response, 404);
+    return;
+}
+
+ctx->response->header_add(ctx->response, "Content-Type", "text/html; charset=utf-8");
+ctx->response->send_data(ctx->response, html);
+free(html);
+```
+
+### Product List
 
 ```c
 void products_list(httpctx_t* ctx) {
@@ -133,60 +221,49 @@ void products_list(httpctx_t* ctx) {
 
     json_object_set(root, "title", json_create_string("Products"));
 
-    // Create products array
     json_token_t* products = json_create_array(doc);
 
-    // Add products
-    json_token_t* product1 = json_create_object(doc);
-    json_object_set(product1, "name", json_create_string("Laptop"));
-    json_object_set(product1, "price", json_create_number(50000));
-    json_array_append(products, product1);
+    json_token_t* p1 = json_create_object(doc);
+    json_object_set(p1, "name", json_create_string("Laptop"));
+    json_object_set(p1, "price", json_create_number(50000));
+    json_array_append(products, p1);
 
-    json_token_t* product2 = json_create_object(doc);
-    json_object_set(product2, "name", json_create_string("Phone"));
-    json_object_set(product2, "price", json_create_number(30000));
-    json_array_append(products, product2);
+    json_token_t* p2 = json_create_object(doc);
+    json_object_set(p2, "name", json_create_string("Phone"));
+    json_object_set(p2, "price", json_create_number(30000));
+    json_array_append(products, p2);
 
     json_object_set(root, "products", products);
 
-    char* html = render(doc, "templates", "pages/products.html");
-    json_free(doc);
+    ctx->response->send_view(ctx->response, doc, "views", "/pages/products.tpl");
 
-    ctx->response->header_add(ctx->response, "Content-Type", "text/html; charset=utf-8");
-    ctx->response->send_data(ctx->response, html);
-    free(html);
+    json_free(doc);
 }
 ```
 
-### products.html Template
+Template `/pages/products.tpl`:
 
 ```html
 <!DOCTYPE html>
 <html>
-<head>
-    <title>{{ title }}</title>
-</head>
+<head><title>{{ title }}</title></head>
 <body>
     <h1>{{ title }}</h1>
 
-    {{ if products }}
+    {% if products %}
         <table>
-            <tr>
-                <th>#</th>
-                <th>Name</th>
-                <th>Price</th>
-            </tr>
-            {{ for product, i in products }}
+            <tr><th>#</th><th>Name</th><th>Price</th></tr>
+            {% for product, i in products %}
             <tr>
                 <td>{{ i }}</td>
                 <td>{{ product.name }}</td>
                 <td>{{ product.price }}</td>
             </tr>
-            {{ endfor }}
+            {% endfor %}
         </table>
-    {{ else }}
+    {% else %}
         <p>No products found</p>
-    {{ endif }}
+    {% endif %}
 </body>
 </html>
 ```
@@ -195,7 +272,6 @@ void products_list(httpctx_t* ctx) {
 
 ```c
 void user_profile(httpctx_t* ctx) {
-    // Get user
     array_t* params = array_create();
     mparams_fill_array(params, mparam_int(id, 1));
     user_t* user = user_get(params);
@@ -206,75 +282,78 @@ void user_profile(httpctx_t* ctx) {
         return;
     }
 
-    // Convert model to JSON
     json_doc_t* doc = json_root_create_object();
     json_token_t* root = json_root(doc);
 
-    json_token_t* user_json = model_to_json(user, NULL);
-    json_object_set(root, "user", user_json);
+    json_object_set(root, "user", model_to_json(user, NULL));
     json_object_set(root, "title", json_create_string("User Profile"));
 
     user_free(user);
 
-    char* html = render(doc, "templates", "pages/profile.html");
-    json_free(doc);
+    ctx->response->send_view(ctx->response, doc, "views", "/pages/profile.tpl");
 
-    ctx->response->header_add(ctx->response, "Content-Type", "text/html; charset=utf-8");
-    ctx->response->send_data(ctx->response, html);
-    free(html);
+    json_free(doc);
 }
 ```
 
-### profile.html Template
+### Nested Loops
+
+Suppose there is a document with users and their tasks:
+
+```json
+{
+    "company": "My Company",
+    "users": [
+        {
+            "name": "Alex",
+            "authorized": true,
+            "tasks": ["Task 1", "Task 2", "Task 3"]
+        },
+        {
+            "name": "Bonnie",
+            "authorized": false,
+            "tasks": ["Task 4", "Task 5"]
+        }
+    ]
+}
+```
+
+A template iterating over users and their tasks:
 
 ```html
-<!DOCTYPE html>
-<html>
-<head>
-    <title>{{ title }}</title>
-</head>
-<body>
-    {{ include "partials/header.html" }}
+{* include /header.tpl *}
 
-    <main>
-        <h1>{{ title }}</h1>
-
-        {{ if user }}
-            <div class="profile">
-                <p><strong>ID:</strong> {{ user.id }}</p>
-                <p><strong>Email:</strong> {{ user.email }}</p>
-                <p><strong>Name:</strong> {{ user.name }}</p>
-            </div>
-        {{ else }}
-            <p>User not found</p>
-        {{ endif }}
-    </main>
-
-    {{ include "partials/footer.html" }}
-</body>
-</html>
+Users of {{ company }}:
+{% for user, i in users %}
+    {{ i }}. {{ user.name }}
+    Authorized: {% if user.authorized %}yes{% else %}no{% endif %}
+    Tasks:
+    {% for task, j in user.tasks %}
+        - {{ j }}: {{ task }}
+    {% endfor %}
+{% endfor %}
 ```
+
+The outer loop declares the element `user` and the index `i`; the inner loop declares the element `task` and the index `j`.
 
 ## Template Organization
 
-Recommended structure:
+Recommended storage layout:
 
 ```
-storages/
-└── templates/
-    ├── layouts/
-    │   └── base.html
-    ├── partials/
-    │   ├── header.html
-    │   ├── footer.html
-    │   └── navigation.html
-    └── pages/
-        ├── home.html
-        ├── products.html
-        └── profile.html
+views/
+├── layouts/
+│   └── base.tpl
+├── partials/
+│   ├── header.tpl
+│   └── footer.tpl
+└── pages/
+    ├── home.tpl
+    ├── products.tpl
+    └── profile.tpl
 ```
 
-### partials/header.html
+### partials/header.tpl
 
 ```html
 <!DOCTYPE html>
@@ -288,17 +367,17 @@ storages/
     <header>
         <nav>
             <a href="/">Home</a>
-            {{ if is_authenticated }}
+            {% if is_authenticated %}
                 <a href="/profile">Profile</a>
                 <a href="/logout">Logout</a>
-            {{ else }}
+            {% else %}
                 <a href="/login">Login</a>
-            {{ endif }}
+            {% endif %}
         </nav>
     </header>
 ```
 
-### partials/footer.html
+### partials/footer.tpl
 
 ```html
     <footer>
@@ -308,22 +387,10 @@ storages/
 </html>
 ```
 
-## Nested Data
+## Escaping and Security
 
-Access nested objects using dot notation:
+::: warning Values are not escaped automatically
+The engine outputs string values verbatim, without HTML escaping. If data comes from user input and is inserted into HTML, it must be escaped beforehand — otherwise arbitrary HTML/JavaScript may execute (XSS).
+:::
 
-```html
-<p>{{ user.profile.avatar_url }}</p>
-<p>{{ company.address.city }}</p>
-```
-
-Access array elements by index:
-
-```html
-<p>First: {{ items[0].name }}</p>
-<p>Second: {{ items[1].name }}</p>
-```
-
-## Escaping
-
-By default, all values are escaped to prevent XSS attacks. HTML tags in variables will be converted to safe entities.
+Outputting values that may contain special characters (`<`, `>`, `&`, `"`) is only safe after sanitizing them on the handler side.

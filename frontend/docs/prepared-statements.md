@@ -1,349 +1,63 @@
 ---
 outline: deep
-description: Подготовленные запросы в C Web Framework. Регистрация подготовленных запросов, защита от SQL-инъекций, примеры CRUD операций.
+description: Подготовленные и параметризованные запросы в C Web Framework. Параметры :name и @name, списки :list__ и @list__, именованные подготовленные запросы dbprepared и model_prepared_one, защита от SQL-инъекций.
 ---
 
 # Подготовленные запросы (Prepared Statements)
 
-Подготовленные запросы в C Web Framework — это механизм предварительной регистрации SQL запросов с параметрами. Они предотвращают SQL-инъекции и оптимизируют выполнение благодаря кешированию плана запроса.
+Подготовленные (параметризованные) запросы отделяют значения от текста SQL: данные передаются отдельно и подставляются драйвером через плейсхолдеры. Это даёт защиту от SQL-инъекций и возможность переиспользовать разобранный план запроса.
 
-## Основные концепции
+C Web Framework предоставляет три способа выполнения:
 
-**Зачем использовать подготовленные запросы:**
-- ✅ **Безопасность** — защита от SQL-инъекций
-- ✅ **Производительность** — переиспользование плана запроса
-- ✅ **Читаемость** — централизованное определение запросов
-- ✅ **Типизация** — явное указание типов параметров
-- ✅ **Шаблонизация** — использование подстановок вроде `@table`, `@list__fields`
+- `dbquery(dbid, sql, params)` — разовый параметризованный запрос.
+- `dbprepared(dbid, name, sql, params)` — **именованный** подготовленный запрос: при первом вызове с данным `name` запрос подготавливается и кешируется в соединении, при последующих — переиспользуется.
+- `model_prepared_one` / `model_prepared_list` — то же, что и `dbprepared`, но результат возвращается сразу в виде типизированной ORM-модели (см. [Модели](/model) и раздел ниже).
 
-## Структура проекта
+## Зачем использовать
 
-Для работы с подготовленными запросами используются:
+- ✅ **Безопасность** — значения биндятся как параметры, а не вставляются в текст SQL.
+- ✅ **Производительность** — `dbprepared` кеширует план запроса по имени в рамках соединения.
+- ✅ **Типизация** — параметры типизируются через макросы `mparam_*`.
+- ✅ **Динамические идентификаторы** — имена таблиц/колонок можно подставлять безопасно через `@name`.
 
-```
-project/
-├── config.json                         # Конфигурация БД
-├── backend/
-│   └── app/
-│       └── models/
-│           └── prepare_statements.c    # Регистрация подготовленных запросов
-├── handlers/
-│   └── users.c                         # Обработчики
-└── migrations/
-    └── 001_create_users.sql            # SQL миграции
-```
+## Синтаксис параметров
 
-## Шаг 1: Конфигурация базы данных
+Параметры в SQL обозначаются специальными префиксами:
 
-**Файл:** `config.json`
+| Запись | Назначение |
+| --- | --- |
+| `:name` | **Значение** — биндится как плейсхолдер (`$1`, `$2`, …). Защищено от инъекций. |
+| `@name` | **Идентификатор** — имя таблицы/колонки/схемы, экранируется и подставляется в текст SQL. |
+| `:list__name` | **Список значений** — раскрывается в список плейсхолдеров через запятую (`$1, $2, $3`). |
+| `@list__name` | **Список идентификаторов** — раскрывается в список экранированных имён через запятую. |
 
-```json
-{
-  "databases": {
-    "postgresql": [
-      {
-        "host_id": "main",
-        "ip": "127.0.0.1",
-        "port": 5432,
-        "dbname": "myapp",
-        "user": "dbuser",
-        "password": "dbpass",
-        "connection_timeout": 5
-      }
-    ]
-  }
-}
-```
+::: tip Два вида параметров
+`:name` — для **данных** (значения). `@name` — для **имён** объектов БД (таблиц, колонок, схем). Никогда не подставляйте значения через `@` — они не биндятся и не защищены от инъекций.
+:::
 
-## Шаг 2: Создание таблицы
+## Создание параметров
 
-**Файл:** `migrations/001_create_users.sql`
+Параметры собираются в массив `array_t*` макросами `mparam_*`. Имя параметра (`#NAME`) становится строкой и должно совпадать с плейсхолдером в SQL:
 
-```sql
-CREATE TABLE IF NOT EXISTS "user" (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    age INT,
-    status VARCHAR(50) DEFAULT 'active',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+```c
+array_t* params = array_create();
+mparams_fill_array(params,
+    mparam_int(id, user_id),
+    mparam_text(status, "active")
 );
 
-CREATE INDEX idx_email ON "user"(email);
-CREATE INDEX idx_name ON "user"(name);
-CREATE INDEX idx_status ON "user"(status);
+// ... использовать params ...
+
+array_free(params);
 ```
 
-Запустите миграцию:
-```bash
-psql -h 127.0.0.1 -U dbuser -d myapp -f migrations/001_create_users.sql
-```
+Полный список типов `mparam_*` (`mparam_int`, `mparam_text`, `mparam_bool`, `mparam_double`, `mparam_array`, …) приведён в разделе [База данных](/db#типы-параметров).
 
-## Шаг 3: Регистрация подготовленных запросов
+::: tip mfield_def_* — определение формы
+Макросы `mfield_def_int(name)`, `mfield_def_text(name)` и т. д. создают типизированный параметр со значением по умолчанию — это удобно для описания формы запроса. Для выполнения с реальными данными используйте `mparam_*(name, value)`.
+:::
 
-**Файл:** `backend/app/models/prepare_statements.c`
-
-### Заголовок и включения
-
-```c
-#include "statement_registry.h"
-#include "log.h"
-```
-
-### Подготовленный запрос: получение пользователя
-
-```c
-/**
- * Prepared statement: Get user by ID
- * Query: SELECT id, name, email, age FROM user WHERE id = :id
- */
-static prepare_stmt_t* pstmt_user_get_by_id(void) {
-    prepare_stmt_t* stmt = pstmt_create();
-    if (stmt == NULL) return NULL;
-
-    // Шаг 1: Создать массив параметров
-    array_t* params = array_create();
-    if (params == NULL) {
-        pstmt_free(stmt);
-        return NULL;
-    }
-
-    // Шаг 2: Заполнить параметры (определения полей и значения)
-    mparams_fill_array(params,
-        mfield_def_int(id),                           // :id — целое число
-        mfield_def_array(fields, array_create_strings("id", "name", "email", "age"))  // @list__fields
-    );
-
-    // Шаг 3: Установить имя запроса (для идентификации)
-    stmt->name = str_create("user_get_by_id");
-
-    // Шаг 4: Установить SQL с подстановками
-    // @list__fields будет заменен на список полей
-    // :id будет заменен на значение параметра
-    stmt->query = str_create("SELECT @list__fields FROM \"user\" WHERE id = :id LIMIT 1");
-
-    stmt->params = params;
-
-    return stmt;
-}
-```
-
-### Подготовленный запрос: получение пользователя по email
-
-```c
-/**
- * Prepared statement: Get user by email
- */
-static prepare_stmt_t* pstmt_user_get_by_email(void) {
-    prepare_stmt_t* stmt = pstmt_create();
-    if (stmt == NULL) return NULL;
-
-    array_t* params = array_create();
-    if (params == NULL) {
-        pstmt_free(stmt);
-        return NULL;
-    }
-
-    mparams_fill_array(params,
-        mfield_def_text(email),
-        mfield_def_array(fields, array_create_strings("id", "name", "email", "age"))
-    );
-
-    stmt->name = str_create("user_get_by_email");
-    stmt->query = str_create("SELECT @list__fields FROM \"user\" WHERE email = :email LIMIT 1");
-    stmt->params = params;
-
-    return stmt;
-}
-```
-
-### Подготовленный запрос: создание пользователя
-
-```c
-/**
- * Prepared statement: Create user
- */
-static prepare_stmt_t* pstmt_user_create(void) {
-    prepare_stmt_t* stmt = pstmt_create();
-    if (stmt == NULL) return NULL;
-
-    array_t* params = array_create();
-    if (params == NULL) {
-        pstmt_free(stmt);
-        return NULL;
-    }
-
-    mparams_fill_array(params,
-        mfield_def_text(name),
-        mfield_def_text(email),
-        mfield_def_int(age)
-    );
-
-    stmt->name = str_create("user_create");
-    stmt->query = str_create(
-        "INSERT INTO \"user\" (name, email, age) "
-        "VALUES (:name, :email, :age) "
-        "RETURNING id, created_at"
-    );
-    stmt->params = params;
-
-    return stmt;
-}
-```
-
-### Подготовленный запрос: обновление пользователя
-
-```c
-/**
- * Prepared statement: Update user
- */
-static prepare_stmt_t* pstmt_user_update(void) {
-    prepare_stmt_t* stmt = pstmt_create();
-    if (stmt == NULL) return NULL;
-
-    array_t* params = array_create();
-    if (params == NULL) {
-        pstmt_free(stmt);
-        return NULL;
-    }
-
-    mparams_fill_array(params,
-        mfield_def_int(id),
-        mfield_def_text(name),
-        mfield_def_text(email),
-        mfield_def_int(age)
-    );
-
-    stmt->name = str_create("user_update");
-    stmt->query = str_create(
-        "UPDATE \"user\" "
-        "SET name = :name, email = :email, age = :age, updated_at = NOW() "
-        "WHERE id = :id "
-        "RETURNING id, updated_at"
-    );
-    stmt->params = params;
-
-    return stmt;
-}
-```
-
-### Подготовленный запрос: удаление пользователя
-
-```c
-/**
- * Prepared statement: Delete user
- */
-static prepare_stmt_t* pstmt_user_delete(void) {
-    prepare_stmt_t* stmt = pstmt_create();
-    if (stmt == NULL) return NULL;
-
-    array_t* params = array_create();
-    if (params == NULL) {
-        pstmt_free(stmt);
-        return NULL;
-    }
-
-    mparams_fill_array(params,
-        mfield_def_int(id)
-    );
-
-    stmt->name = str_create("user_delete");
-    stmt->query = str_create("DELETE FROM \"user\" WHERE id = :id");
-    stmt->params = params;
-
-    return stmt;
-}
-```
-
-### Подготовленный запрос: поиск пользователей
-
-```c
-/**
- * Prepared statement: Search users
- */
-static prepare_stmt_t* pstmt_user_search(void) {
-    prepare_stmt_t* stmt = pstmt_create();
-    if (stmt == NULL) return NULL;
-
-    array_t* params = array_create();
-    if (params == NULL) {
-        pstmt_free(stmt);
-        return NULL;
-    }
-
-    mparams_fill_array(params,
-        mfield_def_text(name_pattern),
-        mfield_def_int(min_age),
-        mfield_def_array(fields, array_create_strings("id", "name", "email", "age"))
-    );
-
-    stmt->name = str_create("user_search");
-    stmt->query = str_create(
-        "SELECT @list__fields FROM \"user\" "
-        "WHERE name ILIKE :name_pattern AND age >= :min_age "
-        "ORDER BY name LIMIT 50"
-    );
-    stmt->params = params;
-
-    return stmt;
-}
-```
-
-### Функция инициализации
-
-```c
-/**
- * Initialize and register all prepared statements
- * Called during application startup
- */
-int prepare_statements_init(void) {
-    // Регистрируем подготовленный запрос для получения пользователя по ID
-    if (!pstmt_registry_register(pstmt_user_get_by_id)) {
-        log_error("prepare_statements_init: failed to register pstmt_user_get_by_id\n");
-        return 0;
-    }
-
-    // Регистрируем подготовленный запрос для получения пользователя по email
-    if (!pstmt_registry_register(pstmt_user_get_by_email)) {
-        log_error("prepare_statements_init: failed to register pstmt_user_get_by_email\n");
-        return 0;
-    }
-
-    // Регистрируем подготовленный запрос для создания пользователя
-    if (!pstmt_registry_register(pstmt_user_create)) {
-        log_error("prepare_statements_init: failed to register pstmt_user_create\n");
-        return 0;
-    }
-
-    // Регистрируем подготовленный запрос для обновления пользователя
-    if (!pstmt_registry_register(pstmt_user_update)) {
-        log_error("prepare_statements_init: failed to register pstmt_user_update\n");
-        return 0;
-    }
-
-    // Регистрируем подготовленный запрос для удаления пользователя
-    if (!pstmt_registry_register(pstmt_user_delete)) {
-        log_error("prepare_statements_init: failed to register pstmt_user_delete\n");
-        return 0;
-    }
-
-    // Регистрируем подготовленный запрос для поиска пользователей
-    if (!pstmt_registry_register(pstmt_user_search)) {
-        log_error("prepare_statements_init: failed to register pstmt_user_search\n");
-        return 0;
-    }
-
-    log_info("prepare_statements_init: all prepared statements registered successfully\n");
-    return 1;
-}
-```
-
-## Шаг 4: Использование подготовленных запросов в обработчиках
-
-**Файл:** `handlers/users.c`
-
-### Получение пользователя по ID
+## Разовый запрос — dbquery
 
 ```c
 #include "http.h"
@@ -351,548 +65,380 @@ int prepare_statements_init(void) {
 #include "query.h"
 
 void get_user(httpctx_t* ctx) {
-    // Шаг 1: Получить ID из URL параметров
     int ok = 0;
-    int user_id = query_param_int(ctx->request, "id", &ok);
-
+    const int user_id = query_param_int(ctx->request->query_, "id", &ok);
     if (!ok) {
-        ctx->response->send_data(ctx->response, "Missing id parameter");
+        ctx->response->send_default(ctx->response, 400);
         return;
     }
 
-    // Шаг 2: Создать параметры для подготовленного запроса
-    mparams_create_array(params,
+    array_t* params = array_create();
+    mparams_fill_array(params,
         mparam_int(id, user_id)
     );
 
-    // Шаг 3: Выполнить подготовленный запрос по имени
-    dbresult_t* result = dbquery_prepared("postgresql", "user_get_by_id", params);
+    dbresult_t* result = dbquery("postgresql.p1",
+        "SELECT id, name, email FROM \"user\" WHERE id = :id LIMIT 1",
+        params
+    );
 
-    // Шаг 4: Освободить массив параметров
     array_free(params);
 
-    // Шаг 5: Проверить результат
-    if (!dbresult_ok(result)) {
-        ctx->response->send_data(ctx->response, "Query error");
-        dbresult_free(result);
-        return;
+    if (!dbresult_ok(result) || dbresult_query_rows(result) == 0) {
+        ctx->response->send_default(ctx->response, 404);
+        goto failed;
     }
 
-    // Шаг 6: Проверить наличие результатов
-    if (dbresult_query_rows(result) == 0) {
-        ctx->response->send_data(ctx->response, "User not found");
-        dbresult_free(result);
-        return;
-    }
+    db_table_cell_t* name = dbresult_field(result, "name");
+    ctx->response->send_data(ctx->response, name ? name->value : "");
 
-    // Шаг 7: Построить JSON ответ
-    json_doc_t* doc = json_init();
-    json_token_t* root = json_create_object(doc);
-
-    db_table_cell_t* id_cell = dbresult_cell(result, 0, 0);
-    db_table_cell_t* name_cell = dbresult_cell(result, 0, 1);
-    db_table_cell_t* email_cell = dbresult_cell(result, 0, 2);
-    db_table_cell_t* age_cell = dbresult_cell(result, 0, 3);
-
-    json_object_set(root, "id", json_create_number(doc, atoi(id_cell->value)));
-    json_object_set(root, "name", json_create_string(doc, name_cell->value));
-    json_object_set(root, "email", json_create_string(doc, email_cell->value));
-    json_object_set(root, "age", json_create_number(doc, atoi(age_cell->value)));
-
-    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
-    ctx->response->send_data(ctx->response, json_stringify(doc));
-
-    json_free(doc);
+    failed:
     dbresult_free(result);
 }
 ```
 
-### Создание пользователя
+## Именованный подготовленный запрос — dbprepared
+
+```c
+dbresult_t* dbprepared(const char* dbid, const char* name, const char* sql, array_t* params);
+```
+
+`dbprepared` подготавливает запрос по имени при первом вызове и переиспользует его при последующих — план запроса кешируется в соединении. Аргумент `sql` нужен только для первой подготовки (при последующих вызовах с тем же `name` он игнорируется).
+
+```c
+#include "http.h"
+#include "db.h"
+#include "query.h"
+
+void get_user_prepared(httpctx_t* ctx) {
+    int ok = 0;
+    const int user_id = query_param_int(ctx->request->query_, "id", &ok);
+    if (!ok) {
+        ctx->response->send_default(ctx->response, 400);
+        return;
+    }
+
+    array_t* params = array_create();
+    mparams_fill_array(params,
+        mparam_int(id, user_id)
+    );
+
+    // Первый вызов подготовит запрос "user_get_by_id" и закеширует его.
+    // Последующие вызовы с тем же именем переиспользуют подготовленный запрос.
+    dbresult_t* result = dbprepared("postgresql.p1", "user_get_by_id",
+        "SELECT id, name, email FROM \"user\" WHERE id = :id LIMIT 1",
+        params
+    );
+
+    array_free(params);
+
+    if (!dbresult_ok(result) || dbresult_query_rows(result) == 0) {
+        ctx->response->send_default(ctx->response, 404);
+        goto failed;
+    }
+
+    db_table_cell_t* name = dbresult_field(result, "name");
+    ctx->response->send_data(ctx->response, name ? name->value : "");
+
+    failed:
+    dbresult_free(result);
+}
+```
+
+::: tip Когда применять dbprepared
+Используйте `dbprepared` для запросов, которые выполняются многократно в одном соединении — это экономит разбор плана. Для одиночных запросов достаточно `dbquery`. Имя должно быть уникальным в пределах соединения.
+:::
+
+## Примеры CRUD
+
+### Создание (INSERT … RETURNING)
 
 ```c
 void create_user(httpctx_t* ctx) {
-    // Шаг 1: Получить данные из тела запроса
-    char* name = ctx->request->get_payloadf(ctx->request, "name");
+    char* name  = ctx->request->get_payloadf(ctx->request, "name");
     char* email = ctx->request->get_payloadf(ctx->request, "email");
-    char* age_str = ctx->request->get_payloadf(ctx->request, "age");
 
-    // Шаг 2: Валидировать входные данные
-    if (!name || !email || !age_str) {
-        ctx->response->send_data(ctx->response, "Missing required fields");
-        if (name) free(name);
-        if (email) free(email);
-        if (age_str) free(age_str);
+    if (!name || !email) {
+        ctx->response->send_default(ctx->response, 400);
+        free(name); free(email);
         return;
     }
 
-    // Шаг 3: Создать параметры для подготовленного запроса
-    mparams_create_array(params,
+    array_t* params = array_create();
+    mparams_fill_array(params,
         mparam_text(name, name),
-        mparam_text(email, email),
-        mparam_int(age, atoi(age_str))
+        mparam_text(email, email)
     );
 
-    // Шаг 4: Выполнить подготовленный запрос
-    dbresult_t* result = dbquery_prepared("postgresql", "user_create", params);
+    dbresult_t* result = dbprepared("postgresql.p1", "user_create",
+        "INSERT INTO \"user\" (name, email) VALUES (:name, :email) RETURNING id",
+        params
+    );
 
     array_free(params);
 
-    // Шаг 5: Обработать ошибки
     if (!dbresult_ok(result)) {
-        const char* error = dbresult_error_message(result);
-        if (strstr(error, "unique")) {
-            ctx->response->send_data(ctx->response, "Email already exists");
-        } else {
-            ctx->response->send_data(ctx->response, "Insert failed");
-        }
-        dbresult_free(result);
-        free(name);
-        free(email);
-        free(age_str);
-        return;
+        ctx->response->send_data(ctx->response, dbresult_error(result));
+    } else {
+        db_table_cell_t* id = dbresult_field(result, "id");
+        ctx->response->send_data(ctx->response, id ? id->value : "0");
     }
 
-    // Шаг 6: Получить возвращённые значения
-    db_table_cell_t* new_id = dbresult_cell(result, 0, 0);
-    db_table_cell_t* created_at = dbresult_cell(result, 0, 1);
-
-    // Шаг 7: Построить ответ
-    json_doc_t* doc = json_init();
-    json_token_t* root = json_create_object(doc);
-
-    json_object_set(root, "success", json_create_bool(doc, 1));
-    json_object_set(root, "id", json_create_number(doc, atoi(new_id->value)));
-    json_object_set(root, "created_at", json_create_string(doc, created_at->value));
-
-    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
-    ctx->response->send_data(ctx->response, json_stringify(doc));
-
-    json_free(doc);
     dbresult_free(result);
     free(name);
     free(email);
-    free(age_str);
 }
 ```
 
-### Обновление пользователя
+::: tip Получить id новой записи
+Кроме `RETURNING id`, автоинкрементный ключ доступен через `dbresult_insert_id(result)` — это пригодится, когда SQL не возвращает строк (например, MySQL/SQLite без `RETURNING`).
+:::
+
+### Обновление (UPDATE)
 
 ```c
 void update_user(httpctx_t* ctx) {
-    // Шаг 1: Получить ID из URL
     int ok = 0;
-    int user_id = query_param_int(ctx->request, "id", &ok);
-
-    if (!ok) {
-        ctx->response->send_data(ctx->response, "Missing id");
-        return;
-    }
-
-    // Шаг 2: Получить данные для обновления
+    const int user_id = query_param_int(ctx->request->query_, "id", &ok);
     char* name = ctx->request->get_payloadf(ctx->request, "name");
-    char* email = ctx->request->get_payloadf(ctx->request, "email");
-    char* age_str = ctx->request->get_payloadf(ctx->request, "age");
-
-    if (!name && !email && !age_str) {
-        ctx->response->send_data(ctx->response, "No fields to update");
+    if (!ok || !name) {
+        ctx->response->send_default(ctx->response, 400);
+        free(name);
         return;
     }
 
-    // Шаг 3: Установить значения (используем 0 для пропущенных полей)
-    int age = age_str ? atoi(age_str) : 0;
-    const char* name_val = name ? name : "";
-    const char* email_val = email ? email : "";
-
-    // Шаг 4: Создать параметры
-    mparams_create_array(params,
-        mparam_int(id, user_id),
-        mparam_text(name, name_val),
-        mparam_text(email, email_val),
-        mparam_int(age, age)
+    array_t* params = array_create();
+    mparams_fill_array(params,
+        mparam_text(name, name),
+        mparam_int(id, user_id)
     );
 
-    // Шаг 5: Выполнить подготовленный запрос
-    dbresult_t* result = dbquery_prepared("postgresql", "user_update", params);
+    dbresult_t* result = dbprepared("postgresql.p1", "user_update",
+        "UPDATE \"user\" SET name = :name WHERE id = :id",
+        params
+    );
 
     array_free(params);
 
     if (!dbresult_ok(result)) {
         ctx->response->send_data(ctx->response, "Update failed");
-        dbresult_free(result);
-        if (name) free(name);
-        if (email) free(email);
-        if (age_str) free(age_str);
-        return;
+    } else {
+        ctx->response->send_data(ctx->response, "User updated");
     }
 
-    if (dbresult_query_rows(result) == 0) {
-        ctx->response->send_data(ctx->response, "User not found");
-        dbresult_free(result);
-        if (name) free(name);
-        if (email) free(email);
-        if (age_str) free(age_str);
-        return;
-    }
-
-    ctx->response->send_data(ctx->response, "User updated");
     dbresult_free(result);
-    if (name) free(name);
-    if (email) free(email);
-    if (age_str) free(age_str);
+    free(name);
 }
 ```
 
-### Удаление пользователя
+### Удаление (DELETE)
 
 ```c
 void delete_user(httpctx_t* ctx) {
-    // Шаг 1: Получить ID
     int ok = 0;
-    int user_id = query_param_int(ctx->request, "id", &ok);
-
+    const int user_id = query_param_int(ctx->request->query_, "id", &ok);
     if (!ok) {
-        ctx->response->send_data(ctx->response, "Missing id");
+        ctx->response->send_default(ctx->response, 400);
         return;
     }
 
-    // Шаг 2: Создать параметр
-    mparams_create_array(params,
-        mparam_int(id, user_id)
+    array_t* params = array_create();
+    mparams_fill_array(params, mparam_int(id, user_id));
+
+    dbresult_t* result = dbprepared("postgresql.p1", "user_delete",
+        "DELETE FROM \"user\" WHERE id = :id",
+        params
     );
 
-    // Шаг 3: Выполнить подготовленный запрос
-    dbresult_t* result = dbquery_prepared("postgresql", "user_delete", params);
-
     array_free(params);
-
-    if (!dbresult_ok(result)) {
-        ctx->response->send_data(ctx->response, "Delete failed");
-        dbresult_free(result);
-        return;
-    }
-
-    ctx->response->send_data(ctx->response, "User deleted");
     dbresult_free(result);
+
+    ctx->response->send_data(ctx->response, "Deleted");
 }
 ```
 
-### Поиск пользователей
+### Поиск (LIKE)
 
 ```c
 void search_users(httpctx_t* ctx) {
-    // Шаг 1: Получить параметры поиска
-    int ok_name = 0, ok_age = 0;
-    const char* search_name = query_param_char(ctx->request, "name", &ok_name);
-    int min_age = query_param_int(ctx->request, "min_age", &ok_age);
+    int ok = 0;
+    const char* q = query_param_char(ctx->request->query_, "q", &ok);
+    if (!ok) {
+        ctx->response->send_default(ctx->response, 400);
+        return;
+    }
 
-    // Шаг 2: Подготовить параметры поиска
-    char name_pattern[512];
-    snprintf(name_pattern, sizeof(name_pattern), "%%%s%%", ok_name ? search_name : "");
+    char pattern[512];
+    snprintf(pattern, sizeof(pattern), "%%%s%%", q);
 
-    if (!ok_age) min_age = 0;
+    array_t* params = array_create();
+    mparams_fill_array(params, mparam_text(pattern, pattern));
 
-    // Шаг 3: Создать параметры
-    mparams_create_array(params,
-        mparam_text(name_pattern, name_pattern),
-        mparam_int(min_age, min_age)
+    dbresult_t* result = dbquery("postgresql.p1",
+        "SELECT id, name, email FROM \"user\" WHERE name ILIKE :pattern LIMIT 10",
+        params
     );
-
-    // Шаг 4: Выполнить подготовленный запрос поиска
-    dbresult_t* result = dbquery_prepared("postgresql", "user_search", params);
 
     array_free(params);
 
     if (!dbresult_ok(result)) {
         ctx->response->send_data(ctx->response, "Search failed");
-        dbresult_free(result);
-        return;
+        goto failed;
     }
-
-    // Шаг 5: Построить JSON массив результатов
-    json_doc_t* doc = json_init();
-    json_token_t* root = json_create_array(doc);
 
     for (int row = 0; row < dbresult_query_rows(result); row++) {
-        json_token_t* user_obj = json_create_object(doc);
-
-        db_table_cell_t* id = dbresult_cell(result, row, 0);
-        db_table_cell_t* name = dbresult_cell(result, row, 1);
-        db_table_cell_t* email = dbresult_cell(result, row, 2);
-        db_table_cell_t* age = dbresult_cell(result, row, 3);
-
-        json_object_set(user_obj, "id", json_create_number(doc, atoi(id->value)));
-        json_object_set(user_obj, "name", json_create_string(doc, name->value));
-        json_object_set(user_obj, "email", json_create_string(doc, email->value));
-        json_object_set(user_obj, "age", json_create_number(doc, atoi(age->value)));
-
-        json_array_push(root, user_obj);
+        const db_table_cell_t* name = dbresult_cell(result, row, 1);
+        printf("%s\n", name->value);
     }
 
-    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
-    ctx->response->send_data(ctx->response, json_stringify(doc));
+    ctx->response->send_data(ctx->response, "Done");
 
-    json_free(doc);
+    failed:
     dbresult_free(result);
 }
 ```
 
-### Получение пользователя с использованием моделей (model_prepared_one)
+## Динамические идентификаторы и списки
 
-Для более удобной работы с результатами можно использовать модели:
+Иногда имя таблицы/колонки или набор значений заранее неизвестны. Для этого используются `@name`, `@list__name` и `:list__name`.
+
+### Динамические имена (`@name`, `@list__name`)
+
+`@name` подставляет экранированный идентификатор, а `@list__name` — список идентификаторов через запятую. Источник — параметр-массив (`mparam_array`):
 
 ```c
-// Определяем модель пользователя
-typedef struct {
-    modelview_t base;
-    struct {
-        mfield_t id;
-        mfield_t name;
-        mfield_t email;
-        mfield_t age;
-    } field;
-} user_model_t;
+array_t* fields = array_create_strings("id", "name", "email");
+array_t* params = array_create();
+mparams_fill_array(params,
+    mparam_array(fields, fields),   // @list__fields -> "id", "name", "email"
+    mparam_text(table, "user")      // @table        -> "user"
+);
 
-// Функция для создания экземпляра модели
-void* user_model_create(void) {
-    user_model_t* user = malloc(sizeof *user);
-    if (user == NULL) return NULL;
+dbresult_t* result = dbquery("postgresql.p1",
+    "SELECT @list__fields FROM @table WHERE id = :id",
+    params
+);
 
-    user_model_t st = {
-        .base = {
-            .fields_count = __user_fields_count,
-            .first_field = __user_first_field,
-        },
-        .field = {
-            mfield_int(id, 0),
-            mfield_text(name, NULL),
-            mfield_text(email, NULL),
-            mfield_int(age, 0),
-        }
-    };
+array_free(params);
+// mparam_array не копирует массив: params владеет fields.
+// Освобождайте только params — НЕ вызывайте array_free(fields) дополнительно.
+dbresult_free(result);
+```
 
-    memcpy(user, &st, sizeof st);
-    return user;
-}
+### Список значений (`:list__name`)
 
-// Обработчик с использованием модели
+`:list__name` раскрывается в список плейсхолдеров — удобно для `IN (...)`:
+
+```c
+array_t* id_arr = array_create_from_ints((int[]){ 1, 5, 9 }, 3);
+
+array_t* params = array_create();
+mparams_fill_array(params, mparam_array(id, id_arr));
+
+dbresult_t* result = dbquery("postgresql.p1",
+    "SELECT * FROM \"user\" WHERE id IN (:list__id)",
+    params
+);
+// Раскрывается в: SELECT * FROM "user" WHERE id IN ($1, $2, $3)
+
+array_free(params);
+// params владеет id_arr — отдельно array_free(id_arr) вызывать не нужно.
+dbresult_free(result);
+```
+
+::: warning Владение массивом
+`mparam_array(name, arr)` **не копирует** массив — владение переходит к `params`. Освобождайте только `params` через `array_free(params)`. Не освобождайте внутренний массив отдельно — это приведёт к двойному освобождению.
+:::
+
+## Защита от SQL-инъекций
+
+Параметры `:name` и `:list__name` биндятся драйвером как значения, а не вставляются в текст SQL, поэтому вредоносный ввод остаётся данными и не может изменить структуру запроса:
+
+```c
+// Опасно — значение вставляется в текст SQL (инъекция!):
+// snprintf(sql, "SELECT * FROM \"user\" WHERE email = '%s'", user_input);
+
+// Безопасно — значение биндится как параметр:
+array_t* params = array_create();
+mparams_fill_array(params, mparam_text(email, user_input));
+dbresult_t* result = dbquery("postgresql.p1",
+    "SELECT * FROM \"user\" WHERE email = :email", params);
+array_free(params);
+```
+
+::: tip Правило
+Все значения — через `:name`. Все динамические имена объектов — через `@name` (они экранируются как идентификаторы). Никогда не собирайте SQL из пользовательского ввода строковыми функциями.
+:::
+
+## Подготовленные запросы и модели (ORM)
+
+`dbquery` / `dbprepared` возвращают «сырые» ячейки (`db_table_cell_t`). Если в приложении уже определена ORM-модель (см. [Модели](/model)), удобнее получить сразу типизированный объект — для этого есть `model_prepared_one` / `model_prepared_list`:
+
+```c
+#include "http.h"
+#include "db.h"
+#include "query.h"
+#include "model.h"
+#include "user.h"   // приложение: user_instance, user_t
+
 void get_user_model(httpctx_t* ctx) {
-    // Шаг 1: Получить ID
     int ok = 0;
-    int user_id = query_param_int(ctx->request, "id", &ok);
-
+    const int user_id = query_param_int(ctx->request->query_, "id", &ok);
     if (!ok) {
-        ctx->response->send_data(ctx->response, "Missing id");
+        ctx->response->send_default(ctx->response, 400);
         return;
     }
 
-    // Шаг 2: Создать параметры
-    mparams_create_array(params,
-        mparam_int(id, user_id)
-    );
+    array_t* params = array_create();
+    mparams_fill_array(params, mparam_int(id, user_id));
 
-    // Шаг 3: Получить один результат как модель
-    user_model_t* user = model_prepared_one("postgresql", user_model_create, "user_get_by_id", params);
+    // Первый вызов подготовит "user_get_by_id" и закеширует его в соединении.
+    // Результат — типизированная модель user_t* (или NULL при ошибке / not found).
+    user_t* user = model_prepared_one("postgresql.p1", user_instance,
+        "user_get_by_id",
+        "SELECT id, name, email FROM \"user\" WHERE id = :id LIMIT 1",
+        params
+    );
 
     array_free(params);
 
     if (user == NULL) {
-        ctx->response->send_data(ctx->response, "User not found");
+        // Причина доступна через model_last_status():
+        //   MODEL_ERR_NOTFOUND -> 404, MODEL_ERR_DB -> 500.
+        ctx->response->send_default(ctx->response,
+            model_last_status() == MODEL_ERR_NOTFOUND ? 404 : 500);
         return;
     }
 
-    // Шаг 4: Отправить модель как JSON
-    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
-    ctx->response->send_model(ctx->response, user, display_fields("id", "name", "email", "age"));
+    ctx->response->send_model(ctx->response, user,
+        display_fields("id", "email", "name"));
 
     model_free(user);
 }
 ```
 
-### Получение списка пользователей с использованием моделей (model_prepared_list)
-
-Для получения списка пользователей:
+Для нескольких строк используется `model_prepared_list` — она возвращает `array_t*` моделей и отправляется через `send_models`:
 
 ```c
-void search_users_model(httpctx_t* ctx) {
-    // Шаг 1: Получить параметры поиска
-    int ok_name = 0, ok_age = 0;
-    const char* search_name = query_param_char(ctx->request, "name", &ok_name);
-    int min_age = query_param_int(ctx->request, "min_age", &ok_age);
+array_t* users = model_prepared_list("postgresql.p1", user_instance,
+    "users_active",
+    "SELECT id, name, email FROM \"user\" WHERE status = :status",
+    params
+);
 
-    // Подготовить параметры
-    char name_pattern[512];
-    snprintf(name_pattern, sizeof(name_pattern), "%%%s%%", ok_name ? search_name : "");
-
-    if (!ok_age) min_age = 0;
-
-    // Шаг 2: Создать параметры
-    mparams_create_array(params,
-        mparam_text(name_pattern, name_pattern),
-        mparam_int(min_age, min_age)
-    );
-
-    // Шаг 3: Получить список результатов как массив моделей
-    array_t* users = model_prepared_list("postgresql", user_model_create, "user_search", params);
-
-    array_free(params);
-
-    if (users == NULL || array_length(users) == 0) {
-        // Если массив NULL, он был освобожден функцией
-        ctx->response->send_data(ctx->response, "[]");
-        return;
-    }
-
-    // Шаг 4: Построить и отправить JSON ответ
-    json_doc_t* doc = json_init();
-    json_token_t* root = json_create_array(doc);
-
-    for (int i = 0; i < array_length(users); i++) {
-        user_model_t* user = (user_model_t*)array_get(users, i);
-        if (user != NULL) {
-            json_token_t* user_json = model_to_json(user, display_fields("id", "name", "email", "age"));
-            json_array_push(root, user_json);
-        }
-    }
-
-    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
-    ctx->response->send_data(ctx->response, json_stringify(doc));
-
-    json_free(doc);
-    array_free(users);  // Освобождает все модели в массиве
+if (users != NULL) {
+    ctx->response->send_models(ctx->response, users,
+        display_fields("id", "email", "name"));
+    array_free(users);
 }
 ```
 
-## Шаг 5: Регистрация обработчиков в конфиге
+::: tip Когда NULL — это не ошибка
+`model_prepared_one` возвращает `NULL` и при «не найдено», и при ошибке БД. Различить их позволяет `model_last_status()` (`MODEL_OK`, `MODEL_ERR_NOTFOUND`, `MODEL_ERR_DB`, `MODEL_ERR_PARAM`, `MODEL_ERR_ALLOC`), а текст ошибки — `model_last_error()`.
+:::
 
-**Файл:** `config.json`
+## См. также
 
-```json
-{
-  "routes": {
-    "/api/users/{id|\\d+}": {
-      "GET": {
-        "file": "handlers/libusers.so",
-        "function": "get_user"
-      },
-      "PUT": {
-        "file": "handlers/libusers.so",
-        "function": "update_user"
-      },
-      "DELETE": {
-        "file": "handlers/libusers.so",
-        "function": "delete_user"
-      }
-    },
-    "/api/users": {
-      "POST": {
-        "file": "handlers/libusers.so",
-        "function": "create_user"
-      },
-      "GET": {
-        "file": "handlers/libusers.so",
-        "function": "search_users"
-      }
-    },
-    "/api/users/model/{id|\\d+}": {
-      "GET": {
-        "file": "handlers/libusers.so",
-        "function": "get_user_model"
-      }
-    },
-    "/api/users/model/search": {
-      "GET": {
-        "file": "handlers/libusers.so",
-        "function": "search_users_model"
-      }
-    }
-  }
-}
-```
-
-## Типы параметров
-
-При определении параметров используйте:
-
-| Функция | Тип в SQL | Использование |
-|---------|-----------|-----------------|
-| `mfield_def_int(name)` | INTEGER | Параметр целого числа |
-| `mfield_def_text(name)` | VARCHAR/TEXT | Параметр текста |
-| `mfield_def_array(name, array)` | — | Массив для подстановки |
-| `mparam_int(name, value)` | INTEGER | Значение параметра |
-| `mparam_text(name, value)` | VARCHAR/TEXT | Значение параметра |
-
-## Подстановки в запросах
-
-| Подстановка | Назначение | Пример |
-|------------|-----------|---------|
-| `:name` | Параметр с определённым типом | `WHERE email = :email` |
-| `@list__fields` | Список полей из массива `fields` | `SELECT @list__fields` |
-| `@table` | Имя таблицы (не рекомендуется) | `FROM @table` |
-
-## Тестирование
-
-### Получение пользователя
-
-```bash
-curl http://localhost:8080/api/users/1
-```
-
-### Создание пользователя
-
-```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "name=John&email=john@example.com&age=30"
-```
-
-### Обновление пользователя
-
-```bash
-curl -X PUT http://localhost:8080/api/users/1 \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "name=Jane&email=jane@example.com&age=28"
-```
-
-### Удаление пользователя
-
-```bash
-curl -X DELETE http://localhost:8080/api/users/1
-```
-
-### Поиск пользователей
-
-```bash
-curl "http://localhost:8080/api/users?name=John&min_age=25"
-```
-
-## Безопасность
-
-### Защита от SQL-инъекций
-
-Подготовленные запросы автоматически защищают от SQL-инъекций благодаря параметризации:
-
-```c
-// ✅ Безопасно: параметры проходят экранирование
-mparams_create_array(params, mparam_text(email, user_input));
-dbresult_t* result = dbquery_prepared("postgresql", "user_get_by_email", params);
-
-// ❌ Опасно: конкатенация строк (не используйте!)
-char query[1024];
-sprintf(query, "SELECT * FROM user WHERE email = '%s'", user_input);
-```
-
-## Лучшие практики
-
-1. **Регистрируйте все запросы** в `prepare_statements_init()` при инициализации приложения
-2. **Используйте говорящие имена** для подготовленных запросов: `user_get_by_id`, `user_create`, и т.д.
-3. **Проверяйте результаты** перед использованием данных
-4. **Освобождайте память** после работы с результатами и параметрами
-5. **Валидируйте входные данные** перед передачей в БД
-6. **Логируйте ошибки** при регистрации и выполнении запросов
-7. **Документируйте запросы** с помощью комментариев
-
-## Связанные разделы
-
-- [База данных](/db) — основная документация
-- [Работа с JSON](/json) — построение JSON ответов
-- [Примеры работы с БД](/examples-db) — дополнительные примеры
+- [База данных](/db) — конфигурация, `dbquery`, типы параметров, транзакции
+- [Модели (ORM)](/model) — `model_prepared_one` / `model_prepared_list` для типизированных моделей
+- [Миграции баз данных](/migrations) — система миграций

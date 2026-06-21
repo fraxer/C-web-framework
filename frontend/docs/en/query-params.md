@@ -1,161 +1,152 @@
 ---
 outline: deep
-description: Query parameter parsing in C Web Framework. Extracting strings, numbers, arrays and objects from URL.
+description: Query parameter parsing in C Web Framework. Extracting strings, numbers, arrays and objects from the URL through a typed API.
 ---
 
 # Query Parameters
 
-The framework provides a typed API for extracting query parameters from the request URL.
+Query parameters (the part of the URL after `?`) are the most common way to pass small pieces of data to a handler: filters, page numbers, IDs, sort order. The framework parses them once while reading the request and exposes a typed API to retrieve values safely.
 
-## API
+Query parameters are available in a handler as a `query_t*` linked list through `ctx->request->query_`. Every accessor takes it as the first argument, the parameter name as the second, and a success flag `int* ok` as the third.
 
-### String Parameter
+## The query_t structure
+
+Each parameter is a node in a linked list (defined in `query.h`):
+
+```c
+typedef struct url_query {
+    const char* key;     // parameter name
+    const char* value;   // value (URL-decoded)
+    struct url_query* next;
+} query_t;
+```
+
+| Field | Description |
+|-------|-------------|
+| `key` | Parameter name. Uniqueness is not enforced — on duplicates the first match wins. |
+| `value` | Parameter value. **URL-decoded** by the parser automatically (`%20` → space, `+` → space). |
+| `next` | Pointer to the next node (`NULL` on the last one). |
+
+::: tip Parser behavior
+- String format: `key1=value1&key2=value2&key3`.
+- A valueless parameter (`?flag`) is stored as `{key:"flag", value:""}`.
+- Anything after `#` is treated as a fragment and is not parsed.
+- Keys and values are URL-decoded.
+:::
+
+## Function overview
+
+| Function | Returns | Purpose |
+|----------|---------|---------|
+| `query_param_char` | `const char*` | Value as a string |
+| `query_param_int` | `int` | Signed integer |
+| `query_param_uint` | `unsigned int` | Unsigned integer |
+| `query_param_long` | `long` | Signed `long` |
+| `query_param_ulong` | `unsigned long` | Unsigned `long` |
+| `query_param_float` | `float` | Single precision |
+| `query_param_double` | `double` | Double precision |
+| `query_param_ldouble` | `long double` | Extended precision |
+| `query_param_array` | `json_doc_t*` | JSON array from the parameter value |
+| `query_param_object` | `json_doc_t*` | JSON object from the parameter value |
+
+All functions take `(query_t* query, const char* param_name, int* ok)`. The `ok` flag is set to `1` on success and to `0` when the parameter is missing or the value cannot be parsed. It is idiomatic to initialize the flag to `0` before the call.
+
+## String parameter
 
 ```c
 #include "query.h"
 
-const char* query_param_char(httprequest_t* request, const char* param_name, int* ok);
+const char* query_param_char(query_t* query, const char* param_name, int* ok);
 ```
 
-Gets a parameter as a string.
-
-**Parameters**\
-`request` — pointer to HTTP request.\
-`param_name` — parameter name.\
-`ok` — pointer to success flag (1 — success, 0 — error).
-
-**Return Value**\
-Pointer to the string value or `NULL`.
-
-<br>
-
-### Integer Parameters
+Returns the parameter value as a string. When a parameter with that key is present, `ok` is `1` even if the value is empty (`?flag` → returns `""`, `ok = 1`). When the key is absent, it returns `NULL` and `ok = 0`.
 
 ```c
-int query_param_int(httprequest_t* request, const char* param_name, int* ok);
-unsigned int query_param_uint(httprequest_t* request, const char* param_name, int* ok);
-long query_param_long(httprequest_t* request, const char* param_name, int* ok);
-unsigned long query_param_ulong(httprequest_t* request, const char* param_name, int* ok);
-```
-
-**Return Value**\
-Numeric value or 0 on error (check the `ok` flag).
-
-<br>
-
-### Floating-Point Parameters
-
-```c
-float query_param_float(httprequest_t* request, const char* param_name, int* ok);
-double query_param_double(httprequest_t* request, const char* param_name, int* ok);
-long double query_param_ldouble(httprequest_t* request, const char* param_name, int* ok);
-```
-
-**Return Value**\
-Numeric value or 0.0 on error.
-
-<br>
-
-### Array
-
-```c
-json_doc_t* query_param_array(httprequest_t* request, const char* param_name, int* ok);
-```
-
-Parses an array from the query string.
-
-Supported formats:
-- `?items[]=a&items[]=b&items[]=c`
-- `?items=a,b,c`
-
-**Return Value**\
-JSON document with the array. Must be freed with `json_free()`.
-
-<br>
-
-### Object
-
-```c
-json_doc_t* query_param_object(httprequest_t* request, const char* param_name, int* ok);
-```
-
-Parses an object from the query string.
-
-Format: `?filter[name]=John&filter[age]=25`
-
-**Return Value**\
-JSON document with the object. Must be freed with `json_free()`.
-
-## Usage Examples
-
-### Basic Parameters
-
-```c
-// URL: /search?query=hello&page=2&limit=10
-
-void search(httpctx_t* ctx) {
+void handler(httpctx_t* ctx) {
     int ok = 0;
+    const char* search = query_param_char(ctx->request->query_, "q", &ok);
 
-    // String parameter
-    const char* query = query_param_char(ctx->request, "query", &ok);
-    if (!ok || query == NULL) {
-        ctx->response->status_code = 400;
-        ctx->response->send_data(ctx->response, "Parameter 'query' is required");
+    if (!ok || search == NULL) {
+        ctx->response->send_default(ctx->response, 400);
         return;
     }
 
-    // Numeric parameters with default values
-    int page = query_param_int(ctx->request, "page", &ok);
-    if (!ok) page = 1;
-
-    int limit = query_param_int(ctx->request, "limit", &ok);
-    if (!ok) limit = 20;
-
-    char response[256];
-    snprintf(response, sizeof(response),
-        "Search: %s, Page: %d, Limit: %d",
-        query, page, limit
-    );
-
-    ctx->response->send_data(ctx->response, response);
+    ctx->response->send_data(ctx->response, search);
 }
 ```
 
-### Floating-Point Parameters
+::: tip Distinguish "missing" from "empty"
+`ok = 1` only means the key is present. To tell `?q` (empty value) apart from a missing parameter, additionally check `value == NULL` or `value[0] == 0` when an empty value is not acceptable.
+:::
+
+## Integer parameters
 
 ```c
-// URL: /calculate?price=99.99&tax=0.2
+int           query_param_int(query_t* query, const char* param_name, int* ok);
+unsigned int  query_param_uint(query_t* query, const char* param_name, int* ok);
+long          query_param_long(query_t* query, const char* param_name, int* ok);
+unsigned long query_param_ulong(query_t* query, const char* param_name, int* ok);
+```
 
-void calculate(httpctx_t* ctx) {
-    int ok = 0;
+Returns the number, or `0` on error. `ok = 0` when the parameter is missing or the value is not a valid integer (empty string, letters, a sign on an unsigned type, etc.). Always check `ok` before relying on the result — `0` can be a legitimate value.
 
-    double price = query_param_double(ctx->request, "price", &ok);
-    if (!ok) {
-        ctx->response->send_data(ctx->response, "Invalid price");
-        return;
-    }
+```c
+int ok = 0;
+int page = query_param_int(ctx->request->query_, "page", &ok);
+if (!ok) page = 1;  // default value
+```
 
-    double tax = query_param_double(ctx->request, "tax", &ok);
-    if (!ok) tax = 0.0;
+## Floating-point parameters
 
-    double total = price * (1 + tax);
+```c
+float       query_param_float(query_t* query, const char* param_name, int* ok);
+double      query_param_double(query_t* query, const char* param_name, int* ok);
+long double query_param_ldouble(query_t* query, const char* param_name, int* ok);
+```
 
-    char response[64];
-    snprintf(response, sizeof(response), "Total: %.2f", total);
-    ctx->response->send_data(ctx->response, response);
+Returns the number, or `0.0` on error. `ok = 0` when the parameter is missing or the value cannot be converted by `strtof` / `strtod` / `strtold`.
+
+```c
+int ok = 0;
+double price = query_param_double(ctx->request->query_, "price", &ok);
+if (!ok) {
+    ctx->response->send_data(ctx->response, "Invalid price");
+    return;
 }
 ```
 
-### Working with Arrays
+## Array
 
 ```c
-// URL: /filter?tags[]=php&tags[]=javascript&tags[]=python
-// or: /filter?tags=php,javascript,python
+json_doc_t* query_param_array(query_t* query, const char* param_name, int* ok);
+```
+
+Parses the parameter **value** as a JSON array. The parser URL-decodes the value, passes it to `json_parse()`, and verifies the root is an array.
+
+The value must be a valid JSON array:
+
+```
+?tags=["php","javascript","python"]
+```
+
+Because the value contains special characters, the client must URL-encode it:
+
+```
+?tags=%5B%22php%22%2C%22javascript%22%2C%22python%22%5D
+```
+
+**Return value** — a `json_doc_t*` containing the array, or `NULL`. The document must be freed with `json_free()`. `ok = 0` when the parameter is missing, the value is empty, or it is not a JSON array.
+
+::: warning Only JSON values are supported
+The PHP-style `?tags[]=a&tags[]=b` and the comma-separated `?tags=a,b,c` formats are **not** supported — the value must be a valid JSON array. To iterate elements, use `json_array_size()` and `json_array_get()`.
+:::
+
+```c
+// URL: /filter?tags=["php","javascript","python"]
 
 void filter_by_tags(httpctx_t* ctx) {
     int ok = 0;
-
-    json_doc_t* tags_doc = query_param_array(ctx->request, "tags", &ok);
+    json_doc_t* tags_doc = query_param_array(ctx->request->query_, "tags", &ok);
     if (!ok || tags_doc == NULL) {
         ctx->response->send_data(ctx->response, "No tags provided");
         return;
@@ -182,15 +173,38 @@ void filter_by_tags(httpctx_t* ctx) {
 }
 ```
 
-### Working with Objects
+## Object
 
 ```c
-// URL: /users?filter[status]=active&filter[role]=admin&filter[min_age]=18
+json_doc_t* query_param_object(query_t* query, const char* param_name, int* ok);
+```
+
+Parses the parameter **value** as a JSON object. Works like `query_param_array`, but the root must be an object.
+
+The value must be a valid JSON object:
+
+```
+?filter={"status":"active","role":"admin"}
+```
+
+URL-encoded form:
+
+```
+?filter=%7B%22status%22%3A%22active%22%2C%22role%22%3A%22admin%22%7D
+```
+
+**Return value** — a `json_doc_t*` containing the object, or `NULL`. The document must be freed with `json_free()`. `ok = 0` when the parameter is missing, the value is empty, or it is not a JSON object.
+
+::: warning Only JSON values are supported
+The bracket syntax `?filter[name]=John&filter[age]=25` is **not** supported — the value must be a valid JSON object. To access fields, use `json_object_get()`.
+:::
+
+```c
+// URL: /users?filter={"status":"active","role":"admin","min_age":18}
 
 void filter_users(httpctx_t* ctx) {
     int ok = 0;
-
-    json_doc_t* filter_doc = query_param_object(ctx->request, "filter", &ok);
+    json_doc_t* filter_doc = query_param_object(ctx->request->query_, "filter", &ok);
     if (!ok || filter_doc == NULL) {
         ctx->response->send_data(ctx->response, "No filter provided");
         return;
@@ -198,19 +212,16 @@ void filter_users(httpctx_t* ctx) {
 
     json_token_t* filter = json_root(filter_doc);
 
-    // Extract values from object
-    json_token_t* status_token = json_object_get(filter, "status");
-    json_token_t* role_token = json_object_get(filter, "role");
-    json_token_t* min_age_token = json_object_get(filter, "min_age");
-
-    const char* status = status_token ? json_string(status_token) : "any";
-    const char* role = role_token ? json_string(role_token) : "any";
-    int min_age = min_age_token ? atoi(json_string(min_age_token)) : 0;
+    json_token_t* status  = json_object_get(filter, "status");
+    json_token_t* role    = json_object_get(filter, "role");
+    json_token_t* min_age = json_object_get(filter, "min_age");
 
     char response[256];
     snprintf(response, sizeof(response),
-        "Filter: status=%s, role=%s, min_age=%d",
-        status, role, min_age
+        "Filter: status=%s, role=%s, min_age=%s",
+        status  ? json_string(status)  : "any",
+        role    ? json_string(role)    : "any",
+        min_age ? json_string(min_age) : "0"
     );
 
     ctx->response->send_data(ctx->response, response);
@@ -219,50 +230,30 @@ void filter_users(httpctx_t* ctx) {
 }
 ```
 
-### Parameter Validation
+## Usage examples
+
+### Pagination and sorting
 
 ```c
-void get_product(httpctx_t* ctx) {
-    int ok = 0;
+// URL: /items?page=2&per_page=20&sort=created_at&order=desc
 
-    // ID is required and must be positive
-    int id = query_param_int(ctx->request, "id", &ok);
-    if (!ok || id <= 0) {
-        ctx->response->status_code = 400;
-        ctx->response->send_data(ctx->response, "Valid product ID is required");
-        return;
-    }
-
-    // Get product...
-    char response[64];
-    snprintf(response, sizeof(response), "Product ID: %d", id);
-    ctx->response->send_data(ctx->response, response);
-}
-```
-
-### Pagination
-
-```c
 void list_items(httpctx_t* ctx) {
     int ok = 0;
 
-    // Pagination parameters with default values
-    int page = query_param_int(ctx->request, "page", &ok);
+    int page = query_param_int(ctx->request->query_, "page", &ok);
     if (!ok || page < 1) page = 1;
 
-    int per_page = query_param_int(ctx->request, "per_page", &ok);
+    int per_page = query_param_int(ctx->request->query_, "per_page", &ok);
     if (!ok || per_page < 1 || per_page > 100) per_page = 20;
 
     int offset = (page - 1) * per_page;
 
-    // Sorting
-    const char* sort = query_param_char(ctx->request, "sort", &ok);
+    const char* sort = query_param_char(ctx->request->query_, "sort", &ok);
     if (!ok || sort == NULL) sort = "created_at";
 
-    const char* order = query_param_char(ctx->request, "order", &ok);
+    const char* order = query_param_char(ctx->request->query_, "order", &ok);
     if (!ok || order == NULL) order = "desc";
 
-    // Build SQL query or use ORM...
     char response[256];
     snprintf(response, sizeof(response),
         "Page: %d, Per page: %d, Offset: %d, Sort: %s %s",
@@ -273,7 +264,7 @@ void list_items(httpctx_t* ctx) {
 }
 ```
 
-### Multiple Filters
+### Multiple filters
 
 ```c
 // URL: /products?category=electronics&min_price=100&max_price=1000&in_stock=true
@@ -281,18 +272,17 @@ void list_items(httpctx_t* ctx) {
 void filter_products(httpctx_t* ctx) {
     int ok = 0;
 
-    const char* category = query_param_char(ctx->request, "category", &ok);
+    const char* category = query_param_char(ctx->request->query_, "category", &ok);
 
-    double min_price = query_param_double(ctx->request, "min_price", &ok);
+    double min_price = query_param_double(ctx->request->query_, "min_price", &ok);
     if (!ok) min_price = 0;
 
-    double max_price = query_param_double(ctx->request, "max_price", &ok);
+    double max_price = query_param_double(ctx->request->query_, "max_price", &ok);
     if (!ok) max_price = 999999;
 
-    const char* in_stock_str = query_param_char(ctx->request, "in_stock", &ok);
+    const char* in_stock_str = query_param_char(ctx->request->query_, "in_stock", &ok);
     int in_stock = (ok && in_stock_str && strcmp(in_stock_str, "true") == 0);
 
-    // Apply filters...
     json_doc_t* doc = json_root_create_object();
     json_token_t* root = json_root(doc);
 
@@ -301,31 +291,87 @@ void filter_products(httpctx_t* ctx) {
     json_object_set(root, "max_price", json_create_number(max_price));
     json_object_set(root, "in_stock", json_create_bool(in_stock));
 
-    ctx->response->header_add(ctx->response, "Content-Type", "application/json");
+    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
     ctx->response->send_data(ctx->response, json_stringify(doc));
 
     json_free(doc);
 }
 ```
 
-## Error Handling
+### Required numeric ID
 
-Always check the `ok` flag after extracting a parameter:
+```c
+// URL: /product?id=42
+
+void get_product(httpctx_t* ctx) {
+    int ok = 0;
+
+    int id = query_param_int(ctx->request->query_, "id", &ok);
+    if (!ok || id <= 0) {
+        ctx->response->status_code = 400;
+        ctx->response->send_data(ctx->response, "Valid product ID is required");
+        return;
+    }
+
+    char response[64];
+    snprintf(response, sizeof(response), "Product ID: %d", id);
+    ctx->response->send_data(ctx->response, response);
+}
+```
+
+## Validating presence with middleware
+
+The codebase ships a ready-made middleware, `middleware_http_query_param_required`, that verifies a set of required parameters are present and non-empty:
+
+```c
+int middleware_http_query_param_required(httpctx_t* ctx, char** keys, int size);
+```
+
+It returns `1` (allow) when every key is found and its value is non-empty; otherwise it sends a response naming the missing parameter and returns `0` (reject). It is convenient to call through the `middleware()` macro together with `args_str()`:
+
+```c
+#include "httpmiddlewares.h"
+
+void userviewget(httpctx_t* ctx) {
+    // Aborts the handler if the "id" parameter is missing or empty
+    middleware(
+        middleware_http_query_param_required(ctx, args_str("id"))
+    )
+
+    int param_ok = 0;
+    const int user_id = query_param_int(ctx->request->query_, "id", &param_ok);
+    if (!param_ok) {
+        ctx->response->send_default(ctx->response, 400);
+        return;
+    }
+
+    // Further processing...
+}
+```
+
+`args_str(...)` expands to a `(char*[]){...}, count` pair, so the list of keys is written directly in the call. The `middleware(...)` macro runs the check and returns early from the handler (`return`) if it fails.
+
+## Error handling
+
+The rule is simple: always check the `ok` flag right after extracting a parameter. For numbers this is mandatory — `0` can be both a valid value and an error indicator:
 
 ```c
 void safe_handler(httpctx_t* ctx) {
     int ok = 0;
 
-    int value = query_param_int(ctx->request, "value", &ok);
-
+    int value = query_param_int(ctx->request->query_, "value", &ok);
     if (!ok) {
-        // Parameter is missing or has invalid format
+        // Parameter is missing or has an invalid format
         ctx->response->status_code = 400;
         ctx->response->send_data(ctx->response, "Invalid or missing 'value' parameter");
         return;
     }
 
-    // Parameter successfully retrieved
-    // ...
+    // Parameter retrieved successfully — value is valid
 }
 ```
+
+::: tip Memory
+- `query_param_char` returns a pointer owned by the request — do not free it.
+- `query_param_array` and `query_param_object` return a fresh `json_doc_t*` — you must free it with `json_free()`.
+:::

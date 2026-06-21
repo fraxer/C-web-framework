@@ -1,11 +1,19 @@
 ---
 outline: deep
-description: Processing HTTP requests in C Web Framework. Extracting parameters, cookies, headers, working with payload and JSON.
+description: Processing HTTP requests in C Web Framework. Request structure, method, URL, query parameters, headers, cookies, body and JSON.
 ---
 
 # HTTP requests
 
-HTTP requests are processed through the `httpctx_t` context, which provides access to `request` and `response` objects.
+HTTP requests are processed through the `httpctx_t` context. It holds pointers to the request and response objects plus a slot for arbitrary user data.
+
+```c
+typedef struct httpctx {
+    httprequest_t* request;   // request object
+    httpresponse_t* response; // response object
+    void* user_data;          // arbitrary data (e.g. authenticated user)
+} httpctx_t;
+```
 
 ## Basic handler structure
 
@@ -13,37 +21,86 @@ HTTP requests are processed through the `httpctx_t` context, which provides acce
 #include "http.h"
 
 void my_handler(httpctx_t* ctx) {
-    // ctx->request — request object
-    // ctx->response — response object
-
     ctx->response->send_data(ctx->response, "Hello World");
 }
 ```
 
-## GET request parameters
+Request and response methods are function pointers attached to the object. The first argument is always the object itself: `ctx->request->get_header(ctx->request, "Host")`.
 
-Query string parameters are extracted using functions from `query.h`:
+## Request fields
+
+Main fields of the `httprequest_t` object:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `uri` | `const char*` | Full URI with query string: `/users?id=100` |
+| `path` | `const char*` | Path without query string: `/users` |
+| `uri_length` | `size_t` | Length of `uri` |
+| `path_length` | `size_t` | Length of `path` |
+| `method` | `route_methods_e` | HTTP request method |
+| `version` | `http_version_e` | Protocol version (HTTP/1.0, HTTP/1.1) |
+| `query_` | `query_t*` | Linked list of query and route parameters |
+
+```c
+void handler(httpctx_t* ctx) {
+    // Limit URI length
+    if (ctx->request->uri_length > 4096) {
+        ctx->response->send_default(ctx->response, 414); // URI Too Long
+        return;
+    }
+
+    ctx->response->send_data(ctx->response, ctx->request->path);
+}
+```
+
+## HTTP method
+
+The current method is available through `ctx->request->method` and is represented by the `route_methods_e` enum values (`core/src/route/route.h`):
+
+```c
+void handler(httpctx_t* ctx) {
+    switch (ctx->request->method) {
+        case ROUTE_GET:     // GET
+        case ROUTE_HEAD:    // HEAD
+        case ROUTE_POST:    // POST
+        case ROUTE_PUT:     // PUT
+        case ROUTE_PATCH:   // PATCH
+        case ROUTE_DELETE:  // DELETE
+        case ROUTE_OPTIONS: // OPTIONS
+            break;
+        case ROUTE_NONE:    // method not set
+            break;
+    }
+}
+```
+
+## Query parameters
+
+Query string parameters (after `?`) are available through the `ctx->request->query_` field and the functions from `query.h`. Besides the string `query_param_char`, there are typed extractors for numbers and collections:
 
 ```c
 #include "query.h"
 
-void get_users(httpctx_t* ctx) {
-    int ok_id = 0, ok_name = 0;
-    const char* id = query_param_char(ctx->request, "id", &ok_id);
-    const char* name = query_param_char(ctx->request, "name", &ok_name);
+void list_users(httpctx_t* ctx) {
+    int ok = 0;
 
-    if (ok_id && ok_name) {
-        ctx->response->send_data(ctx->response, id);
-        return;
-    }
+    int page = query_param_int(ctx->request->query_, "page", &ok);
+    if (!ok) page = 1; // default value
 
-    ctx->response->send_data(ctx->response, "Missing parameters");
+    const char* q = query_param_char(ctx->request->query_, "q", &ok);
+    if (!ok) q = NULL;
+
+    // ...
 }
 ```
 
+::: tip Check ok for numeric params
+`0` can be either a valid value or an error indicator (missing param or wrong format). For numeric parameters the `ok` check is mandatory. The full list of functions (`int`, `double`, arrays, objects) is in the [Query parameters](/en/query-params) section.
+:::
+
 ## Route parameters
 
-Dynamic URL parameters are also available through functions from `query.h`:
+Dynamic URL segments are declared in `config.json` with the `{name|pattern}` format and end up in the same `query_` list:
 
 ```json
 // config.json
@@ -57,58 +114,22 @@ Dynamic URL parameters are also available through functions from `query.h`:
 
 void get_user(httpctx_t* ctx) {
     int ok = 0;
-    const char* id = query_param_char(ctx->request, "id", &ok);
-    // id contains the value from URL, e.g. "123" for /api/users/123
+    const char* id = query_param_char(ctx->request->query_, "id", &ok);
+    // for /api/users/123 id == "123"
     if (!ok) {
-        ctx->response->send_data(ctx->response, "Invalid id");
-    }
-}
-```
-
-## POST/PUT/PATCH request data
-
-Request body data is available through payload methods:
-
-### Getting the entire request body
-
-```c
-void post_data(httpctx_t* ctx) {
-    char* payload = ctx->request->get_payload(ctx->request);
-
-    if (!payload) {
-        ctx->response->send_data(ctx->response, "No payload");
+        ctx->response->send_default(ctx->response, 400);
         return;
     }
-
-    ctx->response->send_data(ctx->response, payload);
-    free(payload);
 }
 ```
 
-### Getting a field by key
+More on routing rules: [Routing](/en/routing).
 
-For `multipart/form-data` and `application/x-www-form-urlencoded`:
+## Request body
 
-```c
-void post_form(httpctx_t* ctx) {
-    char* email = ctx->request->get_payloadf(ctx->request, "email");
-    char* password = ctx->request->get_payloadf(ctx->request, "password");
+Body data is extracted through the `get_payload*` methods on the request object. Supported formats are `multipart/form-data`, `application/x-www-form-urlencoded`, `application/json`, and arbitrary bodies.
 
-    if (!email || !password) {
-        ctx->response->send_data(ctx->response, "Missing fields");
-        if (email) free(email);
-        if (password) free(password);
-        return;
-    }
-
-    // Process data...
-
-    free(email);
-    free(password);
-}
-```
-
-### Getting JSON from request body
+### JSON
 
 ```c
 #include "json.h"
@@ -133,65 +154,38 @@ void post_json(httpctx_t* ctx) {
 }
 ```
 
-More about working with payload: [Getting data from the client](/payload)
+### Form field
 
-## HTTP request method
-
-The current method is available through `ctx->request->method`:
+For `multipart/form-data` and `application/x-www-form-urlencoded`, a field value is fetched by key. The returned string must be freed with `free()`:
 
 ```c
-void handler(httpctx_t* ctx) {
-    switch (ctx->request->method) {
-        case ROUTE_GET:
-            // GET request
-            break;
-        case ROUTE_POST:
-            // POST request
-            break;
-        case ROUTE_PUT:
-            // PUT request
-            break;
-        case ROUTE_PATCH:
-            // PATCH request
-            break;
-        case ROUTE_DELETE:
-            // DELETE request
-            break;
-        case ROUTE_OPTIONS:
-            // OPTIONS request
-            break;
-    }
-}
-```
-
-## Request URL
-
-Properties for working with URLs:
-
-| Property | Description | Example |
-|----------|-------------|---------|
-| `uri` | Full URI with parameters | `/users?id=100` |
-| `path` | Path without parameters | `/users` |
-| `ext` | File extension | `html` |
-| `uri_length` | URI length | — |
-| `path_length` | Path length | — |
-| `ext_length` | Extension length | — |
-
-```c
-void handler(httpctx_t* ctx) {
-    // Check URI length
-    if (ctx->request->uri_length > 4096) {
-        ctx->response->send_default(ctx->response, 414); // URI Too Long
+void post_form(httpctx_t* ctx) {
+    char* email = ctx->request->get_payloadf(ctx->request, "email");
+    if (email == NULL) {
+        ctx->response->send_data(ctx->response, "Missing field");
         return;
     }
 
-    ctx->response->send_data(ctx->response, ctx->request->path);
+    ctx->response->send_data(ctx->response, email);
+    free(email);
 }
 ```
 
+A full overview of the methods (`get_payload`, `get_payloadf`, `get_payload_file*`, `get_payload_jsonf`) and working with uploaded files: [Getting data from the client](/en/payload).
+
 ## HTTP headers
 
-Getting request headers:
+`get_header` looks up a header by name (case-insensitive) and returns a pointer to an `http_header_t` node or `NULL`:
+
+```c
+typedef struct http_header {
+    char*  key;
+    char*  value;
+    size_t key_length;
+    size_t value_length;
+    struct http_header* next;
+} http_header_t;
+```
 
 ```c
 void handler(httpctx_t* ctx) {
@@ -203,39 +197,58 @@ void handler(httpctx_t* ctx) {
     }
 
     if (auth) {
-        // Check authorization...
+        // verify token...
     }
 }
 ```
 
+Related methods:
+
+| Method | Description |
+|--------|-------------|
+| `get_header(name)` | Header by name (null-terminated) |
+| `get_headern(name, length)` | Lookup by name with explicit length |
+| `add_header(name, value)` | Add a header |
+| `add_headern(name, name_len, value, value_len)` | Add with explicit lengths |
+| `remove_header(name)` | Remove a header |
+
 ## Cookie
 
-Reading cookies from request:
+`get_cookie` returns the cookie **value** directly as a string (not a struct) or `NULL`:
 
 ```c
 void handler(httpctx_t* ctx) {
     const char* token = ctx->request->get_cookie(ctx->request, "session_token");
 
-    if (!token) {
+    if (token == NULL) {
         ctx->response->send_data(ctx->response, "Not authorized");
         return;
     }
 
-    // Validate token...
+    // validate token...
 }
 ```
 
-More details: [Cookie](/cookie)
+More on setting and reading cookies: [Cookie](/en/cookie).
 
-## Database connection
+## user_data
 
-Accessing databases through context:
+The `ctx->user_data` field holds an arbitrary pointer and is handy for passing data between middleware and a handler — for example, the authenticated user. The example app provides typed helpers for it:
+
+```c
+httpctx_set_user(ctx, user);          // set
+user_t* user = httpctx_get_user(ctx); // get
+```
+
+## Database
+
+Database access goes through `dbquery` with a host identifier. The `<driver>.<host_id>` form selects a specific host; `<driver>` without a `host_id` spreads requests evenly (round-robin) across all hosts of that driver:
 
 ```c
 #include "db.h"
 
 void handler(httpctx_t* ctx) {
-    dbresult_t* result = dbquery("postgresql", "SELECT 1", NULL);
+    dbresult_t* result = dbquery("postgresql.p1", "SELECT 1", NULL);
 
     if (!dbresult_ok(result)) {
         ctx->response->send_data(ctx->response, "Database not available");
@@ -243,9 +256,9 @@ void handler(httpctx_t* ctx) {
         return;
     }
 
-    // Execute queries...
+    // queries...
     dbresult_free(result);
 }
 ```
 
-More details: [Database](/db)
+More details: [Database](/en/db).

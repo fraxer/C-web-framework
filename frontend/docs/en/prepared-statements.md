@@ -1,349 +1,63 @@
 ---
 outline: deep
-description: Prepared Statements in C Web Framework. Registration of prepared statements, SQL injection protection, CRUD operation examples.
+description: Prepared and parameterized queries in C Web Framework. :name and @name parameters, :list__ and @list__ lists, named prepared statements with dbprepared and model_prepared_one, SQL injection protection.
 ---
 
 # Prepared Statements
 
-Prepared statements in C Web Framework are a mechanism for pre-registering SQL queries with parameters. They prevent SQL injection and optimize execution through query plan caching.
+Prepared (parameterized) queries separate values from the SQL text: data is passed separately and substituted by the driver through placeholders. This protects against SQL injection and lets the parsed query plan be reused.
 
-## Basic Concepts
+C Web Framework provides three ways to run a query:
 
-**Why use prepared statements:**
-- ✅ **Security** — protection from SQL injection
-- ✅ **Performance** — query plan reuse
-- ✅ **Readability** — centralized query definitions
-- ✅ **Type safety** — explicit parameter type specification
-- ✅ **Templating** — use of substitutions like `@table`, `@list__fields`
+- `dbquery(dbid, sql, params)` — a one-shot parameterized query.
+- `dbprepared(dbid, name, sql, params)` — a **named** prepared statement: on the first call with a given `name`, the statement is prepared and cached in the connection; subsequent calls reuse it.
+- `model_prepared_one` / `model_prepared_list` — the same as `dbprepared`, but the result comes back as a typed ORM model (see [Models](/en/model) and the section below).
 
-## Project Structure
+## Why use them
 
-To work with prepared statements, use:
+- ✅ **Security** — values are bound as parameters, never spliced into the SQL text.
+- ✅ **Performance** — `dbprepared` caches the query plan by name within the connection.
+- ✅ **Typing** — parameters are typed via the `mparam_*` macros.
+- ✅ **Dynamic identifiers** — table/column names can be injected safely via `@name`.
 
-```
-project/
-├── config.json                         # Database configuration
-├── backend/
-│   └── app/
-│       └── models/
-│           └── prepare_statements.c    # Prepared statement registration
-├── handlers/
-│   └── users.c                         # Handlers
-└── migrations/
-    └── 001_create_users.sql            # SQL migrations
-```
+## Parameter syntax
 
-## Step 1: Database Configuration
+Parameters are marked in SQL with special prefixes:
 
-**File:** `config.json`
+| Notation | Purpose |
+| --- | --- |
+| `:name` | **Value** — bound as a placeholder (`$1`, `$2`, …). Injection-safe. |
+| `@name` | **Identifier** — a table/column/schema name, escaped and inlined into the SQL text. |
+| `:list__name` | **Value list** — expands to a comma-separated list of placeholders (`$1, $2, $3`). |
+| `@list__name` | **Identifier list** — expands to a comma-separated list of escaped names. |
 
-```json
-{
-  "databases": {
-    "postgresql": [
-      {
-        "host_id": "main",
-        "ip": "127.0.0.1",
-        "port": 5432,
-        "dbname": "myapp",
-        "user": "dbuser",
-        "password": "dbpass",
-        "connection_timeout": 5
-      }
-    ]
-  }
-}
-```
+::: tip Two kinds of parameters
+`:name` is for **data** (values). `@name` is for **names** of database objects (tables, columns, schemas). Never pass values through `@` — they are not bound and are not injection-safe.
+:::
 
-## Step 2: Create Table
+## Building parameters
 
-**File:** `migrations/001_create_users.sql`
+Parameters are collected into an `array_t*` with the `mparam_*` macros. The parameter name (`#NAME`) is stringified and must match the placeholder in the SQL:
 
-```sql
-CREATE TABLE IF NOT EXISTS "user" (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    age INT,
-    status VARCHAR(50) DEFAULT 'active',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+```c
+array_t* params = array_create();
+mparams_fill_array(params,
+    mparam_int(id, user_id),
+    mparam_text(status, "active")
 );
 
-CREATE INDEX idx_email ON "user"(email);
-CREATE INDEX idx_name ON "user"(name);
-CREATE INDEX idx_status ON "user"(status);
+// ... use params ...
+
+array_free(params);
 ```
 
-Run migration:
-```bash
-psql -h 127.0.0.1 -U dbuser -d myapp -f migrations/001_create_users.sql
-```
+The full list of `mparam_*` types (`mparam_int`, `mparam_text`, `mparam_bool`, `mparam_double`, `mparam_array`, …) is in the [Database](/en/db#parameter-types) section.
 
-## Step 3: Register Prepared Statements
+::: tip mfield_def_* — defining a shape
+The `mfield_def_int(name)`, `mfield_def_text(name)` macros create a typed parameter with a default value — handy for describing the shape of a statement. To execute with real data, use `mparam_*(name, value)`.
+:::
 
-**File:** `backend/app/models/prepare_statements.c`
-
-### Header and Includes
-
-```c
-#include "statement_registry.h"
-#include "log.h"
-```
-
-### Prepared Statement: Get User by ID
-
-```c
-/**
- * Prepared statement: Get user by ID
- * Query: SELECT id, name, email, age FROM user WHERE id = :id
- */
-static prepare_stmt_t* pstmt_user_get_by_id(void) {
-    prepare_stmt_t* stmt = pstmt_create();
-    if (stmt == NULL) return NULL;
-
-    // Step 1: Create parameter array
-    array_t* params = array_create();
-    if (params == NULL) {
-        pstmt_free(stmt);
-        return NULL;
-    }
-
-    // Step 2: Fill parameters (field definitions and values)
-    mparams_fill_array(params,
-        mfield_def_int(id),                           // :id — integer
-        mfield_def_array(fields, array_create_strings("id", "name", "email", "age"))  // @list__fields
-    );
-
-    // Step 3: Set statement name (for identification)
-    stmt->name = str_create("user_get_by_id");
-
-    // Step 4: Set SQL with substitutions
-    // @list__fields will be replaced with field list
-    // :id will be replaced with parameter value
-    stmt->query = str_create("SELECT @list__fields FROM \"user\" WHERE id = :id LIMIT 1");
-
-    stmt->params = params;
-
-    return stmt;
-}
-```
-
-### Prepared Statement: Get User by Email
-
-```c
-/**
- * Prepared statement: Get user by email
- */
-static prepare_stmt_t* pstmt_user_get_by_email(void) {
-    prepare_stmt_t* stmt = pstmt_create();
-    if (stmt == NULL) return NULL;
-
-    array_t* params = array_create();
-    if (params == NULL) {
-        pstmt_free(stmt);
-        return NULL;
-    }
-
-    mparams_fill_array(params,
-        mfield_def_text(email),
-        mfield_def_array(fields, array_create_strings("id", "name", "email", "age"))
-    );
-
-    stmt->name = str_create("user_get_by_email");
-    stmt->query = str_create("SELECT @list__fields FROM \"user\" WHERE email = :email LIMIT 1");
-    stmt->params = params;
-
-    return stmt;
-}
-```
-
-### Prepared Statement: Create User
-
-```c
-/**
- * Prepared statement: Create user
- */
-static prepare_stmt_t* pstmt_user_create(void) {
-    prepare_stmt_t* stmt = pstmt_create();
-    if (stmt == NULL) return NULL;
-
-    array_t* params = array_create();
-    if (params == NULL) {
-        pstmt_free(stmt);
-        return NULL;
-    }
-
-    mparams_fill_array(params,
-        mfield_def_text(name),
-        mfield_def_text(email),
-        mfield_def_int(age)
-    );
-
-    stmt->name = str_create("user_create");
-    stmt->query = str_create(
-        "INSERT INTO \"user\" (name, email, age) "
-        "VALUES (:name, :email, :age) "
-        "RETURNING id, created_at"
-    );
-    stmt->params = params;
-
-    return stmt;
-}
-```
-
-### Prepared Statement: Update User
-
-```c
-/**
- * Prepared statement: Update user
- */
-static prepare_stmt_t* pstmt_user_update(void) {
-    prepare_stmt_t* stmt = pstmt_create();
-    if (stmt == NULL) return NULL;
-
-    array_t* params = array_create();
-    if (params == NULL) {
-        pstmt_free(stmt);
-        return NULL;
-    }
-
-    mparams_fill_array(params,
-        mfield_def_int(id),
-        mfield_def_text(name),
-        mfield_def_text(email),
-        mfield_def_int(age)
-    );
-
-    stmt->name = str_create("user_update");
-    stmt->query = str_create(
-        "UPDATE \"user\" "
-        "SET name = :name, email = :email, age = :age, updated_at = NOW() "
-        "WHERE id = :id "
-        "RETURNING id, updated_at"
-    );
-    stmt->params = params;
-
-    return stmt;
-}
-```
-
-### Prepared Statement: Delete User
-
-```c
-/**
- * Prepared statement: Delete user
- */
-static prepare_stmt_t* pstmt_user_delete(void) {
-    prepare_stmt_t* stmt = pstmt_create();
-    if (stmt == NULL) return NULL;
-
-    array_t* params = array_create();
-    if (params == NULL) {
-        pstmt_free(stmt);
-        return NULL;
-    }
-
-    mparams_fill_array(params,
-        mfield_def_int(id)
-    );
-
-    stmt->name = str_create("user_delete");
-    stmt->query = str_create("DELETE FROM \"user\" WHERE id = :id");
-    stmt->params = params;
-
-    return stmt;
-}
-```
-
-### Prepared Statement: Search Users
-
-```c
-/**
- * Prepared statement: Search users
- */
-static prepare_stmt_t* pstmt_user_search(void) {
-    prepare_stmt_t* stmt = pstmt_create();
-    if (stmt == NULL) return NULL;
-
-    array_t* params = array_create();
-    if (params == NULL) {
-        pstmt_free(stmt);
-        return NULL;
-    }
-
-    mparams_fill_array(params,
-        mfield_def_text(name_pattern),
-        mfield_def_int(min_age),
-        mfield_def_array(fields, array_create_strings("id", "name", "email", "age"))
-    );
-
-    stmt->name = str_create("user_search");
-    stmt->query = str_create(
-        "SELECT @list__fields FROM \"user\" "
-        "WHERE name ILIKE :name_pattern AND age >= :min_age "
-        "ORDER BY name LIMIT 50"
-    );
-    stmt->params = params;
-
-    return stmt;
-}
-```
-
-### Initialization Function
-
-```c
-/**
- * Initialize and register all prepared statements
- * Called during application startup
- */
-int prepare_statements_init(void) {
-    // Register get user by ID statement
-    if (!pstmt_registry_register(pstmt_user_get_by_id)) {
-        log_error("prepare_statements_init: failed to register pstmt_user_get_by_id\n");
-        return 0;
-    }
-
-    // Register get user by email statement
-    if (!pstmt_registry_register(pstmt_user_get_by_email)) {
-        log_error("prepare_statements_init: failed to register pstmt_user_get_by_email\n");
-        return 0;
-    }
-
-    // Register create user statement
-    if (!pstmt_registry_register(pstmt_user_create)) {
-        log_error("prepare_statements_init: failed to register pstmt_user_create\n");
-        return 0;
-    }
-
-    // Register update user statement
-    if (!pstmt_registry_register(pstmt_user_update)) {
-        log_error("prepare_statements_init: failed to register pstmt_user_update\n");
-        return 0;
-    }
-
-    // Register delete user statement
-    if (!pstmt_registry_register(pstmt_user_delete)) {
-        log_error("prepare_statements_init: failed to register pstmt_user_delete\n");
-        return 0;
-    }
-
-    // Register search users statement
-    if (!pstmt_registry_register(pstmt_user_search)) {
-        log_error("prepare_statements_init: failed to register pstmt_user_search\n");
-        return 0;
-    }
-
-    log_info("prepare_statements_init: all prepared statements registered successfully\n");
-    return 1;
-}
-```
-
-## Step 4: Use Prepared Statements in Handlers
-
-**File:** `handlers/users.c`
-
-### Get User by ID
+## One-shot query — dbquery
 
 ```c
 #include "http.h"
@@ -351,548 +65,380 @@ int prepare_statements_init(void) {
 #include "query.h"
 
 void get_user(httpctx_t* ctx) {
-    // Step 1: Get ID from URL parameters
     int ok = 0;
-    int user_id = query_param_int(ctx->request, "id", &ok);
-
+    const int user_id = query_param_int(ctx->request->query_, "id", &ok);
     if (!ok) {
-        ctx->response->send_data(ctx->response, "Missing id parameter");
+        ctx->response->send_default(ctx->response, 400);
         return;
     }
 
-    // Step 2: Create parameters for prepared statement
-    mparams_create_array(params,
+    array_t* params = array_create();
+    mparams_fill_array(params,
         mparam_int(id, user_id)
     );
 
-    // Step 3: Execute prepared statement by name
-    dbresult_t* result = dbquery_prepared("postgresql", "user_get_by_id", params);
+    dbresult_t* result = dbquery("postgresql.p1",
+        "SELECT id, name, email FROM \"user\" WHERE id = :id LIMIT 1",
+        params
+    );
 
-    // Step 4: Free parameter array
     array_free(params);
 
-    // Step 5: Check result
-    if (!dbresult_ok(result)) {
-        ctx->response->send_data(ctx->response, "Query error");
-        dbresult_free(result);
-        return;
+    if (!dbresult_ok(result) || dbresult_query_rows(result) == 0) {
+        ctx->response->send_default(ctx->response, 404);
+        goto failed;
     }
 
-    // Step 6: Check if results exist
-    if (dbresult_query_rows(result) == 0) {
-        ctx->response->send_data(ctx->response, "User not found");
-        dbresult_free(result);
-        return;
-    }
+    db_table_cell_t* name = dbresult_field(result, "name");
+    ctx->response->send_data(ctx->response, name ? name->value : "");
 
-    // Step 7: Build JSON response
-    json_doc_t* doc = json_init();
-    json_token_t* root = json_create_object(doc);
-
-    db_table_cell_t* id_cell = dbresult_cell(result, 0, 0);
-    db_table_cell_t* name_cell = dbresult_cell(result, 0, 1);
-    db_table_cell_t* email_cell = dbresult_cell(result, 0, 2);
-    db_table_cell_t* age_cell = dbresult_cell(result, 0, 3);
-
-    json_object_set(root, "id", json_create_number(doc, atoi(id_cell->value)));
-    json_object_set(root, "name", json_create_string(doc, name_cell->value));
-    json_object_set(root, "email", json_create_string(doc, email_cell->value));
-    json_object_set(root, "age", json_create_number(doc, atoi(age_cell->value)));
-
-    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
-    ctx->response->send_data(ctx->response, json_stringify(doc));
-
-    json_free(doc);
+    failed:
     dbresult_free(result);
 }
 ```
 
-### Create User
+## Named prepared statement — dbprepared
+
+```c
+dbresult_t* dbprepared(const char* dbid, const char* name, const char* sql, array_t* params);
+```
+
+`dbprepared` prepares the statement by name on the first call and reuses it on subsequent ones — the query plan is cached in the connection. The `sql` argument is only needed for the first preparation (it is ignored on later calls with the same `name`).
+
+```c
+#include "http.h"
+#include "db.h"
+#include "query.h"
+
+void get_user_prepared(httpctx_t* ctx) {
+    int ok = 0;
+    const int user_id = query_param_int(ctx->request->query_, "id", &ok);
+    if (!ok) {
+        ctx->response->send_default(ctx->response, 400);
+        return;
+    }
+
+    array_t* params = array_create();
+    mparams_fill_array(params,
+        mparam_int(id, user_id)
+    );
+
+    // The first call prepares "user_get_by_id" and caches it.
+    // Later calls with the same name reuse the prepared statement.
+    dbresult_t* result = dbprepared("postgresql.p1", "user_get_by_id",
+        "SELECT id, name, email FROM \"user\" WHERE id = :id LIMIT 1",
+        params
+    );
+
+    array_free(params);
+
+    if (!dbresult_ok(result) || dbresult_query_rows(result) == 0) {
+        ctx->response->send_default(ctx->response, 404);
+        goto failed;
+    }
+
+    db_table_cell_t* name = dbresult_field(result, "name");
+    ctx->response->send_data(ctx->response, name ? name->value : "");
+
+    failed:
+    dbresult_free(result);
+}
+```
+
+::: tip When to use dbprepared
+Use `dbprepared` for queries that run many times within a single connection — it saves re-parsing the plan. For one-off queries, `dbquery` is enough. The name must be unique within the connection.
+:::
+
+## CRUD examples
+
+### Create (INSERT … RETURNING)
 
 ```c
 void create_user(httpctx_t* ctx) {
-    // Step 1: Get data from request body
-    char* name = ctx->request->get_payloadf(ctx->request, "name");
+    char* name  = ctx->request->get_payloadf(ctx->request, "name");
     char* email = ctx->request->get_payloadf(ctx->request, "email");
-    char* age_str = ctx->request->get_payloadf(ctx->request, "age");
 
-    // Step 2: Validate input data
-    if (!name || !email || !age_str) {
-        ctx->response->send_data(ctx->response, "Missing required fields");
-        if (name) free(name);
-        if (email) free(email);
-        if (age_str) free(age_str);
+    if (!name || !email) {
+        ctx->response->send_default(ctx->response, 400);
+        free(name); free(email);
         return;
     }
 
-    // Step 3: Create parameters for prepared statement
-    mparams_create_array(params,
+    array_t* params = array_create();
+    mparams_fill_array(params,
         mparam_text(name, name),
-        mparam_text(email, email),
-        mparam_int(age, atoi(age_str))
+        mparam_text(email, email)
     );
 
-    // Step 4: Execute prepared statement
-    dbresult_t* result = dbquery_prepared("postgresql", "user_create", params);
+    dbresult_t* result = dbprepared("postgresql.p1", "user_create",
+        "INSERT INTO \"user\" (name, email) VALUES (:name, :email) RETURNING id",
+        params
+    );
 
     array_free(params);
 
-    // Step 5: Handle errors
     if (!dbresult_ok(result)) {
-        const char* error = dbresult_error_message(result);
-        if (strstr(error, "unique")) {
-            ctx->response->send_data(ctx->response, "Email already exists");
-        } else {
-            ctx->response->send_data(ctx->response, "Insert failed");
-        }
-        dbresult_free(result);
-        free(name);
-        free(email);
-        free(age_str);
-        return;
+        ctx->response->send_data(ctx->response, dbresult_error(result));
+    } else {
+        db_table_cell_t* id = dbresult_field(result, "id");
+        ctx->response->send_data(ctx->response, id ? id->value : "0");
     }
 
-    // Step 6: Get returned values
-    db_table_cell_t* new_id = dbresult_cell(result, 0, 0);
-    db_table_cell_t* created_at = dbresult_cell(result, 0, 1);
-
-    // Step 7: Build response
-    json_doc_t* doc = json_init();
-    json_token_t* root = json_create_object(doc);
-
-    json_object_set(root, "success", json_create_bool(doc, 1));
-    json_object_set(root, "id", json_create_number(doc, atoi(new_id->value)));
-    json_object_set(root, "created_at", json_create_string(doc, created_at->value));
-
-    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
-    ctx->response->send_data(ctx->response, json_stringify(doc));
-
-    json_free(doc);
     dbresult_free(result);
     free(name);
     free(email);
-    free(age_str);
 }
 ```
 
-### Update User
+::: tip Getting the new row's id
+Besides `RETURNING id`, the auto-increment key is available through `dbresult_insert_id(result)` — useful when the SQL returns no rows (e.g. MySQL/SQLite without `RETURNING`).
+:::
+
+### Update (UPDATE)
 
 ```c
 void update_user(httpctx_t* ctx) {
-    // Step 1: Get ID from URL
     int ok = 0;
-    int user_id = query_param_int(ctx->request, "id", &ok);
-
-    if (!ok) {
-        ctx->response->send_data(ctx->response, "Missing id");
-        return;
-    }
-
-    // Step 2: Get data to update
+    const int user_id = query_param_int(ctx->request->query_, "id", &ok);
     char* name = ctx->request->get_payloadf(ctx->request, "name");
-    char* email = ctx->request->get_payloadf(ctx->request, "email");
-    char* age_str = ctx->request->get_payloadf(ctx->request, "age");
-
-    if (!name && !email && !age_str) {
-        ctx->response->send_data(ctx->response, "No fields to update");
+    if (!ok || !name) {
+        ctx->response->send_default(ctx->response, 400);
+        free(name);
         return;
     }
 
-    // Step 3: Set values (use 0 for missing fields)
-    int age = age_str ? atoi(age_str) : 0;
-    const char* name_val = name ? name : "";
-    const char* email_val = email ? email : "";
-
-    // Step 4: Create parameters
-    mparams_create_array(params,
-        mparam_int(id, user_id),
-        mparam_text(name, name_val),
-        mparam_text(email, email_val),
-        mparam_int(age, age)
+    array_t* params = array_create();
+    mparams_fill_array(params,
+        mparam_text(name, name),
+        mparam_int(id, user_id)
     );
 
-    // Step 5: Execute prepared statement
-    dbresult_t* result = dbquery_prepared("postgresql", "user_update", params);
+    dbresult_t* result = dbprepared("postgresql.p1", "user_update",
+        "UPDATE \"user\" SET name = :name WHERE id = :id",
+        params
+    );
 
     array_free(params);
 
     if (!dbresult_ok(result)) {
         ctx->response->send_data(ctx->response, "Update failed");
-        dbresult_free(result);
-        if (name) free(name);
-        if (email) free(email);
-        if (age_str) free(age_str);
-        return;
+    } else {
+        ctx->response->send_data(ctx->response, "User updated");
     }
 
-    if (dbresult_query_rows(result) == 0) {
-        ctx->response->send_data(ctx->response, "User not found");
-        dbresult_free(result);
-        if (name) free(name);
-        if (email) free(email);
-        if (age_str) free(age_str);
-        return;
-    }
-
-    ctx->response->send_data(ctx->response, "User updated");
     dbresult_free(result);
-    if (name) free(name);
-    if (email) free(email);
-    if (age_str) free(age_str);
+    free(name);
 }
 ```
 
-### Delete User
+### Delete (DELETE)
 
 ```c
 void delete_user(httpctx_t* ctx) {
-    // Step 1: Get ID
     int ok = 0;
-    int user_id = query_param_int(ctx->request, "id", &ok);
-
+    const int user_id = query_param_int(ctx->request->query_, "id", &ok);
     if (!ok) {
-        ctx->response->send_data(ctx->response, "Missing id");
+        ctx->response->send_default(ctx->response, 400);
         return;
     }
 
-    // Step 2: Create parameter
-    mparams_create_array(params,
-        mparam_int(id, user_id)
+    array_t* params = array_create();
+    mparams_fill_array(params, mparam_int(id, user_id));
+
+    dbresult_t* result = dbprepared("postgresql.p1", "user_delete",
+        "DELETE FROM \"user\" WHERE id = :id",
+        params
     );
 
-    // Step 3: Execute prepared statement
-    dbresult_t* result = dbquery_prepared("postgresql", "user_delete", params);
-
     array_free(params);
-
-    if (!dbresult_ok(result)) {
-        ctx->response->send_data(ctx->response, "Delete failed");
-        dbresult_free(result);
-        return;
-    }
-
-    ctx->response->send_data(ctx->response, "User deleted");
     dbresult_free(result);
+
+    ctx->response->send_data(ctx->response, "Deleted");
 }
 ```
 
-### Search Users
+### Search (LIKE)
 
 ```c
 void search_users(httpctx_t* ctx) {
-    // Step 1: Get search parameters
-    int ok_name = 0, ok_age = 0;
-    const char* search_name = query_param_char(ctx->request, "name", &ok_name);
-    int min_age = query_param_int(ctx->request, "min_age", &ok_age);
+    int ok = 0;
+    const char* q = query_param_char(ctx->request->query_, "q", &ok);
+    if (!ok) {
+        ctx->response->send_default(ctx->response, 400);
+        return;
+    }
 
-    // Step 2: Prepare search parameters
-    char name_pattern[512];
-    snprintf(name_pattern, sizeof(name_pattern), "%%%s%%", ok_name ? search_name : "");
+    char pattern[512];
+    snprintf(pattern, sizeof(pattern), "%%%s%%", q);
 
-    if (!ok_age) min_age = 0;
+    array_t* params = array_create();
+    mparams_fill_array(params, mparam_text(pattern, pattern));
 
-    // Step 3: Create parameters
-    mparams_create_array(params,
-        mparam_text(name_pattern, name_pattern),
-        mparam_int(min_age, min_age)
+    dbresult_t* result = dbquery("postgresql.p1",
+        "SELECT id, name, email FROM \"user\" WHERE name ILIKE :pattern LIMIT 10",
+        params
     );
-
-    // Step 4: Execute search prepared statement
-    dbresult_t* result = dbquery_prepared("postgresql", "user_search", params);
 
     array_free(params);
 
     if (!dbresult_ok(result)) {
         ctx->response->send_data(ctx->response, "Search failed");
-        dbresult_free(result);
-        return;
+        goto failed;
     }
-
-    // Step 5: Build JSON array of results
-    json_doc_t* doc = json_init();
-    json_token_t* root = json_create_array(doc);
 
     for (int row = 0; row < dbresult_query_rows(result); row++) {
-        json_token_t* user_obj = json_create_object(doc);
-
-        db_table_cell_t* id = dbresult_cell(result, row, 0);
-        db_table_cell_t* name = dbresult_cell(result, row, 1);
-        db_table_cell_t* email = dbresult_cell(result, row, 2);
-        db_table_cell_t* age = dbresult_cell(result, row, 3);
-
-        json_object_set(user_obj, "id", json_create_number(doc, atoi(id->value)));
-        json_object_set(user_obj, "name", json_create_string(doc, name->value));
-        json_object_set(user_obj, "email", json_create_string(doc, email->value));
-        json_object_set(user_obj, "age", json_create_number(doc, atoi(age->value)));
-
-        json_array_push(root, user_obj);
+        const db_table_cell_t* name = dbresult_cell(result, row, 1);
+        printf("%s\n", name->value);
     }
 
-    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
-    ctx->response->send_data(ctx->response, json_stringify(doc));
+    ctx->response->send_data(ctx->response, "Done");
 
-    json_free(doc);
+    failed:
     dbresult_free(result);
 }
 ```
 
-### Get User Using Models (model_prepared_one)
+## Dynamic identifiers and lists
 
-For more convenient work with results, you can use models:
+Sometimes the table/column name or a set of values is not known in advance. For this, use `@name`, `@list__name`, and `:list__name`.
+
+### Dynamic names (`@name`, `@list__name`)
+
+`@name` injects an escaped identifier and `@list__name` injects a comma-separated list of identifiers. The source is an array parameter (`mparam_array`):
 
 ```c
-// Define user model
-typedef struct {
-    modelview_t base;
-    struct {
-        mfield_t id;
-        mfield_t name;
-        mfield_t email;
-        mfield_t age;
-    } field;
-} user_model_t;
+array_t* fields = array_create_strings("id", "name", "email");
+array_t* params = array_create();
+mparams_fill_array(params,
+    mparam_array(fields, fields),   // @list__fields -> "id", "name", "email"
+    mparam_text(table, "user")      // @table        -> "user"
+);
 
-// Function to create model instance
-void* user_model_create(void) {
-    user_model_t* user = malloc(sizeof *user);
-    if (user == NULL) return NULL;
+dbresult_t* result = dbquery("postgresql.p1",
+    "SELECT @list__fields FROM @table WHERE id = :id",
+    params
+);
 
-    user_model_t st = {
-        .base = {
-            .fields_count = __user_fields_count,
-            .first_field = __user_first_field,
-        },
-        .field = {
-            mfield_int(id, 0),
-            mfield_text(name, NULL),
-            mfield_text(email, NULL),
-            mfield_int(age, 0),
-        }
-    };
+array_free(params);
+// mparam_array does not copy the array: params owns fields.
+// Free only params — do NOT call array_free(fields) separately.
+dbresult_free(result);
+```
 
-    memcpy(user, &st, sizeof st);
-    return user;
-}
+### Value list (`:list__name`)
 
-// Handler using model
+`:list__name` expands to a list of placeholders — handy for `IN (...)`:
+
+```c
+array_t* id_arr = array_create_from_ints((int[]){ 1, 5, 9 }, 3);
+
+array_t* params = array_create();
+mparams_fill_array(params, mparam_array(id, id_arr));
+
+dbresult_t* result = dbquery("postgresql.p1",
+    "SELECT * FROM \"user\" WHERE id IN (:list__id)",
+    params
+);
+// Expands to: SELECT * FROM "user" WHERE id IN ($1, $2, $3)
+
+array_free(params);
+// params owns id_arr — no separate array_free(id_arr) is needed.
+dbresult_free(result);
+```
+
+::: warning Array ownership
+`mparam_array(name, arr)` does **not** copy the array — ownership moves to `params`. Free only `params` via `array_free(params)`. Do not free the inner array separately — that would double-free.
+:::
+
+## SQL injection protection
+
+`:name` and `:list__name` parameters are bound by the driver as values, not spliced into the SQL text, so malicious input stays data and cannot change the query structure:
+
+```c
+// Dangerous — the value is spliced into the SQL text (injection!):
+// snprintf(sql, "SELECT * FROM \"user\" WHERE email = '%s'", user_input);
+
+// Safe — the value is bound as a parameter:
+array_t* params = array_create();
+mparams_fill_array(params, mparam_text(email, user_input));
+dbresult_t* result = dbquery("postgresql.p1",
+    "SELECT * FROM \"user\" WHERE email = :email", params);
+array_free(params);
+```
+
+::: tip The rule
+All values go through `:name`. All dynamic object names go through `@name` (escaped as identifiers). Never assemble SQL from user input with string functions.
+:::
+
+## Prepared statements and models (ORM)
+
+`dbquery` / `dbprepared` return "raw" cells (`db_table_cell_t`). When the application already defines an ORM model (see [Models](/en/model)), it is more convenient to get a typed object back — `model_prepared_one` / `model_prepared_list` do that:
+
+```c
+#include "http.h"
+#include "db.h"
+#include "query.h"
+#include "model.h"
+#include "user.h"   // app: user_instance, user_t
+
 void get_user_model(httpctx_t* ctx) {
-    // Step 1: Get ID
     int ok = 0;
-    int user_id = query_param_int(ctx->request, "id", &ok);
-
+    const int user_id = query_param_int(ctx->request->query_, "id", &ok);
     if (!ok) {
-        ctx->response->send_data(ctx->response, "Missing id");
+        ctx->response->send_default(ctx->response, 400);
         return;
     }
 
-    // Step 2: Create parameters
-    mparams_create_array(params,
-        mparam_int(id, user_id)
-    );
+    array_t* params = array_create();
+    mparams_fill_array(params, mparam_int(id, user_id));
 
-    // Step 3: Get single result as model
-    user_model_t* user = model_prepared_one("postgresql", user_model_create, "user_get_by_id", params);
+    // The first call prepares "user_get_by_id" and caches it in the connection.
+    // The result is a typed model user_t* (or NULL on error / not found).
+    user_t* user = model_prepared_one("postgresql.p1", user_instance,
+        "user_get_by_id",
+        "SELECT id, name, email FROM \"user\" WHERE id = :id LIMIT 1",
+        params
+    );
 
     array_free(params);
 
     if (user == NULL) {
-        ctx->response->send_data(ctx->response, "User not found");
+        // The reason is available via model_last_status():
+        //   MODEL_ERR_NOTFOUND -> 404, MODEL_ERR_DB -> 500.
+        ctx->response->send_default(ctx->response,
+            model_last_status() == MODEL_ERR_NOTFOUND ? 404 : 500);
         return;
     }
 
-    // Step 4: Send model as JSON
-    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
-    ctx->response->send_model(ctx->response, user, display_fields("id", "name", "email", "age"));
+    ctx->response->send_model(ctx->response, user,
+        display_fields("id", "email", "name"));
 
     model_free(user);
 }
 ```
 
-### Get User List Using Models (model_prepared_list)
-
-To retrieve a list of users:
+For multiple rows, `model_prepared_list` returns an `array_t*` of models, sent with `send_models`:
 
 ```c
-void search_users_model(httpctx_t* ctx) {
-    // Step 1: Get search parameters
-    int ok_name = 0, ok_age = 0;
-    const char* search_name = query_param_char(ctx->request, "name", &ok_name);
-    int min_age = query_param_int(ctx->request, "min_age", &ok_age);
+array_t* users = model_prepared_list("postgresql.p1", user_instance,
+    "users_active",
+    "SELECT id, name, email FROM \"user\" WHERE status = :status",
+    params
+);
 
-    // Prepare parameters
-    char name_pattern[512];
-    snprintf(name_pattern, sizeof(name_pattern), "%%%s%%", ok_name ? search_name : "");
-
-    if (!ok_age) min_age = 0;
-
-    // Step 2: Create parameters
-    mparams_create_array(params,
-        mparam_text(name_pattern, name_pattern),
-        mparam_int(min_age, min_age)
-    );
-
-    // Step 3: Get list of results as model array
-    array_t* users = model_prepared_list("postgresql", user_model_create, "user_search", params);
-
-    array_free(params);
-
-    if (users == NULL || array_length(users) == 0) {
-        // If array is NULL, it was freed by the function
-        ctx->response->send_data(ctx->response, "[]");
-        return;
-    }
-
-    // Step 4: Build and send JSON response
-    json_doc_t* doc = json_init();
-    json_token_t* root = json_create_array(doc);
-
-    for (int i = 0; i < array_length(users); i++) {
-        user_model_t* user = (user_model_t*)array_get(users, i);
-        if (user != NULL) {
-            json_token_t* user_json = model_to_json(user, display_fields("id", "name", "email", "age"));
-            json_array_push(root, user_json);
-        }
-    }
-
-    ctx->response->add_header(ctx->response, "Content-Type", "application/json");
-    ctx->response->send_data(ctx->response, json_stringify(doc));
-
-    json_free(doc);
-    array_free(users);  // Frees all models in the array
+if (users != NULL) {
+    ctx->response->send_models(ctx->response, users,
+        display_fields("id", "email", "name"));
+    array_free(users);
 }
 ```
 
-## Step 5: Register Handlers in Config
+::: tip When NULL is not an error
+`model_prepared_one` returns `NULL` both for "not found" and for a DB error. Tell them apart with `model_last_status()` (`MODEL_OK`, `MODEL_ERR_NOTFOUND`, `MODEL_ERR_DB`, `MODEL_ERR_PARAM`, `MODEL_ERR_ALLOC`); the error text is in `model_last_error()`.
+:::
 
-**File:** `config.json`
+## See also
 
-```json
-{
-  "routes": {
-    "/api/users/{id|\\d+}": {
-      "GET": {
-        "file": "handlers/libusers.so",
-        "function": "get_user"
-      },
-      "PUT": {
-        "file": "handlers/libusers.so",
-        "function": "update_user"
-      },
-      "DELETE": {
-        "file": "handlers/libusers.so",
-        "function": "delete_user"
-      }
-    },
-    "/api/users": {
-      "POST": {
-        "file": "handlers/libusers.so",
-        "function": "create_user"
-      },
-      "GET": {
-        "file": "handlers/libusers.so",
-        "function": "search_users"
-      }
-    },
-    "/api/users/model/{id|\\d+}": {
-      "GET": {
-        "file": "handlers/libusers.so",
-        "function": "get_user_model"
-      }
-    },
-    "/api/users/model/search": {
-      "GET": {
-        "file": "handlers/libusers.so",
-        "function": "search_users_model"
-      }
-    }
-  }
-}
-```
-
-## Parameter Types
-
-When defining parameters, use:
-
-| Function | SQL Type | Usage |
-|----------|----------|-------|
-| `mfield_def_int(name)` | INTEGER | Integer parameter |
-| `mfield_def_text(name)` | VARCHAR/TEXT | Text parameter |
-| `mfield_def_array(name, array)` | — | Array for substitution |
-| `mparam_int(name, value)` | INTEGER | Parameter value |
-| `mparam_text(name, value)` | VARCHAR/TEXT | Parameter value |
-
-## Query Substitutions
-
-| Substitution | Purpose | Example |
-|-------------|---------|---------|
-| `:name` | Parameter with defined type | `WHERE email = :email` |
-| `@list__fields` | Field list from `fields` array | `SELECT @list__fields` |
-| `@table` | Table name (not recommended) | `FROM @table` |
-
-## Testing
-
-### Get User
-
-```bash
-curl http://localhost:8080/api/users/1
-```
-
-### Create User
-
-```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "name=John&email=john@example.com&age=30"
-```
-
-### Update User
-
-```bash
-curl -X PUT http://localhost:8080/api/users/1 \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "name=Jane&email=jane@example.com&age=28"
-```
-
-### Delete User
-
-```bash
-curl -X DELETE http://localhost:8080/api/users/1
-```
-
-### Search Users
-
-```bash
-curl "http://localhost:8080/api/users?name=John&min_age=25"
-```
-
-## Security
-
-### SQL Injection Protection
-
-Prepared statements automatically protect from SQL injection through parameterization:
-
-```c
-// ✅ Safe: parameters are properly escaped
-mparams_create_array(params, mparam_text(email, user_input));
-dbresult_t* result = dbquery_prepared("postgresql", "user_get_by_email", params);
-
-// ❌ Dangerous: string concatenation (don't use!)
-char query[1024];
-sprintf(query, "SELECT * FROM user WHERE email = '%s'", user_input);
-```
-
-## Best Practices
-
-1. **Register all queries** in `prepare_statements_init()` during app startup
-2. **Use descriptive names** for prepared statements: `user_get_by_id`, `user_create`, etc.
-3. **Check results** before using data
-4. **Free memory** after working with results and parameters
-5. **Validate input** before passing to database
-6. **Log errors** during registration and execution
-7. **Document queries** with comments
-
-## Related Sections
-
-- [Database](/db) — main documentation
-- [Working with JSON](/json) — building JSON responses
-- [Database Examples](/examples-db) — additional examples
+- [Database](/en/db) — configuration, `dbquery`, parameter types, transactions
+- [Models (ORM)](/en/model) — `model_prepared_one` / `model_prepared_list` for typed models
+- [Database migrations](/en/migrations) — the migration system
