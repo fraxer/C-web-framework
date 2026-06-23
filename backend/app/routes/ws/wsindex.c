@@ -22,8 +22,9 @@ void echo(wsctx_t* ctx) {
         return;
     }
 
-    const char* q = protocol->get_query(protocol, "my");
-    if (q) {
+    int ok = 0;
+    const char* q = protocol->get_query(protocol, "my", &ok);
+    if (ok) {
         ctx->response->send_text(ctx->response, q);
         return;
     }
