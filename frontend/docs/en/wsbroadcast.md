@@ -142,10 +142,11 @@ void chat_broadcast_id_free(void* ptr) {
 
 void join_room(wsctx_t* ctx) {
     websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)ctx->request->protocol;
-    const char* room_id_str = protocol->get_query(protocol, "room");
-    const char* user_id_str = protocol->get_query(protocol, "user");
+    int ok = 0;
+    const char* room_id_str = protocol->get_query(protocol, "room", &ok);
+    const char* user_id_str = protocol->get_query(protocol, "user", &ok);
 
-    if (!room_id_str || !user_id_str) {
+    if (!ok || !room_id_str || !user_id_str) {
         ctx->response->send_text(ctx->response, "Missing parameters");
         return;
     }
@@ -189,9 +190,10 @@ int compare_by_user(void* source, void* target) {
 
 void send_to_room(wsctx_t* ctx) {
     websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)ctx->request->protocol;
-    const char* room_id_str = protocol->get_query(protocol, "room");
+    int ok = 0;
+    const char* room_id_str = protocol->get_query(protocol, "room", &ok);
 
-    if (!room_id_str) {
+    if (!ok) {
         ctx->response->send_text(ctx->response, "Missing room parameter");
         return;
     }
@@ -241,9 +243,10 @@ The comparison runs between the subscriber's identifier (the first argument of `
 
 void ws_join_chat(wsctx_t* ctx) {
     websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)ctx->request->protocol;
-    const char* username = protocol->get_query(protocol, "username");
+    int ok = 0;
+    const char* username = protocol->get_query(protocol, "username", &ok);
 
-    if (!username) {
+    if (!ok) {
         ctx->response->send_text(ctx->response, "Missing username parameter");
         return;
     }

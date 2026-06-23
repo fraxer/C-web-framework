@@ -114,16 +114,17 @@ void handler(wsctx_t* ctx) {
 
 ## Query-параметры
 
-Параметры query-строки (после `?`) и параметры маршрута попадают в общий список `protocol->query_`. Самый короткий способ прочитать значение — метод протокола `get_query`, который возвращает строку или `NULL`, если параметр отсутствует:
+Параметры query-строки (после `?`) и параметры маршрута попадают в общий список `protocol->query_`. Самый короткий способ прочитать значение — метод протокола `get_query`, который возвращает строку и сообщает об успехе через выходной параметр `ok` (`1`, если ключ найден, иначе `0`):
 
 ```c
 #include "websockets.h"
 
 void get(wsctx_t* ctx) {
     websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)ctx->request->protocol;
-    const char* data = protocol->get_query(protocol, "mydata");
+    int ok = 0;
+    const char* data = protocol->get_query(protocol, "mydata", &ok);
 
-    if (data) {
+    if (ok) {
         ctx->response->send_text(ctx->response, data);
         return;
     }

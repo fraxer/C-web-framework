@@ -114,16 +114,17 @@ The `uri` and `path` fields are null-terminated, so `strlen()` works, but `uri_l
 
 ## Query parameters
 
-Query-string parameters (after `?`) and route parameters land in the shared `protocol->query_` list. The shortest way to read a value is the protocol's `get_query` method, which returns the string or `NULL` when the parameter is absent:
+Query-string parameters (after `?`) and route parameters land in the shared `protocol->query_` list. The shortest way to read a value is the protocol's `get_query` method, which returns the string and reports success through its `ok` output parameter (set to `1` when the key is found, `0` otherwise):
 
 ```c
 #include "websockets.h"
 
 void get(wsctx_t* ctx) {
     websockets_protocol_resource_t* protocol = (websockets_protocol_resource_t*)ctx->request->protocol;
-    const char* data = protocol->get_query(protocol, "mydata");
+    int ok = 0;
+    const char* data = protocol->get_query(protocol, "mydata", &ok);
 
-    if (data) {
+    if (ok) {
         ctx->response->send_text(ctx->response, data);
         return;
     }

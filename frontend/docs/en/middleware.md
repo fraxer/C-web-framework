@@ -334,8 +334,9 @@ int middleware_ws_query_param_required(wsctx_t* ctx, char** keys, int size) {
     char message[256] = {0};
 
     for (int i = 0; i < size; i++) {
-        const char* param = protocol->get_query(protocol, keys[i]);
-        if (param == NULL || param[0] == 0) {
+        int ok = 0;
+        const char* param = protocol->get_query(protocol, keys[i], &ok);
+        if (!ok || param == NULL || param[0] == 0) {
             sprintf(message, "param <%s> not found", keys[i]);
             ctx->response->send_data(ctx, message);
             return 0;
