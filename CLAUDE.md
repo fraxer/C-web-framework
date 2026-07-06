@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A high-performance event-driven C web framework (`cpdy`) for Linux. The repository is a monorepo: `backend/` contains the C framework core (as a git submodule) and an example application; `frontend/` contains a VitePress documentation site (English, `frontend/docs/en/`).
+A high-performance event-driven C web framework (`cwfr`) for Linux. The repository is a monorepo: `backend/` contains the C framework core (as a git submodule) and an example application; `frontend/` contains a VitePress documentation site (English, `frontend/docs/en/`).
 
 ## Build Commands
 
@@ -28,8 +28,8 @@ cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake .. -DBUILD_TESTS=yes
 cmake --build . -j$(nproc)
 
-# Run server (CLI: cpdy -c <config>)
-./exec/cpdy -c ../config.json
+# Run server (CLI: cwfr -c <config>)
+./exec/cwfr -c ../config.json
 
 # Run migrations — positional args, NO -c flag, NO down/rollback command:
 #   create <name> <config> <target_dir>
@@ -47,10 +47,17 @@ npm run docs:preview
 
 `<db_host>` is the database id (`<driver>.<host_id>`, e.g. `postgresql.p1`, `mysql.m1`, `redis.r1`, `sqlite.<id>`); `<server_id>` is the migration folder (`s1`, `s2`, …).
 
+## Build System
+
+- App static archives (`auth`, `models`, `middlewares`, `handler_context`, `mybroadcast`) use `cwfr_add_lib()` from `core/cmake/cwfr.cmake`.
+- Handlers (`app/routes/`) use `cwfr_add_handlers()` and migrations (`app/migrations/`) use `cwfr_add_migrations()` — both in `backend/cmake/app.cmake`. One `.so` is built per `.c` file; handler output stays `exec/handlers/<sub>/lib_<name>.so`, so `config.json` paths are stable.
+- The framework is a single shared library, `libcwfr_framework.so` (`core/framework_shared/`): it aggregates the whole core **plus** the stateful app archives listed in `CWFR_EXTRA_FW_LIBS` (`models middlewares handler_context`, set in `backend/CMakeLists.txt`). `cwfr`/`migrate` link it; handler/migration `.so` modules resolve framework symbols from that one shared instance at runtime (shared state: db pools, model registry, `middlewares_init` hook). Stateless app libs (`auth`, `mybroadcast`) are linked directly by handlers instead of being baked in.
+- `-fanalyzer` (Debug/RelWithDebInfo) is gated on GCC ≥ 10; gcc-9 builds without it.
+
 ## Architecture
 
 ### Core (`backend/core/` — git submodule)
-- **Apps** (`core/apps/`): the two executables — `server/main.c` (→ `cpdy`) and `migrate/main.c` (→ `migrate`).
+- **Apps** (`core/apps/`): the two executables — `server/main.c` (→ `cwfr`) and `migrate/main.c` (→ `migrate`).
 - **Server runtime** (`core/src/`): epoll event loop + worker processes/threads (`server/`, `multiplexing/`, `thread/`, `connection/`, `socket/`, `signal/`), routing (`route/`), virtual hosts/domains incl. regex + IDN (`domain/`), config loading (`config/`), MIME types (`mimetype/`), dynamic `.so` loading (`moduleloader/`), rate limiting (`ratelimiter/`), OpenSSL helpers (`openssl/`), broadcasting (`broadcast/`).
 - **Protocols** (`core/protocols/`): HTTP/1.1 server + client (`http/`), WebSocket (`websocket/`), SMTP client with DKIM (`smtp/`).
 - **Framework** (`core/framework/`): ORM model system (`model/`), DB layer (`database/` — PostgreSQL/MySQL/Redis/SQLite), sessions (`session/`), storage FS/S3 (`storage/`), template engine (`view/`), middleware (`middleware/`), task scheduler (`taskmanager/`), i18n (`translation/`).

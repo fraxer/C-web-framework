@@ -114,7 +114,7 @@ project/
 └── backend/
     ├── core/                          # Framework core (git submodule)
     │   ├── apps/                      # Executables
-    │   │   ├── server/                #   → cpdy (the web server)
+    │   │   ├── server/                #   → cwfr (the web server)
     │   │   └── migrate/               #   → migrate (DB migration CLI)
     │   ├── framework/                 # Framework components
     │   │   ├── database/             # PostgreSQL, MySQL, Redis, SQLite
@@ -501,7 +501,7 @@ The framework uses `config.json` for centralized configuration:
     }],
     "sqlite": [{
       "host_id": "s1",
-      "path": "/var/lib/cpdy/app.db"
+      "path": "/var/lib/cwfr/app.db"
     }]
   },
   "storages": {
@@ -586,7 +586,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Release \
 cmake --build . -j4
 
 # Run
-<workspaceFolder>/build/exec/cpdy -c <path_to_config>/config.json
+<workspaceFolder>/build/exec/cwfr -c <path_to_config>/config.json
 
 # Apply database migrations (positional args — see the migrate CLI)
 <workspaceFolder>/build/exec/migrate up <path_to_config>/config.json postgresql.p1 s1
