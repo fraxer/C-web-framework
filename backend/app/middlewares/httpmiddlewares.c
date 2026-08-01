@@ -2,6 +2,7 @@
 #include <arpa/inet.h>
 
 #include "httpmiddlewares.h"
+#include "h2session.h"
 #include "session.h"
 #include "query.h"
 #include "log.h"
@@ -102,4 +103,11 @@ int middleware_http_auth(httpctx_t *ctx) {
     json_free(document);
 
     return result;
+}
+
+int middleware_h2c_upgrade(httpctx_t* ctx) {
+    /* h2c_upgrade() stages the 101 and returns 1 when it handled an upgrade;
+     * the middleware contract is the inverse (0 stops the chain so the route
+     * handler does not also run, 1 continues to it for an ordinary request). */
+    return h2c_upgrade(ctx) ? 0 : 1;
 }

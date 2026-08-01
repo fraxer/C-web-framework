@@ -28,6 +28,14 @@ int middlewares_init(void) {
         return 0;
     }
 
+    /* Register middleware_h2c_upgrade — accepts HTTP/1.1 `Upgrade: h2c` requests
+     * on plaintext vhosts. Register it in a server's "middlewares" list to turn
+     * on h2c Upgrade support for that vhost. */
+    if (!middleware_registry_register("middleware_h2c_upgrade", (middleware_fn_p)middleware_h2c_upgrade)) {
+        log_error("middlewares_init: failed to register middleware_h2c_upgrade\n");
+        return 0;
+    }
+
     /* Add more middlewares here as needed:
      * if (!middleware_registry_register("middleware_cors", middleware_cors)) {
      *     log_error("middlewares_init: failed to register middleware_cors\n");

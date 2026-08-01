@@ -40,4 +40,16 @@ int middleware_http_query_param_required(httpctx_t* ctx, char** keys, int size);
  */
 int middleware_http_auth(httpctx_t* ctx);
 
+/**
+ * h2c upgrade middleware (RFC 9113 §3.2). On a plaintext request that carries
+ * `Upgrade: h2c` + `HTTP2-Settings`, performs the HTTP/1.1 → HTTP/2 upgrade:
+ * stages a 101 Switching Protocols response and arranges the protocol switch.
+ * The actual session is built once the 101 is flushed. Register it on plaintext
+ * vhosts to accept h2c Upgrade clients (e.g. nghttp).
+ * @param ctx  HTTP context
+ * @return 0 if the request was upgraded (stops the chain — the 101 stands),
+ *         1 for an ordinary request (continues to the handler)
+ */
+int middleware_h2c_upgrade(httpctx_t* ctx);
+
 #endif
