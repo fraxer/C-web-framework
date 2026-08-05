@@ -21,8 +21,16 @@ cmake --build . -j$(nproc)
 # Debug build (enables AddressSanitizer + leak detection + -fanalyzer)
 cmake .. -DCMAKE_BUILD_TYPE=Debug
 
+# Profiling memory on a sanitized build — always disable the use-after-return
+# fake stack, or an idle server appears to leak ~4.5 KB/s (see core/INSTALL.md)
+ASAN_OPTIONS=detect_stack_use_after_return=0 ./exec/cwfr -c ../config.json
+
 # RelWithDebInfo — optimized with debug info (also enables sanitizers here)
 cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+# ThreadSanitizer — opt-in, mutually exclusive with ASan (they cannot be linked
+# into the same binary). Needed for the connection-concurrency work.
+cmake .. -DCMAKE_BUILD_TYPE=Debug -DSANITIZE=thread
 
 # Build with unit tests (core/tests)
 cmake .. -DBUILD_TESTS=yes
@@ -53,12 +61,13 @@ npm run docs:preview
 - Handlers (`app/routes/`) use `cwfr_add_handlers()` and migrations (`app/migrations/`) use `cwfr_add_migrations()` — both in `backend/cmake/app.cmake`. One `.so` is built per `.c` file; handler output stays `exec/handlers/<sub>/lib_<name>.so`, so `config.json` paths are stable.
 - The framework is a single shared library, `libcwfr_framework.so` (`core/framework_shared/`): it aggregates the whole core **plus** the stateful app archives listed in `CWFR_EXTRA_FW_LIBS` (`models middlewares handler_context`, set in `backend/CMakeLists.txt`). `cwfr`/`migrate` link it; handler/migration `.so` modules resolve framework symbols from that one shared instance at runtime (shared state: db pools, model registry, `middlewares_init` hook). Stateless app libs (`auth`, `mybroadcast`) are linked directly by handlers instead of being baked in.
 - `-fanalyzer` (Debug/RelWithDebInfo) is gated on GCC ≥ 10; gcc-9 builds without it.
+- `SANITIZE` selects the sanitizer: `default` (ASan+LSan on Debug/RelWithDebInfo, nothing otherwise), `address`, `thread`, `none`. TSan builds must load TSan-instrumented handler `.so` files, so point the config's handler paths at the TSan build dir.
 
 ## Architecture
 
 ### Core (`backend/core/` — git submodule)
 - **Apps** (`core/apps/`): the two executables — `server/main.c` (→ `cwfr`) and `migrate/main.c` (→ `migrate`).
-- **Server runtime** (`core/src/`): epoll event loop + worker processes/threads (`server/`, `multiplexing/`, `thread/`, `connection/`, `socket/`, `signal/`), routing (`route/`), virtual hosts/domains incl. regex + IDN (`domain/`), config loading (`config/`), MIME types (`mimetype/`), dynamic `.so` loading (`moduleloader/`), rate limiting (`ratelimiter/`), OpenSSL helpers (`openssl/`), broadcasting (`broadcast/`).
+- **Server runtime** (`core/src/`): epoll event loop + worker processes/threads (`server/`, `multiplexing/`, `thread/`, `connection/`, `socket/`, `signal/`), routing (`route/`), virtual hosts/domains incl. regex + IDN (`domain/`), config loading (`config/`), MIME types (`mimetype/`), dynamic `.so` loading (`moduleloader/`), rate limiting (`ratelimiter/`), OpenSSL helpers (`openssl/`), broadcasting (`broadcast/`), concurrency counters (`metrics/` — off unless `"metrics": true` is set in `main.env`).
 - **Protocols** (`core/protocols/`): HTTP/1.1 server + client (`http/`), WebSocket (`websocket/`), SMTP client with DKIM (`smtp/`).
 - **Framework** (`core/framework/`): ORM model system (`model/`), DB layer (`database/` — PostgreSQL/MySQL/Redis/SQLite), sessions (`session/`), storage FS/S3 (`storage/`), template engine (`view/`), middleware (`middleware/`), task scheduler (`taskmanager/`), i18n (`translation/`).
 - **Utilities** (`core/misc/`): dynamic strings w/ SSO (`str.h`), arrays (`array.h`), hashmaps (`hashmap.h`/`map.h`), ordered queue (`cqueue.h`), buffer objects (`bufo.h`), JSON parser/generator (`json.h`), JWT (`jwt.h`), UUID (`uuid.h`), base64 (`base64.h`), SHA-1/256 (`sha1.h`/`sha256.h`), random (`random.h`), UTF-8 (`utf8.h`), i18n + IDN utils (`i18n.h`/`idn_utils.h`), query parser (`queryparser.h`), logging (`log.h`), gzip (`gzip.h`), files (`file.h`).

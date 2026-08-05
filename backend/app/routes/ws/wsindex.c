@@ -1,5 +1,6 @@
 #include "websockets.h"
 #include "broadcast.h"
+#include "websocketsbroadcast.h"
 #include "mybroadcast.h"
 #include "wsmiddlewares.h"
 
@@ -64,12 +65,14 @@ void channel_join(wsctx_t* ctx) {
         return;
     }
 
-    broadcast_add(broadcast_name, ctx->request->connection, id, mybroadcast_send_data);
+    /* Request-based form: on HTTP/1.1 it is the connection that subscribes, on
+     * an RFC 8441 tunnel it is that one stream (docs/http2/09). */
+    websockets_broadcast_add(broadcast_name, ctx->request, id, mybroadcast_send_data);
     ctx->response->send_data(ctx, "done");
 }
 
 void channel_leave(wsctx_t* ctx) {
-    broadcast_remove(broadcast_name, ctx->request->connection);
+    websockets_broadcast_remove(broadcast_name, ctx->request);
     ctx->response->send_data(ctx, "done");
 }
 
@@ -90,7 +93,9 @@ void channel_send(wsctx_t* ctx) {
         return;
     }
 
-    broadcast_send(broadcast_name, ctx->request->connection, data, length, id, mybroadcast_compare);
+    /* Request-based form: on h2 suppresses only the sender tunnel, not every
+     * tunnel sharing its connection (docs/http2/09, step 5). */
+    websockets_broadcast_send(broadcast_name, ctx->request, data, length, id, mybroadcast_compare);
     free(data);
 
     ctx->response->send_data(ctx, "done");

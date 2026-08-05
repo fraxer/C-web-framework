@@ -11,15 +11,45 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/exec")
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/app.cmake)
 
 add_compile_options(-fPIC)
+
+# Sanitizer selection. ASan+LSan stay the default for the debug build types, so
+# an unqualified `cmake .. -DCMAKE_BUILD_TYPE=Debug` behaves exactly as before.
+# TSan is opt-in (-DSANITIZE=thread) because it cannot be linked alongside ASan,
+# and it is the tool for the connection-level data races (docs/concurrency/00).
+set(SANITIZE "default" CACHE STRING "Sanitizer: default|address|thread|none")
+set_property(CACHE SANITIZE PROPERTY STRINGS default address thread none)
+
+if(SANITIZE STREQUAL default)
+	if(CMAKE_BUILD_TYPE STREQUAL Debug OR CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo)
+		set(SANITIZE address)
+	else()
+		set(SANITIZE none)
+	endif()
+endif()
+
+# Flags go into CMAKE_C_FLAGS rather than add_compile_options: the sanitizer
+# runtime has to reach the link line too, and CMAKE_C_FLAGS is what try_compile
+# and the link rules both inherit.
+if(SANITIZE STREQUAL address)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fsanitize=leak -g")
+elseif(SANITIZE STREQUAL thread)
+	# -O1 keeps the instrumented server fast enough to actually reach the
+	# concurrency it is meant to exercise; at -O0 TSan slows things down until
+	# the interesting interleavings stop happening.
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=thread -O1 -g")
+	add_compile_definitions(CWFR_TSAN)
+elseif(NOT SANITIZE STREQUAL none)
+	message(FATAL_ERROR "SANITIZE must be one of: default, address, thread, none (got '${SANITIZE}')")
+endif()
+
 if(CMAKE_BUILD_TYPE STREQUAL Debug OR CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo)
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
 	# -fanalyzer is GCC-only and landed in GCC 10; gcc-9 rejects it, which also
 	# breaks find_package(Threads) (its try_compile inherits CMAKE_C_FLAGS).
 	if(CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 10)
 		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fanalyzer")
 	endif()
 
-	add_compile_options(-Wall -Wextra -Wpedantic -fsanitize=address -fsanitize=leak -g)
+	add_compile_options(-Wall -Wextra -Wpedantic -g)
 	add_compile_definitions(DEBUG)
 endif()
 
