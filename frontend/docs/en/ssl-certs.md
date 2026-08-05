@@ -40,10 +40,12 @@ All three fields are required — the server will not start if any of them is mi
 |-----------|-------------|
 | `fullchain` | Path to the certificate file in PEM format (including intermediate certificates) |
 | `private` | Path to the private key file in PEM format |
-| `ciphers` | List of supported ciphers, passed to OpenSSL as is |
+| `ciphers` | List of supported ciphers; TLS 1.3 suites and TLS 1.2 ciphers may be mixed in one string |
 
 ::: tip Protocol and ciphers
-The server uses `TLS_server_method()`: SSLv2 and SSLv3 are disabled and renegotiation is forbidden. The `ciphers` string is a single string where names prefixed with `TLS_` (`TLS_AES_256_GCM_SHA384`, …) are TLS 1.3 suites and the rest (`ECDHE-RSA-AES256-GCM-SHA384`, …) are TLS 1.2 suites. The separator may be a space or a colon.
+The server uses `TLS_server_method()`: SSLv2 and SSLv3 are disabled and renegotiation is forbidden. The `ciphers` string is a single string where names prefixed with `TLS_` (`TLS_AES_256_GCM_SHA384`, …) are TLS 1.3 suites and the rest (`ECDHE-RSA-AES256-GCM-SHA384`, …) are TLS 1.2 ciphers. Colons, commas and spaces all work as separators.
+
+The two groups are configured through different OpenSSL APIs, so the server splits the string and applies each half separately. **Omitting a group leaves OpenSSL's defaults for that protocol version in place** — listing only TLS 1.2 ciphers does not disable TLS 1.3, and listing only TLS 1.3 suites does not disable TLS 1.2. To actually restrict a version, name the suites you want for it. TLS 1.2 control syntax (`HIGH`, `!aNULL`, `@STRENGTH`) keeps working as before.
 :::
 
 ## Obtaining a certificate
