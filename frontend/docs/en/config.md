@@ -259,6 +259,26 @@ TLS/SSL settings for HTTPS:
 }
 ```
 
+### http3 <Badge type="info" text="object"/>
+
+Enables HTTP/3 (over QUIC) for the server. Requires the `-DINCLUDE_HTTP3=yes` build flag (OpenSSL ≥ 3.5) and a `tls` section — QUIC has no cleartext mode. The UDP port defaults to the server's TCP port; TCP keeps serving HTTP/1.1 and HTTP/2. See [HTTP/3](/en/http3) for details.
+
+```json
+"http3": {
+    "enabled": true,
+    "port": 443,
+    "alt_svc": true,
+    "alt_svc_max_age": 86400
+}
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `enabled` | bool | `false` | Enables HTTP/3. Required for h3 to run |
+| `port` | number | server's TCP port | UDP port for QUIC (1–65535) |
+| `alt_svc` | bool | `true` | Advertise h3 in the `Alt-Svc` header over HTTP/1.1 and HTTP/2 |
+| `alt_svc_max_age` | number | `86400` | How long the client caches `Alt-Svc` (sec) |
+
 ## databases section
 
 Database connection configuration. Each driver is an array of hosts; connections are addressed in code as `<driver>.<host_id>` (e.g. `postgresql.p1`, `redis.r1`, `sqlite.local`). Only drivers enabled at build time (`-DINCLUDE_*`) are compiled.

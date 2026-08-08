@@ -25,7 +25,7 @@ Returns a string as the response body via `send_data`:
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/get \
     -X GET
 ```
@@ -56,7 +56,7 @@ and raw data; the result must be released with `free`:
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/post \
     -X POST \
     -H 'Content-Type: text/plain' \
@@ -98,7 +98,7 @@ void post(httpctx_t* ctx) {
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/post \
     -X POST \
     -F mydata=data \
@@ -150,7 +150,7 @@ reads the bytes into memory. Always check the `.ok` flag:
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/post \
     -X POST \
     -H 'Content-Type: text/plain' \
@@ -203,7 +203,7 @@ Same as `get_payload_file`, but the file is selected by its field name from
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/post \
     -X POST \
     -F myfile=@/path/file.txt
@@ -254,7 +254,7 @@ void post(httpctx_t* ctx) {
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/post \
     -X POST \
     -H 'Content-Type: application/json' \
@@ -307,7 +307,7 @@ Parses JSON from a single `multipart/form-data` field by key:
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/post \
     -X POST \
     -F myjson='{ "key": "value" }'
@@ -368,17 +368,17 @@ out-parameter tells "parameter is missing" apart from an empty value:
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/query?param=text \
     -X GET
 ```
 
-```curl
+```bash
 curl http://example.com/users/123 \
     -X GET
 ```
 
-```curl
+```bash
 curl http://example.com/params/100/param_value \
     -X GET
 ```
@@ -447,7 +447,7 @@ void params(httpctx_t* ctx) {
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/cookie \
     -X GET
 ```
@@ -484,7 +484,7 @@ void cookie(httpctx_t* ctx) {
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/set_cookie \
     -X GET
 ```
@@ -531,7 +531,7 @@ void set_cookie(httpctx_t* ctx) {
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/old-resource \
     -X GET
 ```
@@ -561,7 +561,7 @@ void redirect(httpctx_t* ctx) {
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/default \
     -X GET
 ```
@@ -591,7 +591,7 @@ void def(httpctx_t* ctx) {
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/header \
     -X GET
 ```
@@ -628,7 +628,7 @@ void header(httpctx_t* ctx) {
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/set_header \
     -X GET
 ```
@@ -661,7 +661,7 @@ void set_header(httpctx_t* ctx) {
 
 **Request**
 
-```curl
+```bash
 curl http://example.com/file \
     -X GET
 ```
