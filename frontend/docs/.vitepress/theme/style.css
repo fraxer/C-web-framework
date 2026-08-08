@@ -244,9 +244,11 @@
   border-radius: 50%;
 }
 
-.hero-chip.c1 { top: 4%; left: -3%; }
-.hero-chip.c2 { top: 18%; right: -5%; animation-delay: -2.3s; }
-.hero-chip.c3 { bottom: 8%; left: 5%; animation-delay: -4.6s; }
+.hero-chip.c1 { top: 2%; left: -4%; }
+.hero-chip.c2 { top: 14%; right: -6%; animation-delay: -1.4s; }
+.hero-chip.c3 { top: 46%; left: -10%; animation-delay: -2.8s; }
+.hero-chip.c4 { bottom: 22%; right: -4%; animation-delay: -4.2s; }
+.hero-chip.c5 { bottom: 6%; left: 6%; animation-delay: -5.6s; }
 
 @keyframes hero-float {
   0%, 100% { transform: translateY(0); }

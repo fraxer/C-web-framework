@@ -10,6 +10,8 @@ const lc = (obj) => (isEn.value ? obj.en : obj.ru)
 // Line-art glyphs (Lucide-style, stroke = currentColor) rendered inside gradient tiles.
 const icons = {
   http: `<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>`,
+  http2: `<path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>`,
+  http3: `<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>`,
   ws: `<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>`,
   db: `<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>`,
   security: `<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>`,
@@ -52,6 +54,72 @@ const categories = [
         'Automatic gzip compression for supported content types',
         'Redirects with regular expressions and capture groups',
         'Built-in HTTP client: TLS 1.2+, keep-alive pool, redirects'
+      ]
+    }
+  },
+  {
+    id: 'http2',
+    color: '#0ea5e9',
+    color2: '#0284c7',
+    title: { ru: 'HTTP/2', en: 'HTTP/2' },
+    desc: {
+      ru: 'Мультиплексирование, сжатие HPACK и управление потоком — множество запросов в одном соединении.',
+      en: 'Multiplexing, HPACK compression and flow control — many requests over a single connection.'
+    },
+    link: '/http2',
+    items: {
+      ru: [
+        'Мультиплексирование до 100 потоков на соединение',
+        'Двухуровневое управление потоком с авторасширением окна',
+        'Сжатие заголовков HPACK с кодированием Хаффмана',
+        'Трейлеры и 103 Early Hints',
+        'WebSocket поверх HTTP/2 (Extended CONNECT)',
+        'h2c upgrade для plaintext-соединений',
+        'Защита от Rapid Reset и других DoS-атак',
+        'Включается автоматически через ALPN поверх TLS'
+      ],
+      en: [
+        'Multiplexing up to 100 streams per connection',
+        'Two-level flow control with auto window scaling',
+        'HPACK header compression with Huffman coding',
+        'Trailers and 103 Early Hints',
+        'WebSocket over HTTP/2 (Extended CONNECT)',
+        'h2c upgrade for plaintext connections',
+        'Rapid Reset and other DoS protection',
+        'Enabled automatically via ALPN over TLS'
+      ]
+    }
+  },
+  {
+    id: 'http3',
+    color: '#d946ef',
+    color2: '#c026d3',
+    title: { ru: 'HTTP/3', en: 'HTTP/3' },
+    desc: {
+      ru: 'Транспорт на QUIC поверх UDP — нет HOL-blocking, быстрый старт и независимые потоки запросов.',
+      en: 'QUIC transport over UDP — no HOL-blocking, fast startup and independent request streams.'
+    },
+    link: '/http3',
+    items: {
+      ru: [
+        'Полный стек QUIC (RFC 9000) на UDP',
+        'Рукопожатие TLS 1.3 за один RTT',
+        'Миграция соединений и валидация пути',
+        'QPACK-сжатие заголовков',
+        'Трейлеры, 103 Early Hints и 100 Continue',
+        'Параллельные запросы в одном соединении',
+        'Автоанонс через заголовок Alt-Svc',
+        'Требует OpenSSL 3.5+ (флаг -DINCLUDE_HTTP3=yes)'
+      ],
+      en: [
+        'Full QUIC stack (RFC 9000) over UDP',
+        'TLS 1.3 handshake in a single RTT',
+        'Connection migration and path validation',
+        'QPACK header compression',
+        'Trailers, 103 Early Hints and 100 Continue',
+        'Concurrent requests over one connection',
+        'Auto-advertised via the Alt-Svc header',
+        'Requires OpenSSL 3.5+ (-DINCLUDE_HTTP3=yes flag)'
       ]
     }
   },

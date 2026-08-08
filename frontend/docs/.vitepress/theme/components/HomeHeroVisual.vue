@@ -2,7 +2,9 @@
 // Floating capability chips around the emblem — same accent colours as the
 // capability tiles below, so the hero reads as a preview of the page.
 const chips = [
-  { t: 'HTTP/1.1', c: '#3b82f6' },
+  { t: 'HTTP/1', c: '#3b82f6' },
+  { t: 'HTTP/2', c: '#0ea5e9' },
+  { t: 'HTTP/3', c: '#d946ef' },
   { t: 'WebSocket', c: '#8b5cf6' },
   { t: 'PostgreSQL', c: '#10b981' }
 ]
