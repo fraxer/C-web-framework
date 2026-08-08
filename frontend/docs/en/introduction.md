@@ -13,6 +13,8 @@ The framework provides a complete set of tools for developing modern web applica
 
 ### HTTP
 * Full HTTP/1.1 support
+* HTTP/2 (RFC 9113) over TLS via ALPN: multiplexing, flow control, h2c upgrade, trailers, 103 Early Hints, WebSocket-over-h2
+* HTTP/3 (RFC 9114) over QUIC: UDP transport, coexists with HTTP/1.1 and HTTP/2 via Alt-Svc
 * Built-in HTTP client: HTTPS (TLS 1.2+), keep-alive connection pooling, automatic redirect following
 * Flexible routing system with dynamic parameters
 * Virtual hosts with regex domains and IDN support

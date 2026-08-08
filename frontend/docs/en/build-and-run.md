@@ -86,6 +86,14 @@ Database support is opt-in — only enabled drivers are compiled:
 
 When set to `yes`, the framework looks up the corresponding library via `find_package`; if found, the driver macro (`PostgreSQL_FOUND`, `MySQL_FOUND`, `Redis_FOUND`, `SQLite_FOUND`) is defined and the driver is compiled into the core.
 
+### Protocols
+
+```bash
+-DINCLUDE_HTTP3=yes        # HTTP/3 and QUIC (requires OpenSSL ≥ 3.5)
+```
+
+HTTP/3 is off by default, since QUIC requires the QUIC TLS API from OpenSSL 3.5+. The rest of the framework stays compatible with OpenSSL 1.1.1+, so this flag is the only component with the higher requirement. Enabling it verifies that libssl actually exports the QUIC API (some distros ship `no-quic` builds). HTTP/2 is always part of the build and needs no separate flag. See [HTTP/3](/en/http3) for details.
+
 ### Tests
 
 ```bash
