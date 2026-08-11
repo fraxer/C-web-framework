@@ -828,6 +828,39 @@ for (h2stream_t* stream = s->streams; ...) stream->send_window += delta;  /* б�
 **Затронутые файлы** (подмодуль `backend/core`):
 `protocols/http2/server/h2session.c`. Проба: `backend/probes/h2flow.py`.
 
+### G.2 — Незнакомый `:authority` был `PROTOCOL_ERROR` вместо 404 ✅ (2026-08-11)
+
+Найдено при обвязке interop-стенда для HTTP/3 (`core/docs/http3/08` §3s) и
+починено сразу в обоих протоколах, потому что причина одна.
+
+Запрос на имя, которого нет ни в одном `domains` этого листенера, получал по h2
+`RST_STREAM(PROTOCOL_ERROR)` (curl выходил с 92), тогда как **тот же запрос по
+HTTP/1.1 получал 404**. `h2_build_request` сваливала любой неуспех
+`httpparser_select_server` в `H2_REQUEST_MALFORMED`.
+
+§8.3.1 определяет malformed через форму секции полей — отсутствующий,
+повторённый или синтаксически негодный псевдо-заголовок. У этого запроса форма
+безупречна: он адресован не сюда, а это результат маршрутизации, о котором
+параграф не говорит. Плюс само расхождение: ответ на один и тот же запрос не
+должен зависеть от того, каким протоколом он приехал.
+
+Разведено на два исхода. `HOST_NOT_FOUND` → новый `H2_REQUEST_MISDIRECTED` →
+`h2_reject_stream(404)` (та же дорога, что у 431 и 501). `BAD_REQUEST` из той же
+функции — пустой authority, незакрытый IPv6-литерал — остаётся stream error: вот
+это malformed по букве.
+
+Отдельного счётчика для h2 не заводилось: счётчики h2 в `/metrics` — это секция
+`http2_abuse`, а маршрутизационный промах злоупотреблением не является. В h3, где
+есть общая секция ответов, счётчик `http3.misdirected` добавлен.
+
+**Регрессии.** `h2spec` по TLS 146 passed / **0 failed**, `h3spec` 49/49, unit
+101660/101660, curl по h2 на незнакомое имя → 404 (был exit 92), h1.1 без
+изменений.
+
+**Затронутые файлы** (подмодуль `backend/core`):
+`protocols/http2/server/h2session.c`, `protocols/http3/server/h3stream.{c,h}`,
+`protocols/http3/server/h3conn.c`, `src/metrics/metrics.{c,h}`.
+
 ---
 
 ## План тестирования

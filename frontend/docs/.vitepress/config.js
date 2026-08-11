@@ -68,10 +68,6 @@ export default defineConfig({
                   { text: 'Получение данных от клиента', link: '/payload' },
                   { text: 'Query-параметры', link: '/query-params' },
                   { text: 'Коды состояния', link: '/http-codes' },
-                ]
-              },
-              { text: 'Протоколы', collapsed: true,
-                items: [
                   { text: 'HTTP/2', link: '/http2' },
                   { text: 'HTTP/3', link: '/http3' },
                 ]
@@ -176,10 +172,6 @@ export default defineConfig({
                   { text: 'Receiving data from the client', link: '/en/payload' },
                   { text: 'Query parameters', link: '/en/query-params' },
                   { text: 'HTTP codes', link: '/en/http-codes' },
-                ]
-              },
-              { text: 'Protocols', collapsed: true,
-                items: [
                   { text: 'HTTP/2', link: '/en/http2' },
                   { text: 'HTTP/3', link: '/en/http3' },
                 ]
