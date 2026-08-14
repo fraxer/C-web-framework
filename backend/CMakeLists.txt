@@ -42,6 +42,36 @@ elseif(NOT SANITIZE STREQUAL none)
 	message(FATAL_ERROR "SANITIZE must be one of: default, address, thread, none (got '${SANITIZE}')")
 endif()
 
+# Coverage instrumentation for fuzzing (docs/http3/08-testing.md §5).
+#
+# Global, and it has to be: the fuzzer's feedback comes from edges inside the
+# *parsers*, which live in the framework, not in the target files. Behind its
+# own flag so an ordinary build never carries it.
+#
+# gcc has no libFuzzer, but it does have the signal libFuzzer feeds on:
+# -fsanitize-coverage=trace-pc calls __sanitizer_cov_trace_pc() on every edge,
+# and tests/fuzz/fuzz_main.c supplies the loop around it. With clang the flag is
+# libFuzzer's own and the driver is not compiled at all.
+set(BUILD_FUZZERS "no" CACHE STRING "Build fuzz targets: yes|no")
+
+# add_compile_options, NOT CMAKE_C_FLAGS: the latter is inherited by every
+# try_compile, and a probe program that calls __sanitizer_cov_trace_pc without
+# defining it fails to link -- which surfaces as `find_package(Threads)` deciding
+# this compiler does not support -pthread. (The -fanalyzer comment below is the
+# same trap, found the same way.)
+if(BUILD_FUZZERS STREQUAL yes)
+	if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+		add_compile_options(-fsanitize=fuzzer-no-link)
+	else()
+		add_compile_options(-fsanitize-coverage=trace-pc)
+		# The framework then calls an edge hook that only a fuzzer defines, and
+		# it is a shared library loaded by the server and every handler module.
+		# core/misc/fuzzcov.c carries a weak no-op for them; the driver's own
+		# definition preempts it in the fuzz binaries.
+		add_compile_definitions(CWFR_FUZZ_COVERAGE)
+	endif()
+endif()
+
 if(CMAKE_BUILD_TYPE STREQUAL Debug OR CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo)
 	# -fanalyzer is GCC-only and landed in GCC 10; gcc-9 rejects it, which also
 	# breaks find_package(Threads) (its try_compile inherits CMAKE_C_FLAGS).
