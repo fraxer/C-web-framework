@@ -22,7 +22,7 @@ C Web Framework — это высокопроизводительный фрей
 * Встроенные фильтры: chunked encoding, range requests, gzip, cache control
 * Обработка multipart/form-data и загрузка файлов
 * Полная поддержка cookie с secure, httpOnly, sameSite
-* Автоматическое сжатие gzip для поддерживаемых типов контента
+* Сжатие gzip по согласованию с клиентом (`Accept-Encoding`) для настроенных типов контента
 * TLS/SSL с настраиваемыми cipher suites
 * Редиректы с поддержкой регулярных выражений и подстановкой групп захвата
 

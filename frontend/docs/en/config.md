@@ -38,6 +38,8 @@ Path to the temporary files directory.
 
 List of MIME types to compress automatically. Leave empty to disable compression.
 
+Listing a type makes it *negotiable*, not always compressed. A response is gzipped only when it is at least 1 KB and the request's `Accept-Encoding` allows it — `gzip` named outright, or `*` when it is not; `gzip;q=0` is a refusal, and a request with no `Accept-Encoding` at all gets the uncompressed bytes. Every answer whose type is on this list carries `Vary: Accept-Encoding`, compressed or not, so a shared cache keys the two representations apart; their `ETag`s differ too (the compressed one ends in `-gzip`).
+
 ### log <Badge type="info" text="object"/>
 
 Logging settings:
@@ -219,7 +221,16 @@ Handler options:
 
 * `file` — path to the handler `.so`
 * `function` — handler function name
-* `static_file` — path to a static file; when set, the request serves the file instead of invoking `file`/`function`
+* `static_file` — path to a static file; when set, the request serves the file instead of invoking `file`/`function`. The path supports `{1}`, `{2}`, … capture-group substitution from the route's regular expression (the same spelling as `redirects`), so one route can serve a whole directory:
+  ```json
+  "/assets/(.*)": {
+      "GET": {
+          "static_file": "/assets/{1}",
+          "cache_control": "public, max-age=31536000, immutable"
+      }
+  }
+  ```
+* `cache_control` — `Cache-Control` header for what this route answers with, a `static_file` or a handler alike. Without it every file response carries `Cache-Control: no-cache` (revalidation on each use), which is safe but makes clients re-fetch immutable build artifacts. Point routes at fingerprinted assets with `immutable` caching and leave pages on the default. A handler that sets its own `Cache-Control` keeps it — the route value is the default, not an override — and a `static_file` that turns out to be missing answers 404 without it.
 * `ratelimit` — override the rate-limiting profile for this route
 
 #### redirects <Badge type="info" text="object"/>

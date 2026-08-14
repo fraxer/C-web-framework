@@ -31,7 +31,8 @@ Handler fields:
 |---------------|--------|--------------------------------------------------------------------------------------|
 | `file`        | string | Path to the handler `.so` (relative to the process root, or absolute)               |
 | `function`    | string | Name of the handler function                                                         |
-| `static_file` | string | Path to a static file; when set, the file is served instead of calling `file`/`function` |
+| `static_file` | string | Path to a static file; when set, the file is served instead of calling `file`/`function`. Supports `{1}`, `{2}`, … capture-group substitution from the route pattern |
+| `cache_control` | string | `Cache-Control` header for what the route answers with, file or handler (file default: `no-cache`) |
 | `ratelimit`   | string | Name of the rate limiting profile for this route (overrides `http.ratelimit`)        |
 
 ## Route matching
@@ -154,6 +155,21 @@ For routes that should serve static files without processing, use the `static_fi
 ```
 
 The file path is relative to the server's `root` directory.
+
+A `static_file` path may reference the route's capture groups with `{1}`, `{2}`, … (the same notation `redirects` use), which turns one route into a whole directory — handy for build artifacts whose names carry a content hash:
+
+```json
+"/assets/(.*)": {
+    "GET": {
+        "static_file": "/assets/{1}",
+        "cache_control": "public, max-age=31536000, immutable"
+    }
+}
+```
+
+By default every file answer is sent with `Cache-Control: no-cache`, so the client revalidates on each use. `cache_control` overrides that per route — pair it with fingerprinted filenames and the browser stops asking for the file at all. Files reached through a route without `cache_control` keep the default.
+
+`cache_control` applies to handler routes as well, where it acts as the route's default: a handler that sets `Cache-Control` itself keeps its own value. A `static_file` that is missing still answers 404 without the header, so a long `max-age` never lands on an error.
 
 ### Combining with handlers
 
