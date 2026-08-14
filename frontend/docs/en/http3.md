@@ -141,6 +141,23 @@ As with HTTP/2, the low-level parameters are environment variables from the `mai
 | `http3_version_negotiation_rate` | — | Version Negotiation reply rate. `0` — disable |
 | `http3_version_negotiation_burst` | — | VN bucket peak |
 
+### Congestion control
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `http3_initcwnd_packets` | `10` | Initial congestion window, in datagrams (2–64) |
+| `http3_pacing` | `true` | Spread sending over time instead of releasing the window at once |
+
+`http3_initcwnd_packets` is the same choice TCP's `initcwnd` is. RFC 9002 §7.2 recommends ten datagrams and caps the initial window at 14 720 bytes — roughly 12 packets — which is not much on a long path: a 30 KB file then takes two round trips just to open the window, and at a 130 ms RTT that is another 130 ms on every asset. Anything other than 10 is a deliberate deviation, and the server says so at startup, in syslog:
+
+```
+quic: http3_initcwnd_packets is 30, not the 10 RFC 9002 §7.2 recommends
+```
+
+No such line means the value never reached the server: check that the key sits in `main.env`.
+
+`http3_pacing` spreads sending instead of handing the window to the network in one piece. The burst budget is the **initial window**: the opening flight goes out whole, a raised `http3_initcwnd_packets` gets the burst it asked for, and what is spread is whatever the window frees later in the transfer — a single cumulative acknowledgement can free many times the initial window. Acknowledgements and PTO probes are never delayed. There is little reason to turn this off outside debugging.
+
 ### Abuse protection
 
 | Parameter | Default | Description |

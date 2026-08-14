@@ -22,7 +22,7 @@ The framework provides a complete set of tools for developing modern web applica
 * Built-in filters: chunked encoding, range requests, gzip, cache control
 * Multipart/form-data handling and file uploads
 * Full cookie support with secure, httpOnly, sameSite
-* Automatic gzip compression for supported content types
+* gzip compression negotiated with the client (`Accept-Encoding`) for the configured content types
 * TLS/SSL with configurable cipher suites
 * Redirects with regular expressions and capture-group substitution
 
