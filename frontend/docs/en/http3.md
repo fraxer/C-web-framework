@@ -107,7 +107,8 @@ After receiving `Alt-Svc: h3=":443"; ma=86400` the browser tries HTTP/3 in the b
 
 - The handshake combines transport and TLS 1.3 — a single RTT to establish
 - NewReno or CUBIC congestion control with pacing (BBR planned)
-- Connection migration and path validation; Retry token for address validation; stateless reset
+- Connection migration and path validation; issuing and retiring connection IDs; mid-connection key update (RFC 9001 §6); stateless reset
+- Client address validation: Retry token (`auto`/`always`/`never` policy) and `NEW_TOKEN` for returning clients; on hitting the connection limit the client gets `CONNECTION_REFUSED` instead of silence
 - Anti-amplification protection (3×)
 - IPv4 (IPv6 endpoints are not supported yet)
 
@@ -118,37 +119,112 @@ After receiving `Alt-Svc: h3=":443"; ma=86400` the browser tries HTTP/3 in the b
 - Request bodies (DATA, with tmp-file spilling for large bodies)
 - **Trailers** and **103 Early Hints** — the same APIs (`add_trailer`, `add_early_hint`/`send_early_hints`) as in HTTP/2
 - **100 Continue** — interim response
-- **Concurrent requests** within one connection (verified: 8 simultaneous requests)
+- **Concurrent requests** within one connection; the limit is `http3_max_streams_bidi` (default 100)
 
 ### QPACK
 
 QPACK is complete: dynamic tables on both sides, both instruction streams,
 blocked request streams with acknowledgements and cancellation.
 
-## Configuration
+## Tuning
 
-As with HTTP/2, the low-level parameters are environment variables from the `main.env` section.
+As with HTTP/2, the low-level parameters are environment variables from the `main.env` section. Every key is checked for type and range: a value of the wrong type or out of range is a configuration error, and the server refuses to start (a reload carrying such a value is rejected whole, leaving no mixture of old and new parameters).
 
 ### Transport and endpoint
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `http3_max_connections` | `65536` | Global process QUIC connection limit (64–4000000; `0` is invalid) |
+| `http3_max_connections` | `65536` | Global process QUIC connection limit (64–4000000; `0` is invalid). When it is exhausted a new client gets `CONNECTION_REFUSED` |
+| `http3_buffer_memory_limit` | `25% of RAM` | Process-wide budget for dynamic QUIC buffers (receive, send, CRYPTO), in bytes. `0` — disable the budget |
 | `http3_rx_batch` | `32` | `recvmmsg` batch size (1–256) |
 | `http3_so_rcvbuf` | `0` (kernel) | `SO_RCVBUF` for the UDP socket |
 | `http3_so_sndbuf` | `0` | `SO_SNDBUF` for the UDP socket |
-| `http3_stateless_reset_rate` | — | Stateless reset bucket rate. `0` — disable |
-| `http3_stateless_reset_burst` | — | Stateless reset bucket peak |
-| `http3_version_negotiation_rate` | — | Version Negotiation reply rate. `0` — disable |
-| `http3_version_negotiation_burst` | — | VN bucket peak |
+| `http3_handshake_rate` | `500` | New handshakes per second, per process. `0` — disable |
+| `http3_handshake_burst` | `1000` | Handshake bucket peak |
+| `http3_stateless_reset_rate` | `100` | Stateless reset bucket rate. `0` — disable |
+| `http3_stateless_reset_burst` | `200` | Stateless reset bucket peak |
+| `http3_version_negotiation_rate` | `100` | Version Negotiation reply rate. `0` — disable |
+| `http3_version_negotiation_burst` | `200` | VN bucket peak |
+
+`http3_max_connections` — how many QUIC connections the process holds at once, across all workers. The limit is about memory, not file descriptors: every connection carries crypto state, loss-recovery tables and buffers. Breaching it is not silent — the new client receives a `CONNECTION_CLOSE` with error `CONNECTION_REFUSED` and learns of the refusal immediately instead of timing out on its own. The current count, the peak and the limit are visible in `/metrics` → `quic.connections`; if `current` sits at the limit under working load, raise it after checking that memory allows.
+
+`http3_buffer_memory_limit` — the process budget (in bytes) for everything that grows with load rather than with the connection count: datagram receive segments, send queues, handshake CRYPTO buffers, stream buffers and QPACK session memory. Exhausting it does not bring the server down: growth of a new buffer is simply refused, live connections keep running on what they already hold, and the `quic.memory.refused` counter in `/metrics` shows how often that happened. The default is a quarter of physical RAM, computed at startup; `0` disables the budget entirely (the server logs that). A growing `refused` under honest load is the signal that buffer memory is short.
+
+`http3_rx_batch` — how many datagrams a single `recvmmsg` call fetches from the socket. Larger — fewer syscalls per packet under load; smaller — a shorter cycle on quiet traffic and less memory for the batch arrays. The default suits a typical server; change it from a profile, not a hunch.
+
+`http3_so_rcvbuf` / `http3_so_sndbuf` — receive and send buffer sizes of the UDP socket (`SO_RCVBUF` / `SO_SNDBUF`), in bytes. `0` — leave the choice to the kernel. Raise the receive side when datagrams go missing in bursts: the kernel cannot drain its queue fast enough, which looks like unexplained loss on the server side. The kernel caps the maximum at `net.core.rmem_max` / `net.core.wmem_max` — you may ask for more, less will be installed.
+
+`http3_handshake_rate` / `http3_handshake_burst` — a bucket on new handshakes per second, per process. The handshake is the most expensive part of a connection — key derivation and the server flight for every Initial, and an Initial is forged with a single `sendto`. The bucket refills at `rate` and holds `burst`, so an instantaneous spike of legitimate connects is not cut while a sustained flood is pinned at `rate`. When exhausted, the Initial is dropped silently — an honest client retransmits it on its own, and the `handshake_rate_limited` counter in `/metrics` shows the trip.
+
+`http3_stateless_reset_rate` / `http3_stateless_reset_burst` — a stateless reset answers a packet addressed to a connection ID that no longer exists: the server was restarted, the connection timed out. The client needs that answer to stop waiting, but each one costs a key derivation, so spraying random CIDs must not buy computation from us — the bucket stops it.
+
+`http3_version_negotiation_rate` / `http3_version_negotiation_burst` — Version Negotiation replies to a client offering an unknown QUIC version. The reply costs the sender nothing, so it is limited separately: this is the cleanest traffic-amplification candidate from a spoofed address.
+
+### Address validation (Retry)
+
+Retry solves a problem TCP does not have: in QUIC the client starts the handshake, and its address is spoofable with a single `sendto`. Until the address is proven, the server must treat the sender as untrusted — answer within the anti-amplification limit and spend the minimum on the handshake. Retry is an extra round trip on which the server challenges the client: a datagram from a spoofed address never sees the challenge and never answers it, while an honest client answers and proves it owns the address.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `http3_retry` | `auto` | Retry policy: `auto` — engage past `http3_retry_threshold`, `always` — always, `never` — never |
+| `http3_retry_threshold` | `1000` | Half-open handshake count at which `auto` starts answering with Retry (0–4000000) |
+| `http3_new_token` | `true` | Issue a `NEW_TOKEN` after the handshake: the client's next connection proves its address without a Retry |
+| `http3_token_lifetime_sec` | `86400` | Lifetime of `NEW_TOKEN` tokens, seconds (a Retry token lives a fixed 10 s) |
+
+`http3_retry` — the policy of that proof. `auto` (default) engages Retry only under signs of attack, `always` — for every new client (maximum protection, at the price of a round trip for every new connection), `never` — never (a closed network or a test bench).
+
+`http3_retry_threshold` — the threshold for `auto`: the number of handshakes started but not finished (`quic.handshakes.inflight` in `/metrics`). An honest client completes the handshake in tens of milliseconds and leaves this counter; what sticks in it are half-open handshakes from addresses that receive no replies — that is, a flood from spoofed addresses. Hence the rule: a thousand established connections is normal load, a thousand half-open ones is an attack. `0` turns `auto` into `always`.
+
+`http3_new_token` — whether to issue a `NEW_TOKEN` after a completed handshake. The client stores it and presents it on its next connection: the address is already proven, no Retry is needed, and returning clients pay no round trip for address validation. The token key is generated fresh at every process start, so a server restart (or a load balancer without a shared key) voids previously issued tokens — for the client this is not an error, it simply goes through Retry once.
+
+`http3_token_lifetime_sec` — how long a `NEW_TOKEN` is good for. RFC 9000 §8.1.3 requires bounding it so a stolen token cannot be replayed forever; the default is a day. The Retry token lives a fixed 10 seconds and is not governed by this key: it only needs to survive one round trip.
+
+A Retry token that is ours but expired, or issued for another address, gets a loud `INVALID_TOKEN` (RFC 9000 §8.1.3), so a client looping on a token it cannot fix is never stuck. The `retry_sent`/`token_valid` pair in the `quic` section of `/metrics` answers "is Retry working": every Retry sent must come back with a valid token, and a persistent gap means clients are not getting through the extra round trip.
+
+### Streams and flow control
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `http3_idle_timeout_sec` | `30` | Connection idle timeout, seconds (1–3600) |
+| `http3_max_udp_payload_size` | `1350` | Largest datagram the server sends and advertises (1200–1350) |
+| `http3_initial_max_data` | `1048576` | Initial connection-level receive window (1 MiB) |
+| `http3_initial_max_stream_data` | `262144` | Initial per-stream receive window (256 KiB) |
+| `http3_max_streams_bidi` | `100` | How many request streams the client may open concurrently (1–65536) |
+| `http3_max_streams_uni` | `8` | Unidirectional stream limit (3–65536; the floor of 3 is the protocol itself: control plus two QPACK) |
+| `http3_recv_window_max` | `16777216` | Auto-tuning ceiling for the connection receive window, like `http2_recv_window_max` in HTTP/2 |
+| `http3_active_cid_limit` | `4` | How many connection IDs to keep for the peer — the reserve for migration (2–8) |
+| `http3_ack_delay_ms` | `25` | Maximum ACK delay the server advertises to the peer (0–16383, RFC 9000 §18.2) |
+
+Flow control in QUIC works as in HTTP/2: the receiver advertises a window and grants more only as it consumes data. These parameters set the size of what the server promises to hold — a direct link to per-connection memory.
+
+`http3_idle_timeout_sec` — the connection is closed after this many seconds without a packet from the client. The effective value is the minimum of ours and the one the client advertises: the smaller wins. A larger timeout lets mobile clients come back from sleep on the same connection, without a new handshake; a smaller one frees the memory of dead connections sooner. Active connections are not cut: the protocol keeps them alive on its own, and the timeout counts from the last packet.
+
+`http3_max_udp_payload_size` — the largest datagram the server promises to accept: advertised to the client in transport parameters. It does not limit our outgoing datagrams — their size is picked by DPLPMTUD, from 1350 bytes up toward the path ceiling (1472 for IPv4, 1452 for IPv6), but never above what the client symmetrically promised. The floor of 1200 is the minimum RFC 9000 guarantees to traverse any path; the ceiling of 1350 is the buffer the server builds packets into — promising more would promise room the code does not have.
+
+`http3_initial_max_data` — the initial receive window at the connection level: how many bytes the client may send, summed over all streams, before the server grants more window (`MAX_DATA`). This is a memory bound: exactly that much unread data may sit in the receive buffers at once.
+
+`http3_initial_max_stream_data` — the same, per stream. It is the main brake on a single large upload: with a 256 KiB window, a client posting a gigabyte body stalls waiting for `MAX_STREAM_DATA` every 256 KiB. Auto-tuning takes over from there — the window grows when the server drains faster than a round trip.
+
+`http3_max_streams_bidi` — how many request streams the client may open concurrently; the analogue of `SETTINGS_MAX_CONCURRENT_STREAMS` in HTTP/2. Every open stream is state and memory, hence the limit. A client opening a stream past the limit is misbehaving, and the connection closes with `STREAM_LIMIT_ERROR` — as the RFC requires. The default of 100 is what browsers are built around.
+
+`http3_max_streams_uni` — the client's unidirectional stream limit. The protocol itself needs a floor of three: the HTTP/3 control stream and the two QPACK streams (encoder and decoder) — hence the minimum of 3. Today's clients need no more.
+
+`http3_recv_window_max` — the ceiling the auto-tuner grows the connection receive window to. The rule is the same as in TCP: the window must hold the bandwidth-delay product, or speed is limited by the window rather than the path. For single large uploads over wide, long-latency paths, raise it. Setting it equal to `http3_initial_max_data` (it cannot go lower) pins the window without growth — like `http2_recv_window_max` in HTTP/2.
+
+`http3_active_cid_limit` — how many connection IDs the server keeps ready for the client. A CID is the connection's future name on a new path: when the client changes networks (Wi-Fi → LTE, NAT rebind) it continues on the same connection, addressing it by a spare CID, and the address change does not break it. RFC mandates a minimum of 2; more is more migration headroom, at the cost of a few slots of memory.
+
+Migration has a worker-side story too. There is nothing to configure there, but it is worth knowing when reading `/metrics`. The kernel hands datagrams to workers by hashing the address 4-tuple, while a QUIC connection outlives its address — so after a migration the packets arrive at a worker other than the one that accepted the connection. The server notices and moves the connection to it; `/metrics` → `quic.routing` reports `local`, `foreign` and `rehomed`. Healthy looks like `rehomed` in step with `migrations.validated` and a small `foreign`. A large `foreign` with `rehomed` at zero happens only during a reload, once the socket has been handed to the new generation.
+
+`http3_ack_delay_ms` — the maximum acknowledgement delay the server advertises to the client. Instead of an ACK per received packet, the server may accumulate them and acknowledge several at once; the client subtracts the advertised value from its RTT estimate, so delayed ACKs do not inflate it. Larger — less ACK traffic on downloads; `0` — acknowledge every packet immediately.
 
 ### Congestion control
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `http3_initcwnd_packets` | `10` | Initial congestion window, in datagrams (2–64) |
-| `http3_cc` | `newreno` | Congestion-control algorithm: `newreno` or `cubic` |
-| `http3_pacing` | `true` | Spread sending over time instead of releasing the window at once |
+| `http3_cc` | `newreno` | Congestion-control algorithm: `newreno`, `cubic` or `bbr` |
+| `http3_pacing` | `true` | Spread sending over time instead of releasing the window at once (required by `http3_cc: "bbr"`) |
+| `http3_amplification_factor` | `3` | How many times the server may answer before the address is proven (RFC 9000 §8.1, 1–16). Any departure from 3 is logged loudly at startup — change it only in tests |
 
 `http3_initcwnd_packets` is the same choice TCP's `initcwnd` is. RFC 9002 §7.2 recommends ten datagrams and caps the initial window at 14 720 bytes — roughly 12 packets — which is not much on a long path: a 30 KB file then takes two round trips just to open the window, and at a 130 ms RTT that is another 130 ms on every asset. Anything other than 10 is a deliberate deviation, and the server says so at startup, in syslog:
 
@@ -163,10 +239,37 @@ conservative default. `cubic` implements RFC 9438: it reduces the window to
 70% after a loss and then recovers along the cubic curve, while its
 TCP-friendly region keeps it competitive with Reno on small windows. It is
 typically useful on paths with a large bandwidth-delay product. Reloads affect
-new connections only. Values other than `newreno` and `cubic` reject the
+new connections only. Values other than `newreno`, `cubic` and `bbr` reject the
 configuration.
 
+`bbr` implements BBR (draft-cardwell-iccrg-bbr-congestion-control) and differs
+from the other two in kind, not degree: it does not treat loss as the
+congestion signal. It measures the path's actual delivery rate and minimum
+delay, sends at exactly that rate, and keeps the window only as a safety bound.
+The difference shows wherever loss is not caused by a full buffer — mobile
+networks, Wi-Fi, long international routes. A 64 MB transfer over loopback with
+injected loss (median of three runs) puts numbers on it:
+
+| Loss | NewReno | CUBIC | BBR |
+|------|---------|-------|-----|
+| 0 % | 484 MB/s | 467 MB/s | 484 MB/s |
+| 2 % | 329 MB/s | 387 MB/s | 387 MB/s |
+| 10 % | 18 MB/s | 75 MB/s | **240 MB/s** |
+
+On a clean path the choice does not matter; on a lossy one it decides
+everything. The trade-off: BBR deliberately sends faster than loss alone would
+permit, so it is more assertive than CUBIC when sharing a narrow link. Once
+every ten seconds it drops the window to four datagrams for 200 ms to
+re-measure the empty path's delay — that brief dip is part of the algorithm,
+not a fault.
+
+`bbr` requires `http3_pacing` to be on: the server drives its sending rate
+through the pacer, and the pair `"bbr"` + `"http3_pacing": false` is rejected
+when the configuration is loaded.
+
 `http3_pacing` spreads sending instead of handing the window to the network in one piece. The burst budget is the **initial window**: the opening flight goes out whole, a raised `http3_initcwnd_packets` gets the burst it asked for, and what is spread is whatever the window frees later in the transfer — a single cumulative acknowledgement can free many times the initial window. Acknowledgements and PTO probes are never delayed. There is little reason to turn this off outside debugging.
+
+`http3_amplification_factor` — how many times the server may answer before the address is proven. RFC 9000 §8.1 caps this at 3× the bytes received: an unlimited answer to an Initial would turn the server into a DDoS amplifier for a third party's address. Above three makes sense only on a test bench; any departure from 3 is logged loudly at startup — in production this value should not differ.
 
 ### 0-RTT (early data)
 
@@ -227,6 +330,12 @@ or the replay defence fired.
 | `http3_ctrl_rate` | `100` | Control-frame flood limit (GOAWAY, etc.). `0` — disable |
 | `http3_ctrl_burst` | `200` | Control bucket peak |
 
+`http3_max_field_section_size` — the limit on a request's decoded header block. A soft breach yields `431 Request Header Fields Too Large` and the connection survives; the hard cap (×8 the limit) closes the connection with `H3_EXCESSIVE_LOAD`: a header block eight times the limit is not a request, it is an attack. The default megabyte covers long cookies and JWTs with room to spare; ordinary requests need a few kilobytes, and on a public server the limit is worth tightening.
+
+`http3_abort_rate` / `http3_abort_burst` — the Rapid Reset budget (CVE-2023-44487): a client opens a stream and cancels it immediately, making the server do part of the work on each. Cancelling a request before the server has answered it spends from the bucket. Lone cancellations are normal behaviour — the user left the page — and the budget does not notice them; runs of them exhaust the bucket and close the connection with `H3_EXCESSIVE_LOAD`.
+
+`http3_ctrl_rate` / `http3_ctrl_burst` — the limit on control frames (`GOAWAY` and the like). A healthy connection carries a handful, so the limit is generous against the norm and closes the connection with `H3_EXCESSIVE_LOAD` only under an obvious flood.
+
 Example:
 
 ```json
@@ -235,7 +344,7 @@ Example:
         "env": {
             "http3_max_connections": 50000,
             "http3_rx_batch": 64,
-            "http3_cc": "cubic",
+            "http3_cc": "bbr",
             "http3_max_field_section_size": 524288
         }
     }
@@ -250,10 +359,10 @@ Example:
 | **Server Push** | No | Same rationale as in HTTP/2 |
 | **WebSocket-over-h3** | No | Extended CONNECT (RFC 9220) is not planned: no browser supports it. WebSocket runs over HTTP/1.1 and HTTP/2 — clients open it over TCP |
 | **HTTP/3 client** | No | Server role only |
-| **CUBIC / BBR** | Partial | Select CUBIC with `http3_cc`; BBR is not supported yet |
+| **CUBIC / BBR** | Yes | Both are selected with `http3_cc`; BBR requires `http3_pacing` |
 | **UDP GSO** | Yes | Batched sends through `UDP_SEGMENT` |
 | **GRO / ECN / DPLPMTUD** | Yes | GRO receive, validated ECN, and path-MTU probing with fallback |
-| **qlog** | Yes | QUIC diagnostic logging |
+| **qlog** | No | The QUIC event log is not implemented — only a compile-time stub exists in the code |
 
 ## Verification
 
