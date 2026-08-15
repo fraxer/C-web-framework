@@ -145,6 +145,20 @@ HTTP/2 behavioral parameters are environment variables from the `main.env` secti
 | `http2_recv_window_max` | `4194304` | Auto-scaler ceiling (4 MB). Set equal to `initial` to disable scaling |
 | `http2_write_quantum` | `65536` | Bytes a stream emits per round before yielding the socket (min 1024) |
 
+`http2_idle_timeout_sec` — the connection is closed when it holds no open streams and has seen no activity for N seconds. A connection with a request in flight or a half-written response does not count as idle, even if the client fell silent forever — a client that vanished mid-work is caught by the PING watchdog (the next parameter). The close is graceful: the client receives a `GOAWAY` and has time to finish what it started.
+
+`http2_ping_interval_sec` — a watchdog for half-dead clients. If the client has been silent for N seconds, the server sends a `PING` and waits for the acknowledgement; if none arrives, the connection is closed. Unlike the idle timeout, the watchdog works with streams open too. Off by default: a healthy connection needs no keepalive, and silence with no streams is already handled by the idle timeout. Enable it when the server has nothing to send on its own initiative (long polling, rare events) and it is the server, not the client's own timeout, that should break a stalled connection.
+
+`http2_ping_ack_timeout_sec` — how long to wait for the ACK on a watchdog PING before declaring the client gone. The default is derived from the interval — `min(interval, 15)` — so that even with sparse intervals a vanished client is caught within a bounded time. Only one PING is outstanding on a connection at a time.
+
+`http2_settings_ack_timeout_sec` — the RFC 9113 §6.5.3 rule: the client must acknowledge our SETTINGS, and only after the acknowledgement do the announced limits take effect — windows, stream count, header sizes. A client that never acknowledges receives `GOAWAY(SETTINGS_TIMEOUT)`; without this check it could sit there until the idle timeout instead. Ten seconds is with margin: "as soon as possible" does not mean "instantly", and a slow-starting client should not be cut off.
+
+`http2_recv_window_initial` — the receive window the connection starts with; announced in the server preface, both for the connection and for each stream. The 65535 default is the RFC minimum, and it is also a speed ceiling: inbound cannot exceed window/RTT, which on a 100 ms path works out to ~0.6 MB/s per connection no matter how many streams are loaded. Auto-scaling takes over from there — the window grows toward the measured bandwidth-delay product. It cannot be set below 65535 (the value is raised to it); above — up to 2³¹−1.
+
+`http2_recv_window_max` — the auto-scaler's ceiling. Each RTT the server looks at how many bytes actually arrived, and if the window is too small it doubles it, up to the ceiling; the learned value carries over to new streams so that every request does not ramp the window up from scratch. The rule is the same as in TCP: the window must hold bandwidth×RTT, or speed is limited by the window rather than the path. Setting it equal to `initial` disables scaling and pins the window. This is the receive window only: by announcing it the server risks its own memory, and large request bodies are spilled to a temporary file rather than held in it.
+
+`http2_write_quantum` — how many body bytes one stream may put into the socket per round before the write turn passes to the next ready stream. Without a cap, a large response would own the socket from start to finish, and small requests on the same connection would wait out the whole file — exactly the head-of-line blocking multiplexing exists to remove. 64 KB is four standard-size DATA frames: enough that an extra pass through the write cycle is noise next to the copying, and little enough that a request queued behind a big upload waits milliseconds, not its duration. Higher favors connections with a single large transfer; lower favors responsiveness when there are many small responses. The RFC is silent here: stream priorities are deprecated in RFC 9113, and scheduling among ready streams is entirely the server's decision.
+
 ### Abuse protection (DoS)
 
 | Parameter | Default | Description |
@@ -153,8 +167,21 @@ HTTP/2 behavioral parameters are environment variables from the `main.env` secti
 | `http2_max_continuation_frames` | `64` | CONTINUATION frames per block. `0` — no limit |
 | `http2_abort_rate` | `100` | Rapid Reset budget (RST/sec, CVE-2023-44487). `0` — disable |
 | `http2_abort_burst` | `200` | Peak size of the Rapid Reset bucket |
+| `http2_ctrl_rate` | `100` | Budget for frames that make the server work without progress (PING, SETTINGS, empty DATA). `0` — disable |
+| `http2_ctrl_burst` | `200` | Peak of that bucket |
+| `http2_max_out_backlog` | `1048576` | Cap on response bytes queued for a peer that stopped reading; when exceeded, the connection is closed with `GOAWAY(ENHANCE_YOUR_CALM)`. `0` — disable |
 
-A soft breach of `http2_max_header_list_size` yields `431 Request Header Fields Too Large` (the connection survives); a hard breach (×8) yields `GOAWAY(ENHANCE_YOUR_CALM)`. Exhausting the Rapid Reset bucket also closes the connection via `GOAWAY`. Exact abuse counters are exposed under the `http2_abuse` section of the `/metrics` route.
+`http2_max_header_list_size` — the limit on the total decoded size of a request's headers. A soft breach yields a `431 Request Header Fields Too Large` response and the connection survives; a hard one (×8) yields `GOAWAY(ENHANCE_YOUR_CALM)`: a list eight times the limit is not a request, it is an attack. The limit also bounds memory before decoding: an h2 header block is assembled in full from HEADERS and its CONTINUATION chain, so the ceiling on that block is tied to the limit with room for Huffman compression — tighten the limit and you tighten the decoder's worst case with it.
+
+`http2_max_continuation_frames` — the limit on CONTINUATION frames per header block. The byte limit bounds memory but not work: an empty CONTINUATION adds not a single byte, and without a frame counter a client could spin the block-assembly loop for as long as it pleased. Breaching it — `GOAWAY(ENHANCE_YOUR_CALM)`.
+
+`http2_abort_rate` / `http2_abort_burst` — the Rapid Reset budget (CVE-2023-44487): the client opens a stream and immediately resets it with `RST_STREAM`. Each such stream costs dispatch and HPACK decoding while barely occupying a concurrency slot — which is why `MAX_CONCURRENT_STREAMS` offers no protection against this attack at all. A stream cancellation is charged to the bucket; the bucket's peak is never lower than the concurrent-stream limit, so a client merely cancelling everything it has open cannot exhaust it. Runs of cancellations close the connection with `GOAWAY(ENHANCE_YOUR_CALM)`.
+
+`http2_ctrl_rate` / `http2_ctrl_burst` — a separate bucket for frames that make the server work while advancing nothing: PING with no payload (we must answer — CVE-2019-9512), SETTINGS without an acknowledgement (we must acknowledge — CVE-2019-9515), zero-length DATA (spends no flow-control window — CVE-2019-9518), the obsolete PRIORITY (CVE-2019-9513), `WINDOW_UPDATE` for a stream that no longer exists. All of these are legal and cost the sender almost nothing. The bucket is separate rather than shared with stream cancellations: for an honest client the rates of these categories are unrelated, and a shared one would have to be tuned to the weakest. Exhausting it — `GOAWAY(ENHANCE_YOUR_CALM)`.
+
+`http2_max_out_backlog` works in the opposite direction — it protects against a client that **stops reading**. The send socket fills up, nothing more can be written, and every frame the server still owes it (answers of parallel streams) piles up in the connection's queue. The cap stops the queue from growing and closes the connection with `GOAWAY(ENHANCE_YOUR_CALM)` before it eats memory: without it, one stalled client could keep the pile growing without bound. `0` disables the cap — worth it only where something in front of the client bounds it instead.
+
+Exact counters for every trip are exposed under the `http2_abuse` section of the `/metrics` route.
 
 Example configuration:
 
