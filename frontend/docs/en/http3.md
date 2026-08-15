@@ -106,10 +106,10 @@ After receiving `Alt-Svc: h3=":443"; ma=86400` the browser tries HTTP/3 in the b
 ### QUIC transport
 
 - The handshake combines transport and TLS 1.3 — a single RTT to establish
-- NewReno congestion control with pacing (CUBIC/BBR planned)
+- NewReno or CUBIC congestion control with pacing (BBR planned)
 - Connection migration and path validation; Retry token for address validation; stateless reset
 - Anti-amplification protection (3×)
-- IPv4 and IPv6 — this is the framework's first IPv6-capable component
+- IPv4 (IPv6 endpoints are not supported yet)
 
 ### HTTP/3
 
@@ -122,7 +122,8 @@ After receiving `Alt-Svc: h3=":443"; ma=86400` the browser tries HTTP/3 in the b
 
 ### QPACK
 
-A complete QPACK decoder and a lite encoder with the static table and literals. The dynamic table is currently disabled (`max capacity = 0`) — a "QPACK-lite" mode.
+QPACK is complete: dynamic tables on both sides, both instruction streams,
+blocked request streams with acknowledgements and cancellation.
 
 ## Configuration
 
@@ -132,7 +133,7 @@ As with HTTP/2, the low-level parameters are environment variables from the `mai
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `http3_max_connections` | `100000` | Max QUIC connections in the process |
+| `http3_max_connections` | `65536` | Global process QUIC connection limit (64–4000000; `0` is invalid) |
 | `http3_rx_batch` | `32` | `recvmmsg` batch size (1–256) |
 | `http3_so_rcvbuf` | `0` (kernel) | `SO_RCVBUF` for the UDP socket |
 | `http3_so_sndbuf` | `0` | `SO_SNDBUF` for the UDP socket |
@@ -146,6 +147,7 @@ As with HTTP/2, the low-level parameters are environment variables from the `mai
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `http3_initcwnd_packets` | `10` | Initial congestion window, in datagrams (2–64) |
+| `http3_cc` | `newreno` | Congestion-control algorithm: `newreno` or `cubic` |
 | `http3_pacing` | `true` | Spread sending over time instead of releasing the window at once |
 
 `http3_initcwnd_packets` is the same choice TCP's `initcwnd` is. RFC 9002 §7.2 recommends ten datagrams and caps the initial window at 14 720 bytes — roughly 12 packets — which is not much on a long path: a 30 KB file then takes two round trips just to open the window, and at a 130 ms RTT that is another 130 ms on every asset. Anything other than 10 is a deliberate deviation, and the server says so at startup, in syslog:
@@ -156,7 +158,64 @@ quic: http3_initcwnd_packets is 30, not the 10 RFC 9002 §7.2 recommends
 
 No such line means the value never reached the server: check that the key sits in `main.env`.
 
+`http3_cc` is selected for each new connection. `newreno` is the more
+conservative default. `cubic` implements RFC 9438: it reduces the window to
+70% after a loss and then recovers along the cubic curve, while its
+TCP-friendly region keeps it competitive with Reno on small windows. It is
+typically useful on paths with a large bandwidth-delay product. Reloads affect
+new connections only. Values other than `newreno` and `cubic` reject the
+configuration.
+
 `http3_pacing` spreads sending instead of handing the window to the network in one piece. The burst budget is the **initial window**: the opening flight goes out whole, a raised `http3_initcwnd_packets` gets the burst it asked for, and what is spread is whatever the window frees later in the transfer — a single cumulative acknowledgement can free many times the initial window. Acknowledgements and PTO probes are never delayed. There is little reason to turn this off outside debugging.
+
+### 0-RTT (early data)
+
+| Setting | Default | Description |
+|----------|--------------|----------|
+| `http3_early_data` | `false` | Accept 0-RTT: a resuming client's request arrives a round trip earlier |
+
+A client that has been here before and kept a session ticket can send its
+request with the very first packet, without waiting for the handshake. That
+saves a full round trip: on a 130 ms path the page starts loading 130 ms sooner.
+
+The price is built into the protocol: **a 0-RTT request is replayable**. Anyone
+who copied the datagram can send it again, and the server cannot tell the copy
+from the original — AEAD proves authenticity, not freshness.
+
+This server answers that by **not executing the request until the handshake
+completes**. The data is accepted into its streams, but no handler runs: no
+database write, no session lookup. A copy cannot complete the handshake — the
+attacker holds no key material — so a replayed request does nothing and the
+connection dies at the idle timeout. Two practical consequences:
+
+- restricting 0-RTT to safe methods (GET/HEAD) is **not required** — a POST in
+  early data is as safe as one in an ordinary connection;
+- the response is not sent before the handshake ends. What is saved is the trip
+  **to** the server, not back.
+
+Turning it on is the operator's decision: it is off by default.
+
+```json
+{ "main": { "env": { "http3_early_data": true } } }
+```
+
+Worth knowing in operation: tickets are bound to the transport parameters they
+were issued under. Change `http3_initial_max_data`, `http3_max_streams_bidi`,
+`http3_idle_timeout_sec` or any other setting from the tables above, and
+previously issued tickets stop resuming — clients do one full handshake. That is
+RFC 9001 §7.4.1 at work, not a failure.
+
+To confirm it is doing something, read the `quic` section of `/metrics`:
+
+```
+"early_data.offered": 128,
+"early_data.accepted": 126,
+"early_data.packets": 141,
+"early_data.bytes": 13904
+```
+
+`offered` minus `accepted` is refused tickets: either the configuration changed,
+or the replay defence fired.
 
 ### Abuse protection
 
@@ -176,6 +235,7 @@ Example:
         "env": {
             "http3_max_connections": 50000,
             "http3_rx_batch": 64,
+            "http3_cc": "cubic",
             "http3_max_field_section_size": 524288
         }
     }
@@ -186,12 +246,14 @@ Example:
 
 | Feature | Status | Comment |
 |-------------|--------|---------|
-| **0-RTT / early data** | No | Needs an anti-replay policy — planned |
+| **0-RTT / early data** | Yes, opt-in | `http3_early_data`, off by default; the request is not executed until the handshake completes |
 | **Server Push** | No | Same rationale as in HTTP/2 |
-| **WebSocket-over-h3** | No | Extended CONNECT (RFC 9220) — planned |
+| **WebSocket-over-h3** | No | Extended CONNECT (RFC 9220) is not planned: no browser supports it. WebSocket runs over HTTP/1.1 and HTTP/2 — clients open it over TCP |
 | **HTTP/3 client** | No | Server role only |
-| **CUBIC / BBR** | No | NewReno only in the current version |
-| **ECN, qlog** | No | Planned for later phases |
+| **CUBIC / BBR** | Partial | Select CUBIC with `http3_cc`; BBR is not supported yet |
+| **UDP GSO** | Yes | Batched sends through `UDP_SEGMENT` |
+| **GRO / ECN / DPLPMTUD** | Yes | GRO receive, validated ECN, and path-MTU probing with fallback |
+| **qlog** | Yes | QUIC diagnostic logging |
 
 ## Verification
 
