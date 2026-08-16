@@ -106,8 +106,9 @@ After receiving `Alt-Svc: h3=":443"; ma=86400` the browser tries HTTP/3 in the b
 ### QUIC transport
 
 - The handshake combines transport and TLS 1.3 — a single RTT to establish
-- NewReno or CUBIC congestion control with pacing (BBR planned)
+- NewReno, CUBIC or BBR congestion control with pacing — selected with `http3_cc`
 - Connection migration and path validation; issuing and retiring connection IDs; mid-connection key update (RFC 9001 §6); stateless reset
+- A connection follows its datagrams: after a migration it is moved to whichever worker the kernel now delivers them to
 - Client address validation: Retry token (`auto`/`always`/`never` policy) and `NEW_TOKEN` for returning clients; on hitting the connection limit the client gets `CONNECTION_REFUSED` instead of silence
 - Anti-amplification protection (3×)
 - IPv4 (IPv6 endpoints are not supported yet)
