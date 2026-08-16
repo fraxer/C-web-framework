@@ -206,6 +206,7 @@ Example configuration:
 | **HTTP/2 client** | None | Server role only. The framework's HTTP client runs over HTTP/1.1 |
 | **Trailers / 103 over HTTP/1.1** | None | These capabilities exist only in h2 |
 | **PRIORITY** | Ignored | `SETTINGS_NO_RFC7540_PRIORITIES = 1`; priorities are deprecated in RFC 9113 |
+| **Priorities (RFC 9218)** | Not implemented | The `priority` header field and `PRIORITY_UPDATE` are ignored here; ready streams are scheduled round-robin by `http2_write_quantum`. The scheme is implemented in [HTTP/3](/en/http3#priorities-rfc-9218) |
 
 ## Verification
 

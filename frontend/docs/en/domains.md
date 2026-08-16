@@ -41,6 +41,8 @@ Because `*.example.com` captures both `www.example.com` and deeper addresses, pl
 
 If no matching server is found, the client receives **404 Not Found**. An empty or missing `Host` header (mandatory in HTTP/1.1) results in **400 Bad Request**.
 
+In HTTP/2 and HTTP/3 the same job is done by the `:authority` pseudo-header, and the outcome is deliberately identical: a name this listener does not serve answers **404**, not a stream or connection error. A request for the wrong name is an ordinary miss, and a client should learn that in the same way whichever protocol version it speaks. Over HTTP/3 these misses have their own counter, `/metrics` → `http3.misdirected`, kept apart from the 404s a handler produces: a rising one means either clients addressing the wrong name or a `domains` list missing something they actually use.
+
 ## Wildcard names
 
 The asterisk `*` is allowed **only at the beginning or end** of the name and expands to the regular expression `.*`:

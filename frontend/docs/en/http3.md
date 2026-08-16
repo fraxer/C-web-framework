@@ -122,6 +122,38 @@ After receiving `Alt-Svc: h3=":443"; ma=86400` the browser tries HTTP/3 in the b
 - **100 Continue** — interim response
 - **Concurrent requests** within one connection; the limit is `http3_max_streams_bidi` (default 100)
 
+### Priorities (RFC 9218)
+
+HTTP/2 deprecated its priority scheme and put nothing in its place; RFC 9218 is that replacement, and HTTP/3 implements it. The client states how urgent a response is, and the server sends in that order.
+
+Two carriers, one meaning — an RFC 8941 dictionary with two members:
+
+```http
+GET /app.css HTTP/3
+priority: u=0, i
+```
+
+| Member | Values | Default | Meaning |
+|--------|--------|---------|---------|
+| `u` | `0`–`7` | `3` | Urgency. `0` is the most urgent, `7` the least |
+| `i` | boolean flag | absent | Incremental: the response is useful in pieces, so it may be interleaved with its peers |
+
+The same value also arrives as a `PRIORITY_UPDATE` frame on the control stream — before the request stream exists or long after it did. The frame overrides the header field, but only for the members it carries: a `PRIORITY_UPDATE` saying just `u=5` does not reset an `i` the request established.
+
+What the server does with it:
+
+- **Different urgencies** — the more urgent response is sent first. A 4 KB file requested behind a 64 MB transfer arrives in 0.1 ms with `priority: u=0` instead of the 85 ms it waits without a signal.
+- **Same urgency, not incremental** — responses are finished one at a time. What they block cannot start until they are done, so splitting the connection between them helps nobody.
+- **Same urgency, incremental** — they share the connection, taking turns at the write budget whole rather than splitting it into slivers.
+
+Nothing here needs configuring, and a connection that sends no priority signals takes the same path at the same cost as before. Whether the signals are reaching the scheduler is visible in `/metrics` → `http3.priority_applied`: "the client sends priorities" and "the server acts on them" are different claims, and this counter separates them.
+
+::: tip Tolerance of malformed values
+A value that is a well-formed dictionary but carries an unknown member, a member of the wrong type or an urgency outside 0–7 is **ignored** as RFC 9218 §4.1 requires — a cosmetic mistake by the peer must not cost a page. Only a value that is not a dictionary at all (a key with nothing after `=`, a stray comma) is an error, and only on the `PRIORITY_UPDATE` path, where the RFC makes it `H3_FRAME_ERROR`.
+:::
+
+The server does not send a `priority` header field in its responses — RFC 9218 §5 allows it to override its own urgency, but nothing consumes it.
+
 ### QPACK
 
 QPACK is complete: dynamic tables on both sides, both instruction streams,
@@ -357,12 +389,15 @@ Example:
 | Feature | Status | Comment |
 |-------------|--------|---------|
 | **0-RTT / early data** | Yes, opt-in | `http3_early_data`, off by default; the request is not executed until the handshake completes |
+| **Priorities (RFC 9218)** | Yes | The `priority` header field and `PRIORITY_UPDATE`, scheduled by urgency. The server does not send `priority` in its own responses |
 | **Server Push** | No | Same rationale as in HTTP/2 |
 | **WebSocket-over-h3** | No | Extended CONNECT (RFC 9220) is not planned: no browser supports it. WebSocket runs over HTTP/1.1 and HTTP/2 — clients open it over TCP |
 | **HTTP/3 client** | No | Server role only |
 | **CUBIC / BBR** | Yes | Both are selected with `http3_cc`; BBR requires `http3_pacing` |
 | **UDP GSO** | Yes | Batched sends through `UDP_SEGMENT` |
 | **GRO / ECN / DPLPMTUD** | Yes | GRO receive, validated ECN, and path-MTU probing with fallback |
+| **IPv6 endpoint** | No | The QUIC endpoint binds IPv4 only. HTTP/1.1 and HTTP/2 over TCP are unaffected |
+| **QUIC v2 (RFC 9369)** | No | A client offering an unknown version gets a Version Negotiation packet and comes back on v1, which is the correct answer; v2 itself exists mainly as an anti-ossification measure |
 | **qlog** | No | The QUIC event log is not implemented — only a compile-time stub exists in the code |
 
 ## Verification
