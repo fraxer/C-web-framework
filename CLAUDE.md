@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A high-performance event-driven C web framework (`cwfr`) for Linux. The repository is a monorepo: `backend/` contains the C framework core (as a git submodule) and an example application; `frontend/` contains a VitePress documentation site (English, `frontend/docs/en/`).
+A high-performance event-driven C web framework (`cwfr`) for Linux. The repository is a monorepo: `backend/` contains the C framework core (as a git submodule) and an example application; `frontend/` contains a bilingual VitePress documentation site — Russian is the root locale (`frontend/docs/*.md`), English lives under `frontend/docs/en/`. The two are page-for-page mirrors: any doc change has to be made in both.
 
 ## Build Commands
 
