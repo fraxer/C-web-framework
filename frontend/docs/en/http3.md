@@ -219,6 +219,7 @@ A Retry token that is ours but expired, or issued for another address, gets a lo
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `http3_idle_timeout_sec` | `30` | Connection idle timeout, seconds (1–3600) |
+| `http3_keepalive_sec` | `0` | Keep-alive PING interval, seconds (0–3600). `0` — do not hold silent connections open |
 | `http3_max_udp_payload_size` | `1350` | Largest datagram the server sends and advertises (1200–1350) |
 | `http3_initial_max_data` | `1048576` | Initial connection-level receive window (1 MiB) |
 | `http3_initial_max_stream_data` | `262144` | Initial per-stream receive window (256 KiB) |
@@ -231,6 +232,12 @@ A Retry token that is ours but expired, or issued for another address, gets a lo
 Flow control in QUIC works as in HTTP/2: the receiver advertises a window and grants more only as it consumes data. These parameters set the size of what the server promises to hold — a direct link to per-connection memory.
 
 `http3_idle_timeout_sec` — the connection is closed after this many seconds without a packet from the client. The effective value is the minimum of ours and the one the client advertises: the smaller wins. A larger timeout lets mobile clients come back from sleep on the same connection, without a new handshake; a smaller one frees the memory of dead connections sooner. Active connections are not cut: the protocol keeps them alive on its own, and the timeout counts from the last packet.
+
+`http3_keepalive_sec` — how often the server reminds the peer of itself with a PING frame so that a silent connection is not closed (RFC 9000 §10.1.2). Zero means it never does, and that is the default.
+
+The key exists because `http3_idle_timeout_sec` only solves half the problem: the effective timeout is the **smaller** of the two advertised values, and browsers advertise about 30 seconds, so raising it on the server alone changes nothing. Without keep-alive, half a minute of pause costs the connection and the next navigation pays for a fresh handshake; with it, the connection survives pauses for as long as the browser answers.
+
+The price of switching it on is that a connection lives — memory included — for as long as the client answers, which is why the default is off: how many connections to hold is decided by traffic, not by the protocol. A client that has gone away cannot be kept alive: only received packets count as activity, so a connection whose peer vanished still closes at the idle timeout however many PINGs were sent. The effective value is clamped to half the negotiated idle timeout (and to at least one second) — a PING has to be not only sent but acknowledged in time. How many went out is visible in `/metrics` as `quic.keepalive_sent`, kept apart from `quic.pto_probes_sent`: on the wire they are the same frame, but they mean opposite things — a keep-alive says nothing was happening, a probe says the path stopped answering.
 
 `http3_max_udp_payload_size` — the largest datagram the server promises to accept: advertised to the client in transport parameters. It does not limit our outgoing datagrams — their size is picked by DPLPMTUD, from 1350 bytes up toward the path ceiling (1472 for IPv4, 1452 for IPv6), but never above what the client symmetrically promised. The floor of 1200 is the minimum RFC 9000 guarantees to traverse any path; the ceiling of 1350 is the buffer the server builds packets into — promising more would promise room the code does not have.
 
