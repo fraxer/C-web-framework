@@ -415,7 +415,9 @@ or the replay defence fired.
 
 `http3_abort_rate` / `http3_abort_burst` — the Rapid Reset budget (CVE-2023-44487): a client opens a stream and cancels it immediately, making the server do part of the work on each. Cancelling a request before the server has answered it spends from the bucket. Lone cancellations are normal behaviour — the user left the page — and the budget does not notice them; runs of them exhaust the bucket and close the connection with `H3_EXCESSIVE_LOAD`.
 
-`http3_ctrl_rate` / `http3_ctrl_burst` — the limit on control frames (`GOAWAY` and the like). A healthy connection carries a handful, so the limit is generous against the norm and closes the connection with `H3_EXCESSIVE_LOAD` only under an obvious flood.
+`http3_ctrl_rate` / `http3_ctrl_burst` — the limit on control frames that advance nothing: a `GOAWAY` or `MAX_PUSH_ID` repeating the current value, and frame types the server skips. A healthy connection carries a handful, so the limit is generous against the norm and closes the connection with `H3_EXCESSIVE_LOAD` only under an obvious flood.
+
+`PRIORITY_UPDATE` is **not** covered by this limit and has no setting of its own. A browser sends one per request (Chrome sends two), so its rate is the request rate rather than a flood rate: any "frames per second" ceiling would sooner or later fall below honest traffic. What applies instead is a credit the server grants for each request it accepts — a peer that sends priorities without ever opening a stream spends the initial grant and gets `H3_EXCESSIVE_LOAD`, while an ordinary client never reaches the limit, because the number of requests it can make is already bounded by its QUIC stream credit. Exhaustion shows up in `/metrics` as `http3.abuse.priority_budget`.
 
 Example:
 
