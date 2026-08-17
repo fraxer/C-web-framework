@@ -267,21 +267,68 @@ quic: http3_initcwnd_packets is 30, not the 10 RFC 9002 §7.2 recommends
 
 No such line means the value never reached the server: check that the key sits in `main.env`.
 
-`http3_cc` is selected for each new connection. `newreno` is the more
-conservative default. `cubic` implements RFC 9438: it reduces the window to
-70% after a loss and then recovers along the cubic curve, while its
-TCP-friendly region keeps it competitive with Reno on small windows. It is
-typically useful on paths with a large bandwidth-delay product. Reloads affect
-new connections only. Values other than `newreno`, `cubic` and `bbr` reject the
-configuration.
+`http3_cc` is selected for each new connection; reloads affect new connections only. Values other than `newreno`, `cubic` and `bbr` reject the configuration.
 
-`bbr` implements BBR (draft-cardwell-iccrg-bbr-congestion-control) and differs
-from the other two in kind, not degree: it does not treat loss as the
-congestion signal. It measures the path's actual delivery rate and minimum
-delay, sends at exactly that rate, and keeps the window only as a safety bound.
-The difference shows wherever loss is not caused by a full buffer — mobile
-networks, Wi-Fi, long international routes. A 64 MB transfer over loopback with
-injected loss (median of three runs) puts numbers on it:
+All three answer the same question — how much data to keep in flight so the path is used fully without building a queue it cannot absorb. What differs is the evidence they answer it from, which is why the same three algorithms diverge by a factor of ten on some paths and not at all on others.
+
+#### NewReno
+
+The default, and the one RFC 9002 §7 spells out directly. The congestion window lives by four rules:
+
+- **Slow start.** Every acknowledged byte adds a byte to the window, so the window doubles every round trip. It runs while the window is below the `ssthresh` threshold — which starts out infinite, meaning the first loss is what ends slow start.
+- **Congestion avoidance.** From there the window grows by one datagram per window of acknowledged data — linear, one datagram per round trip. The remainder of that division is carried rather than dropped: without it growth would stall on large windows entirely, because an acknowledgement is almost always smaller than the window divided by the datagram size.
+- **Loss.** The window and `ssthresh` are halved, but never below two datagrams. A recovery period starts at the same moment: everything sent before it began belongs to the same loss, so a burst of lost packets reduces the window **once** rather than once per packet.
+- **Persistent congestion** (§7.6). When everything sent across a span longer than three PTOs is lost, this is not congestion but a path that stopped working: the window collapses to the minimum and slow start begins again. A PTO probe is separate from loss — it is allowed past the window, because eliciting an acknowledgement while the window is closed is precisely its job.
+
+The weak spot is the price of a single loss. On a 100 Mbit/s path at 100 ms RTT roughly 900 datagrams fit in flight; one loss takes the window to 450, and it climbs back one datagram per round trip — on the order of 45 seconds at full speed. That hole is what the other two algorithms close, each in its own way.
+
+#### CUBIC (RFC 9438)
+
+CUBIC keeps the same model — a window reacting to loss — and changes both of Reno's constants, the decrease and the increase alike.
+
+- **The decrease is gentler:** the window is multiplied by β = 0.7 rather than 0.5. The previous value is remembered as `W_max` — the point where the path already pushed back once.
+- **Growth follows time, not rounds:** `W(t) = C·(t − K)³ + W_max`, with `C = 0.4` and `K = ∛(W_max·(1−β)/C)`, the time the curve needs to return to `W_max`. The shape of the cubic is the whole idea: right after the loss the window grows fast, it flattens out around `W_max` (that is where it hurt), and if nothing happens there either it accelerates again in search of a new ceiling. Independence from RTT is the second consequence: connections with different delays sharing a path get comparable shares, whereas under Reno a share is inversely proportional to RTT.
+- **Fast convergence.** If the next loss arrives before the window has climbed back to the old `W_max`, the available bandwidth has shrunk — most likely a new neighbour showed up. `W_max` is then lowered to 0.85 of the current window, freeing room faster than the curve alone would.
+- **The TCP-friendly region.** In parallel CUBIC computes the window Reno would have had at this point (α = 3(1−β)/(1+β) = 9/17 of a datagram per round trip) and takes the larger of the two. Without that rule the cubic curve would be slower than Reno on short RTTs and small windows — the "improved" algorithm losing on local paths.
+
+The arithmetic is integer throughout, cube root included (binary search): the controller runs on every acknowledgement, and floating point on the transport hot path is a cost paid forever.
+
+#### BBR (draft-cardwell-iccrg-bbr-congestion-control)
+
+BBR answers a different question — not how much to keep in flight, but how fast to send. It still has a window, but only as the bound that keeps a mistaken rate from filling the path. Its model of the path is two measured quantities:
+
+- **BtlBw** — the maximum delivery rate over a sliding window of 10 round trips. The rate is bytes delivered divided by the interval they took, and both ends of that interval are recorded when the packet is **sent** — otherwise the number measures the sender's own scheduling rather than the path. Samples marked `app-limited` (the data ran out before the window did) never lower the estimate: they measure the application, not the link.
+- **RTprop** — the minimum RTT over the last 10 seconds, that is, the path's delay with no queue in it.
+
+Sending runs at `BtlBw × gain` through the pacer, with the window held at `2 × BDP`. The gain comes from the current phase, and the phases are essentially the whole algorithm:
+
+| Phase | What it does |
+|-------|--------------|
+| **STARTUP** | gain ≈ 2.89 (2/ln 2) — the rate doubles every round, the way slow start does. The pipe counts as full once three rounds in a row fail to raise the bandwidth estimate by 25 % |
+| **DRAIN** | gain ≈ 0.35 — drain the queue STARTUP built, in about the time it took to build it |
+| **PROBE_BW** | a cycle of eight rounds: one at 1.25× (is there more bandwidth), one at 0.75× (give back the queue that just created), six at the estimate itself. Which phase the cycle starts on is taken from the clock — otherwise connections that started together would probe in lockstep and measure their own convoy instead of the path |
+| **PROBE_RTT** | at least once every 10 s the window drops to four datagrams for 200 ms: a standing queue hides the true propagation delay for exactly as long as it stands, so the only way to measure it is to empty the path |
+
+Loss is not the model's signal, but it is not ignored either: the window comes down by exactly the bytes lost, and for one round packet conservation applies — only what leaves the flight goes back into it. A path that really is dropping traffic therefore stops receiving a full window while the model catches up. Persistent congestion resets the model outright and returns to STARTUP, keeping one thing only — RTprop: propagation delay is a property of the path, not of the congestion episode, and re-measuring it would cost a PROBE_RTT for nothing.
+
+#### Comparison
+
+| | NewReno | CUBIC | BBR |
+|---|---|---|---|
+| Decides | bytes in flight | bytes in flight | sending rate; the window is a bound |
+| Signal | loss | loss | measured BtlBw and RTprop |
+| Growth without loss | +1 datagram per RTT | cubic curve to `W_max` and beyond, RTT-independent | rate = BtlBw × phase gain |
+| Reaction to loss | window ×0.5 | window ×0.7 plus fast convergence | −bytes lost, one round of packet conservation |
+| Recovery from one loss at high BDP | tens of seconds | seconds | none needed: the model did not change |
+| Loss that is not congestion (Wi-Fi, LTE) | collapses | holds up markedly better | barely notices |
+| Relationship with the queue | fills the buffer until loss | fills the buffer until loss | holds ≈BDP, drains periodically |
+| Sharing a narrow link | the most yielding | moderately more assertive than Reno | more assertive than both: sends faster than loss would permit |
+| Pacing | preferred | preferred | **required** — it *is* the output |
+| Per-connection state | window, threshold, recovery start | plus `W_max`, `K`, epoch start, minimum RTT | plus bandwidth filter, RTprop, phase, round counters |
+| Periodic dips | none | none | PROBE_RTT: 4 datagrams for 200 ms every 10 s |
+| Choose it for | paths where loss only ever means congestion; maximum politeness to neighbours | wired paths with a large bandwidth-delay product, long routes | paths where loss does not mean congestion: mobile, Wi-Fi, international routes |
+
+A 64 MB transfer over loopback with injected loss (median of three runs) puts numbers on the difference:
 
 | Loss | NewReno | CUBIC | BBR |
 |------|---------|-------|-----|
@@ -290,11 +337,12 @@ injected loss (median of three runs) puts numbers on it:
 | 10 % | 18 MB/s | 75 MB/s | **240 MB/s** |
 
 On a clean path the choice does not matter; on a lossy one it decides
-everything. The trade-off: BBR deliberately sends faster than loss alone would
-permit, so it is more assertive than CUBIC when sharing a narrow link. Once
-every ten seconds it drops the window to four datagrams for 200 ms to
-re-measure the empty path's delay — that brief dip is part of the algorithm,
-not a fault.
+everything — 10 % loss turns NewReno into 18 MB/s while BBR stays at 240. The
+trade-off is the one in the table: BBR deliberately sends faster than loss alone
+would permit, so it is more assertive than CUBIC when sharing a narrow link. And
+the brief dip once every ten seconds is PROBE_RTT, part of the algorithm rather
+than a fault — on a monitoring graph it looks like a regular 200 ms notch in
+throughput.
 
 `bbr` requires `http3_pacing` to be on: the server drives its sending rate
 through the pacer, and the pair `"bbr"` + `"http3_pacing": false` is rejected
