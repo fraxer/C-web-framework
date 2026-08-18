@@ -160,7 +160,29 @@ Domains bound to the server. Supported:
 
 ### ip <Badge type="info" text="string"/>
 
-Listen IP address, e.g. `127.0.0.1`.
+Listen IP address, IPv4 or IPv6. `127.0.0.1`, `0.0.0.0`, `::1`, `::` and the
+bracketed form `[::1]` are all accepted. The address applies both to TCP
+(HTTP/1.1, HTTP/2, WebSocket) and to the HTTP/3 UDP endpoint.
+
+An IPv6 socket is created **v6-only**: it does not accept IPv4 traffic, because a
+dual-stack socket would report IPv4 peers as v4-mapped addresses, which makes a
+datagram's local address ambiguous and depends on the system's
+`net.ipv6.bindv6only`. Serving one site on both families is therefore **two
+entries** in `servers` with the same `domains` and `port`, differing only in
+`ip`:
+
+```json
+"servers": {
+    "site_v4": { "domains": ["example.com"], "ip": "0.0.0.0", "port": 443, "...": "..." },
+    "site_v6": { "domains": ["example.com"], "ip": "::",      "port": 443, "...": "..." }
+}
+```
+
+Virtual host uniqueness is checked on the triple "address + domain + port", so
+such a pair is not a conflict.
+
+An invalid address (a typo such as `127.0.0.300` or `::1x`) **stops startup**
+with a message naming the value -- the server does not try to guess it.
 
 ### port <Badge type="info" text="number"/>
 
