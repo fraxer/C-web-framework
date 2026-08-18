@@ -220,9 +220,16 @@ Handlers are compiled one `.so` per source file (`app/routes/<group>/<name>.c` â
 ```bash
 # Run with a configuration file
 ./exec/cpdy -c ../config.json
+
+# Stay in the foreground (what containers and supervisors need)
+./exec/cpdy -c ../config.json -f
 ```
 
 The application starts and listens on the ports defined in `config.json`. See [Configuration](./config.md) for details.
+
+A `Release` build detaches from the terminal unless `-f` is given. `-f` is what you want wherever a supervisor watches the process: to it, a process that forks and exits looks like one that crashed.
+
+**The exit status is meaningful in both modes.** The process does not report success until the configuration has been read, accepted and applied **and every worker is listening**, so `cpdy -c config.json && ...` behaves as written: a rejected configuration and a socket that cannot be bound both exit non-zero, and neither leaves a process behind. The detaching parent waits for that moment, which means the server is already accepting connections by the time the command returns.
 
 ## Hot reload
 

@@ -111,7 +111,7 @@ After receiving `Alt-Svc: h3=":443"; ma=86400` the browser tries HTTP/3 in the b
 - A connection follows its datagrams: after a migration it is moved to whichever worker the kernel now delivers them to
 - Client address validation: Retry token (`auto`/`always`/`never` policy) and `NEW_TOKEN` for returning clients; on hitting the connection limit the client gets `CONNECTION_REFUSED` instead of silence
 - Anti-amplification protection (3×)
-- IPv4 (IPv6 endpoints are not supported yet)
+- IPv4 and IPv6: the family comes from the virtual host's `ip`; serving one site on both means two `servers` entries differing only in the address
 
 ### HTTP/3
 
@@ -453,7 +453,7 @@ Example:
 | **CUBIC / BBR** | Yes | Both are selected with `http3_cc`; BBR requires `http3_pacing` |
 | **UDP GSO** | Yes | Batched sends through `UDP_SEGMENT` |
 | **GRO / ECN / DPLPMTUD** | Yes | GRO receive, validated ECN, and path-MTU probing with fallback |
-| **IPv6 endpoint** | No | The QUIC endpoint binds IPv4 only. HTTP/1.1 and HTTP/2 over TCP are unaffected |
+| **IPv6 endpoint** | Yes | `"ip": "::1"` or `"ip": "[::1]"` -- both TCP and UDP listen on that address. The socket is v6-only, so both families means two `servers` entries sharing one port number |
 | **QUIC v2 (RFC 9369)** | No | A client offering an unknown version gets a Version Negotiation packet and comes back on v1, which is the correct answer; v2 itself exists mainly as an anti-ossification measure |
 | **qlog** | No | The QUIC event log is not implemented — only a compile-time stub exists in the code |
 
