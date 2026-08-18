@@ -441,6 +441,81 @@ Example:
 }
 ```
 
+### Diagnostics: counters and qlog
+
+An encrypted binary protocol over a lossy transport cannot be debugged by
+reading a capture: without keys there is nothing to see in a datagram, and the
+response says nothing about what happened on the way. HTTP/3 therefore has two
+instruments, answering different questions. `/metrics` says **how often**
+something happens across the process; a qlog says **in what order** it happened
+to one connection.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `http3_qlog_dir` | `""` | Directory for traces. Empty — qlog is off |
+| `http3_qlog_connections` | `10` | How many consecutive connections to log (0–100000) |
+
+```json
+{ "main": { "env": {
+    "http3_qlog_dir": "/var/log/cwfr/qlog",
+    "http3_qlog_connections": 10
+} } }
+```
+
+The directory is created when the configuration loads; if it cannot be created
+the server refuses to start rather than quietly writing nothing. Each connection
+gets a `<original destination connection id>.sqlog` file — one record per event
+in JSON-SEQ (RFC 7464), the format existing visualisers read (qvis,
+qvis.quictools.info): congestion-window, RTT and stream diagrams come out of it
+with no preparation at all.
+
+The `http3_qlog_connections` limit is not decoration: a file per connection under
+load is a denial of service arranged by your own debugging. The first N
+connections after a configuration load are counted; a reload re-arms the budget,
+so qlog can be switched on for a running server by reloading its configuration —
+the next N connections get traces. Lines are written unbuffered: a log that loses
+its tail is worthless in exactly the case it is most often opened for — a
+connection that hung, where the answer is in the last events before the silence.
+
+Events: `connectivity:connection_started` / `connection_state_updated` /
+`connection_closed`, `transport:packet_sent` / `packet_received` /
+`packet_dropped` (with a reason) / `parameters_set` / `ecn_state_updated`,
+`recovery:metrics_updated` (window, bytes in flight, RTT), `packet_lost`,
+`congestion_state_updated`, `loss_timer_expired`, `mtu_probe_sent` /
+`mtu_probe_lost` / `mtu_updated`.
+
+In `/metrics`, the `quic` section answers the questions about the mechanisms
+that work silently and fail just as silently:
+
+```
+"recv.gro_messages": 4,      "recv.gro_segments": 8,
+"ecn.tx_marked": 16,         "ecn.rx.ce": 0,
+"ecn.validated": 0,          "ecn.validation_failed": 4,
+"pmtu.probes_sent": 1,       "pmtu.probes_succeeded": 1,
+"pmtu.probes_lost": 0,       "pmtu.blackholes": 0,
+"pmtu_bytes": { "samples": 1, "avg": 1472, "hist": { ... } }
+```
+
+`recv.gro_*` — receive offload (`UDP_GRO`): the kernel hands back several
+datagrams in one buffer and the server splits it again. `segments` over
+`messages` is the coalescing factor; zero under load means the kernel or the
+container refused `UDP_GRO` — and there is no other way to learn that, since the
+option failing is deliberately not fatal.
+
+`ecn.*` — ECN fails more quietly than anything else here: the server marks
+packets, a middlebox bleaches or rewrites the codepoints, RFC 9000 §13.4.2
+validation turns ECN off for the connection, and from outside it looks like a
+path that never congests. The `validated` / `validation_failed` pair separates
+"this path does not do ECN" from "this path mangles it". `ecn.ce_congestion` is a
+congestion response with not a single packet lost — the whole point of ECN, and
+invisible in `packets_lost`.
+
+`pmtu.*` — the packet-size search (RFC 8899). `probes_sent` against
+`probes_succeeded` says whether the search ever finishes, `blackholes` that a
+raised size had to be taken back after repeated PTOs, and the `pmtu_bytes`
+histogram shows where the mass sits: every connection at the 1350-byte base and
+every connection at 1472 are two very different servers.
+
 ## Limitations
 
 | Feature | Status | Comment |
@@ -455,7 +530,7 @@ Example:
 | **GRO / ECN / DPLPMTUD** | Yes | GRO receive, validated ECN, and path-MTU probing with fallback |
 | **IPv6 endpoint** | Yes | `"ip": "::1"` or `"ip": "[::1]"` -- both TCP and UDP listen on that address. The socket is v6-only, so both families means two `servers` entries sharing one port number |
 | **QUIC v2 (RFC 9369)** | No | A client offering an unknown version gets a Version Negotiation packet and comes back on v1, which is the correct answer; v2 itself exists mainly as an anti-ossification measure |
-| **qlog** | No | The QUIC event log is not implemented — only a compile-time stub exists in the code |
+| **qlog** | Yes, on request | QUIC event log in JSON-SEQ (`.sqlog`), opens in qvis. Enabled with `http3_qlog_dir`, off by default |
 
 ## Verification
 
