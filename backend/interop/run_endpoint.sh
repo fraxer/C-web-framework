@@ -30,13 +30,15 @@ case "$TESTCASE" in
     http3|handshake|transfer|longrtt|chacha20|multiplexing|retry|resumption|\
     multiconnect|blackhole|handshakeloss|transferloss|handshakecorruption|\
     transfercorruption|rebind-port|rebind-addr|amplificationlimit|goodput|\
-    crosstraffic) ;;
+    crosstraffic|v2) ;;
 
     # Declined on purpose, each for a reason that is a real gap rather than a
     # configuration choice:
     #   ipv6                 -- the socket layer is AF_INET only (docs/http3/01)
-    #   zerortt              -- 0-RTT is phase 9; early data is refused outright
-    #   v2                   -- QUIC v2 is phase 9
+    #   zerortt              -- 0-RTT exists since 2026-08-15 but is off by
+    #                           default and this endpoint has never been asked
+    #                           to turn it on; the case is still declined rather
+    #                           than reported as passing untested
     #   connectionmigration  -- needs a server preferred_address, which we never
     #                           offer (the transport parameter is parsed and
     #                           deliberately not produced)
@@ -55,10 +57,17 @@ CONFIG=/tmp/interop.json
 RETRY=auto
 CIPHERS="TLS_AES_128_GCM_SHA256 TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256"
 
+# QUIC v2 is off by default (09-options.md §5 rule 1) and the `v2` case is the
+# one that needs it. Left off elsewhere on purpose: every other case is supposed
+# to run in v1, and a server that quietly upgraded them would be testing v2
+# under twenty other names.
+VERSION_2=false
+
 case "$TESTCASE" in
     retry)     RETRY=always ;;
     handshake) RETRY=never ;;
     chacha20)  CIPHERS="TLS_CHACHA20_POLY1305_SHA256" ;;
+    v2)        VERSION_2=true ;;
 esac
 
 # Counters are on, and `/metrics` is served over the TCP listener (docs/http3/08
@@ -93,6 +102,7 @@ cat > "$CONFIG" <<EOF
             "http3_so_rcvbuf": 4194304,
             "http3_max_connections": 1024,
             "http3_retry": "$RETRY",
+            "http3_version_2": $VERSION_2,
             "metrics": true
         }
     },
