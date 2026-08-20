@@ -18,6 +18,26 @@ Documentation is available at: [https://cwebframework.tech/en/introduction.html]
 * **Cookie** - full cookie support with secure, httpOnly, sameSite settings
 * **Gzip compression** - automatic response compression for supported content types
 * **TLS/SSL** - secure connections with configurable cipher suites
+* **IPv4 and IPv6** - the `ip` field of a server accepts either address family
+* **HTTP client** - outbound HTTP/1.1 client for API calls and proxying
+
+### HTTP/2
+* **HTTP/2 server** (RFC 9113) - negotiated via TLS ALPN, or cleartext upgrade (h2c: `Upgrade` header and prior-knowledge preface sniffing)
+* **Multiplexing** - concurrent streams over one connection with per-stream flow control and a configurable receive window
+* **HPACK** - own header compression with static table and Huffman coding
+* **Trailers and 103 Early Hints** - response trailers and early hints staged on the stream
+* **WebSocket over HTTP/2** - Extended CONNECT (RFC 8441): the same WebSocket handlers run inside an h2 tunnel
+* **Lifecycle** - two-stage GOAWAY drain, PING keep-alive, SETTINGS ACK timeout
+* **Hardening** - MAX_HEADER_LIST_SIZE, CONTINUATION frame cap, rapid-reset budget; all `http2_*` limits are tunable at runtime
+
+### HTTP/3 over QUIC (opt-in: `-DINCLUDE_HTTP3=yes`)
+* **Own QUIC stack** - TLS 1.3 handshake driven through the OpenSSL QUIC TLS API (`SSL_set_quic_tls_cbs`, needs OpenSSL >= 3.5), ACK processing, loss recovery, congestion control with pacing
+* **Connection migration** - connection IDs and endpoint rebinding
+* **HTTP/3 server** (RFC 9114) with QPACK header compression
+* **0-RTT early data** - enabled with `http3_early_data`
+* **QUIC v2 (RFC 9369) and compatible version negotiation (RFC 9368)** - behind `http3_version_2`
+* **Keep-alive and idle timeout**, UDP GSO batching for outbound datagrams
+* **qlog** - JSON-SEQ traces viewable in qvis (`http3_qlog_dir`)
 
 ### WebSocket
 * **WebSocket server** - full WebSocket protocol support
@@ -25,6 +45,7 @@ Documentation is available at: [https://cwebframework.tech/en/introduction.html]
 * **Custom channels** - named channel creation with recipient filtering
 * **JSON over WebSocket** - built-in JSON message support
 * **WebSocket middleware** - middleware handler system for WebSocket
+* **Transport independence** - the same handlers serve HTTP/1.1 upgrade and HTTP/2 Extended CONNECT tunnels
 
 ### Databases
 * **PostgreSQL** - native support with prepared statements
@@ -54,7 +75,7 @@ Documentation is available at: [https://cwebframework.tech/en/introduction.html]
 * **File upload** - multipart upload processing with storage saving
 
 ### Email
-* **SMTP client** - email sending via SMTP
+* **SMTP client** - email sending via SMTP, including asynchronous sending
 * **DKIM signature** - DKIM signature support for sender authentication
 * **Email templates** - email template support
 
@@ -81,15 +102,17 @@ Documentation is available at: [https://cwebframework.tech/en/introduction.html]
 
 ### Performance and Scalability
 * **Event-Driven Architecture** - epoll-based architecture
-* **Multithreading** - multiple worker thread support
+* **Multiprocessing and multithreading** - worker processes with per-worker handler threads
 * **Connection pool** - database connection reuse
 * **Rate Limiting** - request rate limiting (DDoS protection)
-* **Hot reload** - application updates without server restart
+* **Hot reload** - application updates without server restart (`"reload": "soft"` keeps connections, `"hard"` restarts workers)
+* **Observability** - concurrency counters exposed as JSON at `GET /metrics` (off unless `"metrics": true`)
 
 ### Utilities and Data Structures
 * **String (str_t)** - dynamic strings with SSO optimization
 * **Array** - dynamic arrays
 * **HashMap/Map** - associative arrays for fast lookup
+* **Arena** - region allocator for per-request objects
 * **Buffer objects (bufo) / queue (cqueue)** - reusable buffers and FIFO queue
 * **JSON structures** - working with JSON as objects
 * **JWT** - JSON Web Token signing/verification
@@ -111,86 +134,98 @@ Documentation is available at: [https://cwebframework.tech/en/introduction.html]
 
 ```
 project/
-└── backend/
-    ├── core/                          # Framework core (git submodule)
-    │   ├── apps/                      # Executables
-    │   │   ├── server/                #   → cwfr (the web server)
-    │   │   └── migrate/               #   → migrate (DB migration CLI)
-    │   ├── framework/                 # Framework components
-    │   │   ├── database/             # PostgreSQL, MySQL, Redis, SQLite
-    │   │   ├── model/                # ORM model system (mfield / mschema / mparams)
-    │   │   ├── session/              # Sessions (file / redis / db) + AES-256-GCM
-    │   │   ├── storage/              # File storage (FS, S3)
-    │   │   ├── view/                 # Template engine
-    │   │   ├── middleware/           # Middleware system
-    │   │   ├── taskmanager/          # Scheduled task runner
-    │   │   └── translation/          # i18n translation
-    │   ├── protocols/                # Protocol implementations
-    │   │   ├── http/                 # HTTP/1.1 server and client
-    │   │   ├── websocket/            # WebSocket server
-    │   │   └── smtp/                 # SMTP client, DKIM
-    │   ├── src/                      # Core runtime
-    │   │   ├── server/               # HTTP server
-    │   │   ├── multiplexing/         # Epoll multiplexing
-    │   │   ├── thread/               # Multithreading
-    │   │   ├── connection/           # Connection management
-    │   │   ├── socket/               # Socket abstraction
-    │   │   ├── route/                # Routing system
-    │   │   ├── domain/               # Virtual hosts / domains (regex, IDN)
-    │   │   ├── config/               # Config loading (JSON)
-    │   │   ├── ratelimiter/          # Rate limiting
-    │   │   ├── moduleloader/         # Dynamic .so loading
-    │   │   ├── broadcast/            # Broadcasting system
-    │   │   ├── mimetype/             # MIME type detection
-    │   │   ├── openssl/              # OpenSSL helpers
-    │   │   └── signal/               # Signal handling
-    │   ├── misc/                     # Utilities (headers + small .c)
-    │   │   ├── str.h                 # Dynamic strings (SSO)
-    │   │   ├── array.h               # Arrays
-    │   │   ├── hashmap.h / map.h     # Associative arrays
-    │   │   ├── json.h                # JSON parser/generator
-    │   │   ├── jwt.h                 # JSON Web Tokens
-    │   │   ├── uuid.h                # UUIDs
-    │   │   ├── sha1.h / sha256.h     # Hashing
-    │   │   ├── base64.h              # Base64
-    │   │   ├── i18n.h / idn_utils.h  # i18n + IDN domains
-    │   │   ├── log.h                 # Logging
-    │   │   └── gzip.h                # Gzip compression
-    │   └── tests/                    # Unit/integration tests (core, db, unit)
-    │
-    └── app/                           # User application
-        ├── routes/                    # HTTP / WebSocket handlers (compiled to .so)
-        │   ├── auth/                 # Authentication (login, registration)
-        │   ├── index/                # Main page / WebSocket entry
-        │   ├── ws/                   # WebSocket handlers
-        │   ├── files/                # File operations
-        │   ├── models/               # Model CRUD API
-        │   ├── email/                # Email sending
-        │   ├── db/                   # Database examples
-        │   ├── json/                 # JSON handling examples
-        │   ├── httpclient/           # Outbound HTTP client examples
-        │   └── middleware/           # Middleware examples
-        ├── models/                    # Data models (ORM)
-        │   ├── user.c / role.c / permission.c
-        │   ├── user_role.c / role_permission.c   # junction tables (RBAC)
-        │   ├── *view.c                            # view models (JOIN queries)
-        │   └── prepare_statements.c               # named prepared statements
-        ├── middlewares/               # Custom middleware
-        │   ├── httpmiddlewares.c     # HTTP middleware (auth, rate limit)
-        │   ├── wsmiddlewares.c       # WebSocket middleware
-        │   └── middlewarelist.c      # registers middleware by name for config.json
-        ├── contexts/                  # Request contexts (httpctx.c, wsctx.c)
-        ├── auth/                      # Authentication module
-        │   ├── auth.c                # password hashing, authenticate()
-        │   ├── password_validator.c  # password validation
-        │   └── email_validator.c     # email validation
-        ├── migrations/                # Database migrations (int up(const char* dbid))
-        │   ├── s1/                    # Migrations for server s1
-        │   └── s2/                    # Migrations for server s2
-        ├── broadcasting/              # Broadcasting channels
-        └── views/                     # Templates (.tpl)
-
-    config.json                        # Application configuration
+├── backend/
+│   ├── core/                          # Framework core (git submodule)
+│   │   ├── apps/                      # Executables
+│   │   │   ├── server/                #   → cwfr (the web server)
+│   │   │   └── migrate/               #   → migrate (DB migration CLI)
+│   │   ├── protocols/                 # Protocol implementations
+│   │   │   ├── http/                  # HTTP/1.1 server + client, h2c upgrade
+│   │   │   ├── http2/                 # HTTP/2 server (frames, HPACK, WebSocket-over-h2)
+│   │   │   ├── http3/                 # HTTP/3 server (frames, QPACK)
+│   │   │   ├── quic/                  # QUIC transport (crypto, ACK, loss, congestion control)
+│   │   │   ├── hq/                    # HTTP/0.9 interop shim (build flag, not for production)
+│   │   │   ├── websocket/             # WebSocket server + broadcast wrappers
+│   │   │   └── smtp/                  # SMTP client, DKIM
+│   │   ├── framework/                 # Framework components
+│   │   │   ├── database/              # PostgreSQL, MySQL, Redis, SQLite
+│   │   │   ├── model/                 # ORM model system (mfield / mschema / mparams)
+│   │   │   ├── session/               # Sessions (file / redis / db) + AES-256-GCM
+│   │   │   ├── storage/               # File storage (FS, S3)
+│   │   │   ├── view/                  # Template engine
+│   │   │   ├── middleware/            # Middleware system
+│   │   │   ├── taskmanager/           # Scheduled task runner
+│   │   │   └── translation/           # i18n translation
+│   │   ├── src/                       # Core runtime
+│   │   │   ├── server/                # HTTP server
+│   │   │   ├── multiplexing/          # Epoll multiplexing
+│   │   │   ├── thread/                # Multithreading
+│   │   │   ├── connection/            # Connection management
+│   │   │   ├── socket/                # Socket abstraction
+│   │   │   ├── udp/                   # UDP socket + QUIC endpoint (GSO)
+│   │   │   ├── route/                 # Routing system
+│   │   │   ├── domain/                # Virtual hosts / domains (regex, IDN)
+│   │   │   ├── config/                # Config loading (JSON)
+│   │   │   ├── ratelimiter/           # Rate limiting
+│   │   │   ├── moduleloader/          # Dynamic .so loading + reload
+│   │   │   ├── broadcast/             # Broadcasting system
+│   │   │   ├── metrics/               # Concurrency counters (/metrics)
+│   │   │   ├── mimetype/              # MIME type detection
+│   │   │   ├── openssl/               # OpenSSL helpers
+│   │   │   └── signal/                # Signal handling
+│   │   ├── misc/                      # Utilities (headers + small .c)
+│   │   │   ├── str.h                  # Dynamic strings (SSO)
+│   │   │   ├── array.h                # Arrays
+│   │   │   ├── hashmap.h / map.h      # Associative arrays
+│   │   │   ├── json.h                 # JSON parser/generator
+│   │   │   ├── jwt.h                  # JSON Web Tokens
+│   │   │   ├── uuid.h                 # UUIDs
+│   │   │   ├── sha1.h / sha256.h      # Hashing
+│   │   │   ├── base64.h               # Base64
+│   │   │   ├── ipaddr.h               # IPv4/IPv6 address parsing
+│   │   │   ├── i18n.h / idn_utils.h   # i18n + IDN domains
+│   │   │   ├── arena.h, bufo.h, cqueue.h  # Arena, buffer objects, FIFO queue
+│   │   │   ├── log.h                  # Logging
+│   │   │   └── gzip.h                 # Gzip compression
+│   │   └── tests/                     # Unit/integration tests + ci.sh gate
+│   │
+│   ├── app/                           # User application
+│   │   ├── routes/                    # HTTP / WebSocket handlers (compiled to .so)
+│   │   │   ├── auth/                  # Authentication (login, registration)
+│   │   │   ├── index/                 # Main page / WebSocket entry
+│   │   │   ├── ws/                    # WebSocket handlers
+│   │   │   ├── files/                 # File operations
+│   │   │   ├── models/                # Model CRUD API
+│   │   │   ├── email/                 # Email sending
+│   │   │   ├── db/                    # Database examples
+│   │   │   ├── json/                  # JSON handling examples
+│   │   │   ├── httpclient/            # Outbound HTTP client examples
+│   │   │   ├── middleware/            # Middleware examples
+│   │   │   └── bench/                 # /metrics counter endpoint
+│   │   ├── models/                    # Data models (ORM)
+│   │   │   ├── user.c / role.c / permission.c
+│   │   │   ├── user_role.c / role_permission.c   # junction tables (RBAC)
+│   │   │   ├── *view.c                            # view models (JOIN queries)
+│   │   │   └── prepare_statements.c               # named prepared statements
+│   │   ├── middlewares/               # Custom middleware
+│   │   │   ├── httpmiddlewares.c      # HTTP middleware (auth, rate limit)
+│   │   │   ├── wsmiddlewares.c        # WebSocket middleware
+│   │   │   └── middlewarelist.c       # registers middleware by name for config.json
+│   │   ├── contexts/                  # Request contexts (httpctx.c, wsctx.c)
+│   │   ├── auth/                      # Authentication module
+│   │   │   ├── auth.c                 # password hashing, authenticate()
+│   │   │   ├── password_validator.c   # password validation
+│   │   │   └── email_validator.c      # email validation
+│   │   ├── migrations/                # Database migrations (int up(const char* dbid))
+│   │   │   ├── s1/                    # Migrations for server s1
+│   │   │   └── s2/                    # Migrations for server s2
+│   │   ├── broadcasting/              # Broadcasting channels
+│   │   └── views/                     # Templates (.tpl)
+│   │
+│   └── config.json                    # Application configuration
+│
+└── frontend/                          # VitePress documentation site
+    └── docs/                          # Russian docs at the root, English mirror in docs/en/
 ```
 
 ## Usage Examples
@@ -204,7 +239,7 @@ project/
 void my_handler(httpctx_t* ctx) {
     // Get query parameter
     int ok = 0;
-    const char* name = query_param_char(ctx->request, "name", &ok);
+    const char* name = query_param_char(ctx->request->query_, "name", &ok);
 
     // Get JSON from request body
     json_doc_t* doc = ctx->request->get_payload_json(ctx->request);
@@ -227,25 +262,26 @@ void my_handler(httpctx_t* ctx) {
 
 ```c
 #include "websockets.h"
-#include "broadcast.h"
 
-void ws_join_channel(wsctx_t* ctx) {
-    // Join broadcasting channel
-    broadcast_add("my_channel", ctx->request->connection,
-                  user_id_struct, send_callback);
+void channel_join(wsctx_t* ctx) {
+    mybroadcast_id_t* id = mybroadcast_id_create();
+
+    // Subscribe: on HTTP/1.1 the connection joins the channel, on an RFC 8441
+    // tunnel (WebSocket over h2) it is that one stream
+    websockets_broadcast_add("my_channel", ctx->request, id, mybroadcast_send_data);
 
     ctx->response->send_data(ctx, "Joined channel");
 }
 
-void ws_send_message(wsctx_t* ctx) {
+void channel_send(wsctx_t* ctx) {
     websockets_protocol_resource_t* protocol =
         (websockets_protocol_resource_t*)ctx->request->protocol;
 
     char* message = protocol->get_payload(protocol);
 
-    // Send message to everyone in channel
-    broadcast_send("my_channel", ctx->request->connection,
-                   message, strlen(message), filter_struct, compare_func);
+    // Send message to the channel, suppressing the sender's own subscription
+    websockets_broadcast_send("my_channel", ctx->request,
+                              message, strlen(message), NULL, NULL);
 
     free(message);
 }
@@ -346,7 +382,7 @@ void secret_page(httpctx_t* ctx) {
 
 void upload_file(httpctx_t* ctx) {
     // Get uploaded file
-    file_content_t content = ctx->request->payload_filef(ctx->request, "myfile");
+    file_content_t content = ctx->request->get_payload_filef(ctx->request, "myfile");
 
     if (!content.ok) {
         ctx->response->send_data(ctx->response, "File not found");
@@ -361,17 +397,8 @@ void upload_file(httpctx_t* ctx) {
 }
 
 void download_file(httpctx_t* ctx) {
-    // Get file from local storage
-    file_t file = storage_file_get("local", "/path/to/file.txt");
-
-    if (!file.ok) {
-        ctx->response->send_data(ctx->response, "File not found");
-        return;
-    }
-
-    // Send file to client
-    ctx->response->send_file(ctx->response, file.path);
-    file.close(&file);
+    // Stream a file straight out of a named storage
+    ctx->response->send_filef(ctx->response, "local", "uploads/report.txt");
 }
 ```
 
@@ -400,7 +427,7 @@ void send_email(httpctx_t* ctx) {
 
 ## Configuration
 
-The framework uses `config.json` for centralized configuration:
+The framework uses `config.json` for centralized configuration. Runtime tuning keys (`metrics`, the `http2_*` and `http3_*` limits) are read from the `main.env` map and from the process environment:
 
 ```json
 {
@@ -556,18 +583,21 @@ The framework uses `config.json` for centralized configuration:
 ## System Requirements
 
 * **Glibc** 2.35 or higher
-* **GCC** 9.5.0 or higher
+* **GCC** 9.5.0 or higher (10+ enables the static analyzer in debug builds)
 * **CMake** 3.12.4 or higher
 * **PCRE** 8.43 (Regular Expression Library)
 * **Zlib** 1.2.11 (data compression library)
-* **OpenSSL** 1.1.1k or higher
+* **OpenSSL** 1.1.1k or higher (3.5+ required for HTTP/3)
 * **LibXml2** 2.9.13
+* **libidn2** (internationalized domain names)
+* **libunistring** (Unicode string handling)
+* **Argon2** (linked by the framework shared library)
 
 ### Optional Dependencies:
 * **PostgreSQL** development libraries (for PostgreSQL support)
 * **MySQL/MariaDB** development libraries (for MySQL support)
-* **Redis** (for Redis sessions and caching)
-* **SQLite** development libraries (for embedded SQLite support)
+* **hiredis** (for Redis sessions and caching)
+* **SQLite 3** development libraries (for embedded SQLite support)
 
 ## Building the Project
 
@@ -582,6 +612,9 @@ cmake .. -DCMAKE_BUILD_TYPE=Release \
          -DINCLUDE_REDIS=yes \
          -DINCLUDE_SQLITE=yes
 
+# HTTP/3 over QUIC is opt-in and needs OpenSSL >= 3.5
+# cmake .. -DCMAKE_BUILD_TYPE=Release -DINCLUDE_HTTP3=yes
+
 # Build
 cmake --build . -j4
 
@@ -594,8 +627,10 @@ cmake --build . -j4
 
 ### Build Modes:
 * **Release** - optimized version for production
-* **Debug** - version with debug symbols and AddressSanitizer
-* **RelWithDebInfo** - optimized version with debug information
+* **Debug** - debug symbols, AddressSanitizer + leak detection, `-fanalyzer` on GCC >= 10
+* **RelWithDebInfo** - optimized version with debug information (also sanitized)
+* **ThreadSanitizer** - `-DSANITIZE=thread` (mutually exclusive with ASan)
+* **Tests** - `-DBUILD_TESTS=yes` builds the core unit/integration tests
 
 ## Key Highlights
 
@@ -603,13 +638,14 @@ cmake --build . -j4
 * **Zero-copy** operations where possible
 * **Connection pool** to databases to minimize overhead
 * **Epoll** for efficient I/O multiplexing
+* **UDP GSO** batching for QUIC datagrams
 * **SSO (Small String Optimization)** for strings
 * **Lazy-loading** of configuration and modules
 
 ### Security
 * **Prepared statements** for SQL injection protection
 * **Input data validation** at all levels
-* **HTTPS/TLS** with modern cipher suites
+* **HTTPS/TLS** with modern cipher suites (TLS 1.3 for HTTP/3)
 * **Secure cookie** with httpOnly and sameSite flags
 * **Rate limiting** for DDoS protection
 * **DKIM** signatures for email authentication
@@ -646,4 +682,3 @@ The framework is suitable for developing:
 ## Documentation
 
 Full documentation is available at: [https://cwebframework.tech/en/introduction.html](https://cwebframework.tech/en/introduction.html)
-
