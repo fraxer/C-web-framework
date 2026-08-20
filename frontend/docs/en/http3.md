@@ -112,6 +112,7 @@ After receiving `Alt-Svc: h3=":443"; ma=86400` the browser tries HTTP/3 in the b
 - Client address validation: Retry token (`auto`/`always`/`never` policy) and `NEW_TOKEN` for returning clients; on hitting the connection limit the client gets `CONNECTION_REFUSED` instead of silence
 - Anti-amplification protection (3×)
 - IPv4 and IPv6: the family comes from the virtual host's `ip`; serving one site on both means two `servers` entries differing only in the address
+- **QUIC v2 (RFC 9369)** and compatible version negotiation (RFC 9368) — behind `http3_version_2`, off by default
 
 ### HTTP/3
 
@@ -192,6 +193,50 @@ As with HTTP/2, the low-level parameters are environment variables from the `mai
 `http3_stateless_reset_rate` / `http3_stateless_reset_burst` — a stateless reset answers a packet addressed to a connection ID that no longer exists: the server was restarted, the connection timed out. The client needs that answer to stop waiting, but each one costs a key derivation, so spraying random CIDs must not buy computation from us — the bucket stops it.
 
 `http3_version_negotiation_rate` / `http3_version_negotiation_burst` — Version Negotiation replies to a client offering an unknown QUIC version. The reply costs the sender nothing, so it is limited separately: this is the cleanest traffic-amplification candidate from a spoofed address.
+
+### Protocol versions: QUIC v2
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `http3_version_2` | `false` | Serve QUIC v2 (RFC 9369) and move connections onto it per RFC 9368 |
+
+QUIC v2 is not a new protocol. It is v1 with four constants moved: a different
+salt for the Initial keys, a `quicv2 ` prefix on the packet-protection labels, a
+different Retry integrity key, and the four long-header type codes rotated.
+Nothing else changes. The point of that shuffle is neither speed nor features
+but ossification: middleboxes that learned to parse "QUIC" from v1's constants
+trip over v2 and so reveal themselves while it can still be fixed.
+
+```json
+{ "main": { "env": { "http3_version_2": true } } }
+```
+
+**Off, the option does not "barely matter" — it does not matter at all.** The
+server does not name v2 in a Version Negotiation packet, does not accept an
+Initial of that version (it answers Version Negotiation instead), and does not
+send the `version_information` transport parameter — it stays exactly the
+RFC 9000 server it was.
+
+On, it gives two things:
+
+- a client that speaks v2 outright is served on v2;
+- a client that started on v1 and listed v2 in its own `version_information` is
+  **moved onto v2 by the very first reply flight** — that is compatible version
+  negotiation (RFC 9368 §2.3), and it costs no extra round trip.
+
+::: tip The first packet of a new version is an announcement
+The client learns about the switch from the Version field of a long header, and
+the standard entitles it to read **only that** from this packet and discard the
+rest of its contents. So the server puts nothing important there: the ServerHello
+goes in the next packet. Implementations that pack the handshake into the
+announcement get a handshake that stalls until the idle timeout while both ends
+behave perfectly correctly.
+:::
+
+Whether anybody actually uses v2 is a question for `/metrics` (see
+"Diagnostics"): an option that is enabled and an option that is working are
+different facts, because middleboxes dropping unknown versions make it a no-op
+silently.
 
 ### Address validation (Retry)
 
@@ -516,6 +561,20 @@ raised size had to be taken back after repeated PTOs, and the `pmtu_bytes`
 histogram shows where the mass sits: every connection at the 1350-byte base and
 every connection at 1472 are two very different servers.
 
+With `http3_version_2` on, two more counters appear:
+
+```
+"version2.connections": 12,  "version2.negotiated": 9
+```
+
+`version2.connections` — how many connections were served over v2;
+`version2.negotiated` — how many of those got there by compatible negotiation
+rather than by the client asking for v2 outright. The first separates "the
+option is enabled" from "the option is used": a zero under real load means v2
+never reaches the server — most likely a middlebox is dropping it, and nothing
+else will report that. The second separates a server that advertises v2 and
+moves nobody from one whose clients simply prefer v1.
+
 ## Limitations
 
 | Feature | Status | Comment |
@@ -529,7 +588,7 @@ every connection at 1472 are two very different servers.
 | **UDP GSO** | Yes | Batched sends through `UDP_SEGMENT` |
 | **GRO / ECN / DPLPMTUD** | Yes | GRO receive, validated ECN, and path-MTU probing with fallback |
 | **IPv6 endpoint** | Yes | `"ip": "::1"` or `"ip": "[::1]"` -- both TCP and UDP listen on that address. The socket is v6-only, so both families means two `servers` entries sharing one port number |
-| **QUIC v2 (RFC 9369)** | No | A client offering an unknown version gets a Version Negotiation packet and comes back on v1, which is the correct answer; v2 itself exists mainly as an anti-ossification measure |
+| **QUIC v2 (RFC 9369)** | Yes, on request | `http3_version_2`, off by default. It brings compatible version negotiation (RFC 9368) with it: a connection started on v1 is moved to v2 with no extra round trip. Left off, the old behaviour stands — an unknown version gets a Version Negotiation packet and the client comes back on v1 |
 | **qlog** | Yes, on request | QUIC event log in JSON-SEQ (`.sqlog`), opens in qvis. Enabled with `http3_qlog_dir`, off by default |
 
 ## Verification
