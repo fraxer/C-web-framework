@@ -40,6 +40,35 @@ List of MIME types to compress automatically. Leave empty to disable compression
 
 Listing a type makes it *negotiable*, not always compressed. A response is gzipped only when it is at least 1 KB and the request's `Accept-Encoding` allows it — `gzip` named outright, or `*` when it is not; `gzip;q=0` is a refusal, and a request with no `Accept-Encoding` at all gets the uncompressed bytes. Every answer whose type is on this list carries `Vary: Accept-Encoding`, compressed or not, so a shared cache keys the two representations apart; their `ETag`s differ too (the compressed one ends in `-gzip`).
 
+Compressing static files is expensive, and the cost is paid again on every request: a 92 KB file spends ~410 µs of CPU inside zlib — four times everything else the response does. Two [`main.env`](#env) settings take that work away, each in its own way; both are off by default.
+
+#### gzip_static <Badge type="info" text="boolean"/> <Badge type="tip" text="main.env"/>
+
+Serve a ready-made `<file>.gz` when one sits next to the file. Frontend builds usually know how to write them, and then the server compresses nothing at all: the body goes out from disk with a `Content-Length` instead of `chunked`.
+
+The twin is used only when it is **not older** than the original — a stale build artefact is never served, and runtime compression takes over instead. The check costs one `open()` and runs only for responses that would have been compressed anyway (type listed in `main.gzip`, client accepts gzip, at least 1 KB), so a client that asked for no compression never pays for it.
+
+```json
+"env": { "gzip_static": true }
+```
+
+#### gzip_cache_size, gzip_cache_max_file <Badge type="info" text="numbers"/> <Badge type="tip" text="main.env"/>
+
+An in-memory cache of compressed representations: a file is compressed once, and every request after that gets the finished bytes. Useful where putting `.gz` files next to the originals is not an option.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `gzip_cache_size` | `0` (disabled) | Total memory budget for compressed representations, in bytes |
+| `gzip_cache_max_file` | `1048576` | Largest source file admitted into the cache, in bytes |
+
+```json
+"env": { "gzip_cache_size": 33554432, "gzip_cache_max_file": 1048576 }
+```
+
+An entry is keyed by path, `mtime` **and** the source file's size, so a rewritten file is never served with its old content: change any of the three and it is a different resource, compressed anew. The budget is kept by evicting the least recently used entries, and `gzip_cache_max_file` stops one large file from evicting everything else; an entry an unfinished response is still reading stays alive until that response is done, even after the cache has let go of it.
+
+The `ETag` does not depend on which path served the bytes: for a compressed representation it is weak (`W/"…-gzip"`) and describes the resource rather than the octets, so a cached answer, a `.gz` from disk and runtime compression are interchangeable to a client cache. The order is: `.gz` on disk first, then the in-memory cache, then compression on the fly.
+
 ### log <Badge type="info" text="object"/>
 
 Logging settings:
