@@ -39,10 +39,27 @@ Handler fields:
 
 Routes are checked **in declaration order** — the first match wins. There are two kinds of routes:
 
-* **Primitive** — a path with no parameters and no regex characters (`/`, `/api/users`). Matched by a fast character-by-character comparison.
-* **Parameterized / regex** — a path with `{...}` parameters or regex characters (`*`, `[`, `(`, `+`, `^`, `$`, `|`). Compiled into a PCRE regular expression.
+* **Primitive** — a path with no parameters and no regex operators (`/`, `/api/users`, `/api/v1.0`). Matched by a character-by-character comparison; when such a route does not match, the next one is tried straight away — no regular expression is run for it at all.
+* **Parameterized / regex** — a path with `{...}` parameters or regex operators (`*`, `+`, `(`, `)`, `[`, `]`, `|`, `^`, `$`, `\`). Compiled into a PCRE regular expression.
 
 If the matched route has no handler for the current method, matching continues with the remaining routes. If no route matches, a `404` is returned.
+
+### Dots and question marks
+
+In a **plain** path — one with no `{...}` parameters and not a single operator from the list above — a dot and a question mark stand for themselves: they are escaped when the location is parsed. The route `/api/v1.0` answers `/api/v1.0` only, and no longer matches `/api/v1x0`.
+
+As soon as one operator appears in the path, the whole string is read as a pattern and the dot means "any character" again — otherwise `/assets/(.*)` would stop capturing filenames with an extension. The same holds for paths with parameters: in `/files/{name|[a-z]+}.json` the dot matches any character, so `/files/abcxjson` fits that route too. When you mean the dot character itself, escape it yourself (the backslash is doubled in JSON):
+
+```json
+"routes": {
+    "/api/v1.0": {
+        "GET": { "file": "handlers/libapi.so", "function": "v1_0" }
+    },
+    "/files/{name|[a-z]+}\\.json": {
+        "GET": { "file": "handlers/libfiles.so", "function": "get_json" }
+    }
+}
+```
 
 ## Dynamic parameters
 
@@ -270,6 +287,8 @@ Redirects are described in the `http.redirects` section. The key is a PCRE regul
     }
 }
 ```
+
+A redirect location is **not anchored**, and it is matched against the request path without the query string: `"/user": "/persons"` fires on any path that contains `/user` — including `/api/user/42`. To have a redirect answer one exact path, anchor it: `"^/user$"`.
 
 ## WebSocket routes
 
