@@ -318,7 +318,7 @@ int middleware_security_headers(httpctx_t* ctx) {
 После замены файлов сертификата выполните горячую перезагрузку — она перечитывает `config.json` и создаёт новые SSL-контуры, не перезапуская процесс:
 
 ```bash
-kill -SIGUSR1 $(pidof cpdy)
+kill -SIGUSR1 $(pidof cwfr)
 ```
 
 Поведение перезагрузки задаётся параметром `main.reload` в `config.json`:

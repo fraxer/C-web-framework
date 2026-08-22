@@ -26,7 +26,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Release \
 cmake --build . -j$(nproc)
 
 # Run the application (config.json lives at the backend/ root)
-./exec/cpdy -c ../config.json
+./exec/cwfr -c ../config.json
 ```
 
 ## Dependencies
@@ -116,7 +116,7 @@ cmake .. -DCMAKE_C_COMPILER=/usr/bin/gcc-12
 backend/
 ├── core/                          # Framework core (submodule)
 │   ├── apps/                      # Executable entry points
-│   │   ├── server/                # → cpdy (main.c)
+│   │   ├── server/                # → cwfr (main.c)
 │   │   └── migrate/               # → migrate (main.c)
 │   ├── framework/                 # Framework components
 │   │   ├── database/              # DB layer (PostgreSQL, MySQL, Redis, SQLite)
@@ -200,7 +200,7 @@ After building, executables and libraries are placed in `build/exec`:
 
 ```
 build/exec/
-├── cpdy                           # Main executable
+├── cwfr                           # Main executable
 ├── migrate                        # Migration utility
 ├── handlers/                      # Compiled handlers (.so)
 │   ├── index/lib_index.so         #   lib_<file_name>.so under the group folder
@@ -219,22 +219,22 @@ Handlers are compiled one `.so` per source file (`app/routes/<group>/<name>.c` �
 
 ```bash
 # Run with a configuration file
-./exec/cpdy -c ../config.json
+./exec/cwfr -c ../config.json
 
 # Stay in the foreground (what containers and supervisors need)
-./exec/cpdy -c ../config.json -f
+./exec/cwfr -c ../config.json -f
 ```
 
 The application starts and listens on the ports defined in `config.json`. See [Configuration](./config.md) for details.
 
 A `Release` build detaches from the terminal unless `-f` is given. `-f` is what you want wherever a supervisor watches the process: to it, a process that forks and exits looks like one that crashed.
 
-**The exit status is meaningful in both modes.** The process does not report success until the configuration has been read, accepted and applied **and every worker is listening**, so `cpdy -c config.json && ...` behaves as written: a rejected configuration and a socket that cannot be bound both exit non-zero, and neither leaves a process behind. The detaching parent waits for that moment, which means the server is already accepting connections by the time the command returns.
+**The exit status is meaningful in both modes.** The process does not report success until the configuration has been read, accepted and applied **and every worker is listening**, so `cwfr -c config.json && ...` behaves as written: a rejected configuration and a socket that cannot be bound both exit non-zero, and neither leaves a process behind. The detaching parent waits for that moment, which means the server is already accepting connections by the time the command returns.
 
 ## Hot reload
 
 `SIGUSR1` reloads the configuration (`config.json`) without stopping the server:
 
 ```bash
-pkill -USR1 cpdy
+pkill -USR1 cwfr
 ```

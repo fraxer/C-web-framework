@@ -1,6 +1,6 @@
 ---
 outline: deep
-description: List of HTTP status codes supported by cpdy for use in responses
+description: List of HTTP status codes supported by cwfr for use in responses
 ---
 
 # HTTP status codes

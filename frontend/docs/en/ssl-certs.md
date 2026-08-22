@@ -320,7 +320,7 @@ Check the permissions on the certificate and key files. The server process must 
 After replacing the certificate files, perform a hot reload — it re-reads `config.json` and builds new SSL contexts without restarting the process:
 
 ```bash
-kill -SIGUSR1 $(pidof cpdy)
+kill -SIGUSR1 $(pidof cwfr)
 ```
 
 The reload behavior is controlled by the `main.reload` setting in `config.json`:

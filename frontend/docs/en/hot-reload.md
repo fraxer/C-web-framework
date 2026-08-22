@@ -10,16 +10,16 @@ interrupting in-flight requests. On the `SIGUSR1` signal, the server re-reads
 `config.json` and reinitializes its components: routes, `.so` handlers, database
 connections, storages, sessions, and the task scheduler.
 
-Hot reload updates configuration and handlers, but **not the `cpdy` binary itself** —
+Hot reload updates configuration and handlers, but **not the `cwfr` binary itself** —
 updating the framework core requires a full restart.
 
 ## Triggering a reload
 
 The reload event is attached to the `SIGUSR1` signal. Send it to the server process
-(`cpdy`) with either of:
+(`cwfr`) with either of:
 
 ```bash
-pkill -USR1 cpdy        # by process name
+pkill -USR1 cwfr        # by process name
 kill  -USR1 <pid>       # by process ID
 ```
 

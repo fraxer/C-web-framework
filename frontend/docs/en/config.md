@@ -1,92 +1,131 @@
 ---
 outline: deep
-description: Complete configuration reference for C Web Framework. Servers, databases, middleware, rate limiting, storages, sessions, tasks and email.
+description: Complete configuration reference for C Web Framework. Every section and key of config.json — main, env, servers, routes, ratelimits, TLS, HTTP/3, databases, storages, sessions, task_manager, translations, mail, mimetypes.
 ---
 
 # Configuration file
 
-Application configuration lives in `config.json` (passed via `cpdy -c <config>`). It describes servers, databases, storages, sessions, the task scheduler, email, and other components. Reload the configuration without stopping the server with `SIGUSR1` (`pkill -USR1 cpdy`) — the reload behavior is controlled by `main.reload`.
+The whole application is configured from a single JSON file; there are no separate `.env` files. The path is passed with `-c`:
+
+```bash
+./exec/cwfr -c /path/to/config.json      # daemonises (Release)
+./exec/cwfr -c /path/to/config.json -f   # stay in the foreground
+```
+
+`-f` is what you want under a supervisor or in a container: a process that forks and exits reads to systemd or docker as one that died immediately.
+
+Reload the configuration without stopping the server with `SIGUSR1` (`pkill -USR1 cwfr`); the behaviour is set by [`main.reload`](#reload). See [Hot reload](/en/hot-reload) for details.
+
+## How the configuration is read
+
+The file is parsed in full **before** the server listens on any socket, and any error stops start-up with a message in the journal (syslog, `journalctl -t cwfr`). The order is `main` → `servers` → `databases` → `storages` → `mimetypes` → `sessions` → `task_manager` → `translations` → `mail`, then the HTTP/2 and HTTP/3 policies from [`main.env`](#env).
+
+Two practical consequences:
+
+* **Handler paths are checked at start-up.** The `.so` files named in `routes` and `task_manager` are loaded immediately and the function names resolved through `dlsym`. A typo in a path or a function name means the server does not come up.
+* **The exit code means something.** The process does not report success until the config has been read, validated and applied, **and every worker is listening**. So `cwfr -c config.json && ...` does what it looks like it does.
+
+### Which sections are required
+
+| Section | Required | What happens without it |
+|---------|----------|-------------------------|
+| [`main`](#main-section) | **yes** | Start-up fails |
+| [`servers`](#servers-section) | **yes**, non-empty | Start-up fails |
+| [`mimetypes`](#mimetypes-section) | **yes**, non-empty | Start-up fails |
+| [`databases`](#databases-section) | no | No database access |
+| [`storages`](#storages-section) | no | No file storages |
+| [`sessions`](#sessions-section) | no | No sessions |
+| [`task_manager`](#task-manager-section) | no | The scheduler does not start |
+| [`translations`](#translations-section) | no | i18n disabled |
+| [`mail`](#mail-section) | no | DKIM fields empty, mail goes unsigned |
+| [`migrations`](#migrations-section) | no | Nothing: the section is not read at runtime |
 
 ## main section
 
-Core application settings.
+Required. **Every key below except `env` is mandatory** — a missing one stops start-up.
 
-### workers <Badge type="info" text="number"/>
+### workers <Badge type="info" text="number"/> <Badge type="danger" text="required"/>
 
-Number of worker processes/threads that accept connections and read/write data.
+How many workers accept connections and read/write data. Must be ≥ 1.
 
-### threads <Badge type="info" text="number"/>
+Workers are **threads of one process**, not separate processes. Anything documented as "per process" (the QUIC memory budget, the compressed-representation cache, the QUIC connection limit) therefore is *not* multiplied by their number.
 
-Number of threads that process requests and build responses.
+### threads <Badge type="info" text="number"/> <Badge type="danger" text="required"/>
 
-### reload <Badge type="info" text="soft | hard"/>
+How many threads run handlers and build responses. Must be ≥ 1. Kept separate from the workers on purpose: a slow handler must not stop the sockets from being read.
 
-Hot-reload mode (triggered by `SIGUSR1`):
+### reload <Badge type="info" text="soft | hard"/> <Badge type="danger" text="required"/>
 
-* `soft` (default) — reload while keeping active connections
-* `hard` — reload and forcibly close active connections
+Hot-reload mode (on `SIGUSR1`):
 
-### client_max_body_size <Badge type="info" text="number"/>
+* `soft` — reload keeping active connections
+* `hard` — reload forcibly closing connections
 
-Maximum request body size in bytes.
+The code default is `soft`, but the key still has to be present in the file.
 
-### tmp <Badge type="info" text="string"/>
+### client_max_body_size <Badge type="info" text="number"/> <Badge type="danger" text="required"/>
 
-Path to the temporary files directory.
+Maximum request body size in bytes, ≥ 1.
 
-### gzip <Badge type="info" text="array of strings"/>
+It is checked twice, with different outcomes: a `Content-Length` header above the limit is a `400 Bad Request` while the headers are still being parsed, and the body is never read; a body that grows past the limit while being received (`chunked`, HTTP/2, HTTP/3) is a `413 Content Too Large`. The same value caps WebSocket frames and the responses the built-in HTTP client accepts.
 
-List of MIME types to compress automatically. Leave empty to disable compression.
+### tmp <Badge type="info" text="string"/> <Badge type="danger" text="required"/>
 
-Listing a type makes it *negotiable*, not always compressed. A response is gzipped only when it is at least 1 KB and the request's `Accept-Encoding` allows it — `gzip` named outright, or `*` when it is not; `gzip;q=0` is a refusal, and a request with no `Accept-Encoding` at all gets the uncompressed bytes. Every answer whose type is on this list carries `Vary: Accept-Encoding`, compressed or not, so a shared cache keys the two representations apart; their `ETag`s differ too (the compressed one ends in `-gzip`).
+Temporary file directory: large request bodies and uploads are spooled there. **No trailing slash** — `"/tmp/"` is a configuration error, `"/tmp"` is correct.
 
-Compressing static files is expensive, and the cost is paid again on every request: a 92 KB file spends ~410 µs of CPU inside zlib — four times everything else the response does. Two [`main.env`](#env) settings take that work away, each in its own way; both are off by default.
+### gzip <Badge type="info" text="array of strings"/> <Badge type="danger" text="required"/>
+
+MIME types eligible for automatic response compression. The key is mandatory, but the array may be empty (`[]`) — that turns compression off.
+
+A type on this list becomes **negotiable**, not always compressed. A response is compressed only if it is at least 1 KB and the request's `Accept-Encoding` allows it: `gzip` named explicitly, or `*` when gzip is not mentioned; `gzip;q=0` is a refusal, and a request with no `Accept-Encoding` at all gets uncompressed bytes. Every response whose type is on this list carries `Vary: Accept-Encoding` — compressed or not — so a shared cache tells the two representations apart; their `ETag`s differ too (the compressed one gets a `-gzip` suffix).
+
+Compressing static files is expensive and paid again on every request: a 92 KB file costs about 410 µs of CPU in zlib — four times everything else the response does. Two keys in [`main.env`](#env) remove that work, each in its own way; both are off by default.
 
 #### gzip_static <Badge type="info" text="boolean"/> <Badge type="tip" text="main.env"/>
 
-Serve a ready-made `<file>.gz` when one sits next to the file: then the server compresses nothing at all — the body goes out from disk with a `Content-Length` instead of `chunked`.
+Serve a ready-made `<file>.gz` when one sits next to the file: the server then compresses nothing at all — the body comes off disk with `Content-Length` instead of `chunked`.
 
-The twin is used only when it is **not older** than the original — a stale build artefact is never served, and runtime compression takes over instead. The check costs one `open()` and runs only for responses that would have been compressed anyway (type listed in `main.gzip`, client accepts gzip, at least 1 KB), so a client that asked for no compression never pays for it.
+The twin is used only if it is **not older** than the original — a stale build artefact is never served, on-the-fly compression takes over instead. The check costs one `open()` and runs only for responses that would have been compressed anyway (type on the `main.gzip` list, client accepts gzip, size at least 1 KB), so a client that did not ask for compression does not pay for it.
 
 ```json
 "env": { "gzip_static": true }
 ```
 
-The server does **not** create these files — it only serves the ones already there; writing them is the build's job. Where the build cannot, post-process the finished directory:
+The server **does not create** these files — it only serves the ones already there, and writing them is the build's job. If your build cannot, post-process the output directory:
 
 ```bash
 find dist -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' \) -size +1k \
     -exec gzip -9 -k -f {} +
 ```
 
-Only the types listed in `main.gzip` are worth compressing: next to a file of any other type no twin is looked for at all. The `-size +1k` threshold mirrors the server's own — a file below 1 KB is never compressed, so its `.gz` is never asked for.
+Only the types listed in `main.gzip` are worth compressing: no twin is looked for next to a file of any other type. The `-size +1k` threshold mirrors the server's — a file under 1 KB is not compressed and its `.gz` is never asked for.
 
-Regenerate them **after every build**. `gzip -k` keeps the original's `mtime`, so a fresh twin passes the staleness check; a twin left over from the previous build, however, ends up older than the new files — and the server quietly falls back to compressing on the fly, saying nothing in the log.
+Regenerate **after every build**. `gzip -k` preserves the original's `mtime`, so a fresh twin passes the staleness check; a twin left over from the previous build will be older than the new files, and the server quietly falls back to on-the-fly compression without saying so in the log.
 
-The `Content-Length` of such a response is the length of the **compressed** bytes: HTTP measures the body after the content-coding is applied, and `chunked` is unnecessary because the size is known before the first byte goes out (compressing on the fly it is not, which is why that path is chunked). The uncompressed size is not reported in any header, but it does reach the `ETag` — the validators are taken from the original before the swap to `.gz`.
+`Content-Length` in such a response is the length of the **compressed** bytes: HTTP counts the body after the content-coding is applied, and `chunked` is unnecessary because the size is known before the first byte goes out (with on-the-fly compression it is not, which is why that path uses `chunked`). The uncompressed size is not reported in any header, but it does go into the `ETag` — the validators are taken from the original before the `.gz` is substituted.
 
 #### gzip_cache_size, gzip_cache_max_file <Badge type="info" text="numbers"/> <Badge type="tip" text="main.env"/>
 
-An in-memory cache of compressed representations: a file is compressed once, and every request after that gets the finished bytes. Useful where putting `.gz` files next to the originals is not an option.
+An in-memory cache of compressed representations: a file is compressed once, and every later request gets the finished bytes. Useful where you cannot place `.gz` files next to the originals.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `gzip_cache_size` | `0` (disabled) | Total memory budget for compressed representations, in bytes |
-| `gzip_cache_max_file` | `1048576` | Largest source file admitted into the cache, in bytes |
+| Key | Default | Description |
+|-----|---------|-------------|
+| `gzip_cache_size` | `0` (off) | Total memory budget for compressed representations, in bytes |
+| `gzip_cache_max_file` | `1048576` | Largest source file that will be cached, in bytes |
 
 ```json
 "env": { "gzip_cache_size": 33554432, "gzip_cache_max_file": 1048576 }
 ```
 
-An entry is keyed by path, `mtime` **and** the source file's size, so a rewritten file is never served with its old content: change any of the three and it is a different resource, compressed anew. The budget is kept by evicting the least recently used entries, and `gzip_cache_max_file` stops one large file from evicting everything else; an entry an unfinished response is still reading stays alive until that response is done, even after the cache has let go of it.
+The entry key is the path, the `mtime` **and** the size of the source file, so an overwritten file is never served from stale content: change any of the three and it is a different resource, compressed afresh. The budget is kept by least-recently-used eviction, and `gzip_cache_max_file` stops one large file from evicting everything else; an entry being read by an unfinished response survives until that response ends, even if the cache has already released it. A ceiling larger than the budget is clamped to the budget — an entry that size could never fit anyway.
 
 The cache is one per server: workers are threads of a single process, so `gzip_cache_size` is not multiplied by their number.
 
-The `ETag` does not depend on which path served the bytes: for a compressed representation it is weak (`W/"…-gzip"`) and describes the resource rather than the octets, so a cached answer, a `.gz` from disk and runtime compression are interchangeable to a client cache. The order is: `.gz` on disk first, then the in-memory cache, then compression on the fly.
+The `ETag` does not depend on the mode: a compressed representation gets a weak one (`W/"…-gzip"`) describing the resource rather than the exact bytes, so a cache hit, a `.gz` from disk and on-the-fly compression are interchangeable to a client cache. The order is: `.gz` from disk first, then the in-memory cache, then on-the-fly compression.
 
-### log <Badge type="info" text="object"/>
+### log <Badge type="info" text="object"/> <Badge type="danger" text="required"/>
 
-Logging settings:
+Logging settings. Both nested fields are mandatory. The journal goes to **syslog** — read it with `journalctl -t cwfr`, not from stdout.
 
 ```json
 "log": {
@@ -97,30 +136,36 @@ Logging settings:
 
 #### enabled <Badge type="info" text="boolean"/>
 
-Enables or disables logging. When `false`, all logging functions are ignored.
+Enables or disables logging. With `false` all logging functions are ignored.
 
 #### level <Badge type="info" text="string"/>
 
-Minimum log level. Lower-priority messages are filtered out. Allowed values (most severe first):
+Minimum log level. Messages of lower priority are filtered out. Accepted values (most to least critical):
 
 - `emerg` — system is unusable (0)
 - `alert` — action must be taken immediately (1)
 - `crit` — critical condition (2)
 - `err` / `error` — errors (3)
 - `warning` / `warn` — warnings (4)
-- `notice` — normal but significant messages (5)
-- `info` — informational messages (6)
-- `debug` — debug-level messages (7)
+- `notice` — normal but significant (5)
+- `info` — informational (6)
+- `debug` — debug messages (7)
+
+Anything else is a configuration error.
 
 ::: tip Recommendations
 - **Production:** `info` or `notice` — a balance between detail and performance.
-- **Development:** `debug` — most verbose logging.
-- **Critical systems:** `warning`/`error` — only significant events.
+- **Development:** `debug` — maximum detail.
+- **Critical systems:** `warning`/`error` — important events only.
 :::
 
 ### env <Badge type="info" text="object"/>
 
-A free-form user key-value store. Values (`string`/`number`/`bool`/`null`) are copied as-is and accessed in code through `env_get_*` functions:
+The only optional key in `main`. A key-value store holding **both** your application's own settings **and** every behavioural parameter of the protocols.
+
+Only scalar values are copied: `string`, `number`, `bool`, `null`. Nested objects and arrays are **silently dropped** — no `env_get_*` function can read them.
+
+#### Application keys
 
 ```json
 "env": {
@@ -136,17 +181,72 @@ int enabled  = env_get_bool("feature_x_enabled", 0);
 const char* name = env_get_string("app_name", "default");
 ```
 
-Available: `env_get_string`, `env_get_int`, `env_get_llong`, `env_get_bool`, `env_get_double`, `env_get_ldouble` — each takes a key and a default value.
+Available: `env_get_string`, `env_get_int`, `env_get_llong`, `env_get_bool`, `env_get_double`, `env_get_ldouble` — each takes a key and a default. A missing key, or one of the wrong type, yields the default without an error.
+
+#### Runtime keys
+
+Everything else configured through `main.env` is a server parameter. A full index; each parameter is described in detail on the linked page.
+
+| Group | Keys | Documented in |
+|-------|------|---------------|
+| Observability | `metrics` | [below](#metrics) |
+| Static compression | `gzip_static`, `gzip_cache_size`, `gzip_cache_max_file` | [above](#gzip-static) |
+| HTTP/2: lifecycle | `http2_idle_timeout_sec`, `http2_ping_interval_sec`, `http2_ping_ack_timeout_sec`, `http2_settings_ack_timeout_sec`, `http2_recv_window_initial`, `http2_recv_window_max`, `http2_write_quantum` | [HTTP/2 → Configuration](/en/http2#configuration) |
+| HTTP/2: abuse protection | `http2_max_header_list_size`, `http2_max_continuation_frames`, `http2_abort_rate`, `http2_abort_burst`, `http2_ctrl_rate`, `http2_ctrl_burst`, `http2_max_out_backlog` | [HTTP/2 → Abuse protection](/en/http2#abuse-protection-dos) |
+| HTTP/3: endpoint and resources | `http3_max_connections`, `http3_buffer_memory_limit`, `http3_rx_batch`, `http3_so_rcvbuf`, `http3_so_sndbuf`, `http3_handshake_rate`, `http3_handshake_burst`, `http3_stateless_reset_rate`, `http3_stateless_reset_burst`, `http3_version_negotiation_rate`, `http3_version_negotiation_burst` | [HTTP/3](/en/http3) |
+| HTTP/3: connection transport | `http3_idle_timeout_sec`, `http3_keepalive_sec`, `http3_max_udp_payload_size`, `http3_initial_max_data`, `http3_initial_max_stream_data`, `http3_max_streams_bidi`, `http3_max_streams_uni`, `http3_recv_window_max`, `http3_active_cid_limit`, `http3_ack_delay_ms` | [HTTP/3](/en/http3) |
+| HTTP/3: congestion | `http3_initcwnd_packets`, `http3_cc`, `http3_pacing`, `http3_amplification_factor` | [HTTP/3](/en/http3) |
+| HTTP/3: address validation | `http3_retry`, `http3_retry_threshold`, `http3_new_token`, `http3_token_lifetime_sec` | [HTTP/3](/en/http3) |
+| HTTP/3: protocol and abuse | `http3_max_field_section_size`, `http3_abort_rate`, `http3_abort_burst`, `http3_ctrl_rate`, `http3_ctrl_burst` | [HTTP/3](/en/http3) |
+| HTTP/3: versions and 0-RTT | `http3_version_2`, `http3_early_data` | [HTTP/3](/en/http3) |
+| HTTP/3: diagnostics | `http3_qlog_dir`, `http3_qlog_connections` | [HTTP/3](/en/http3) |
+
+All of them are read once when the configuration is loaded and re-read on reload. **A wrong type or an out-of-range value is a configuration error, not a silent fallback to the default:** `"http3_cc": "reno"` or `"http3_max_streams_uni": 1` stop start-up with a message naming the key and the accepted range.
+
+#### metrics <Badge type="info" text="boolean"/>
+
+Enables the concurrency, lock, HTTP/2 and QUIC counters. `false` by default: counters that are off cost nothing.
+
+```json
+"env": { "metrics": true }
+```
+
+The flag only collects the data — exposing it is an application handler's job. In the example application that is `app/routes/bench/metrics.c`, mounted on a route:
+
+```json
+"/metrics": {
+    "GET": { "file": "<build>/exec/handlers/bench/lib_metrics.so", "function": "metrics" }
+}
+```
+
+`GET /metrics?reset=1` returns a snapshot and zeroes the counters. The route is worth putting behind a middleware — the snapshot describes the process's internal state.
+
+### Keys that do not exist
+
+`main.buffer_size` appears in older `config.json` examples and is **not read by the server**: the connection buffer size is fixed in code. The key is harmless but changes nothing — it can be deleted.
 
 ## migrations section
 
-### source_directory <Badge type="info" text="string"/>
+```json
+"migrations": {
+    "source_directory": "<project>/app/migrations"
+}
+```
 
-Path to the directory containing migration sources (used by the `migrate` utility).
+::: warning This section is unused
+Neither `cwfr` nor `migrate` reads `migrations.source_directory`. The `migrate` utility takes its paths as positional arguments:
+
+```bash
+./exec/migrate create add_users_table ../config.json ../app/migrations/s1
+./exec/migrate up all ../config.json postgresql.p1 s1
+```
+
+Keep the section as project documentation or delete it — behaviour is the same either way. See [Migrations](/en/migrations).
+:::
 
 ## translations section
 
-List of localization (i18n) domains. Each entry specifies a text domain and the path to its `.mo` catalog directory:
+A list of localisation (i18n) domains. Optional.
 
 ```json
 "translations": [
@@ -154,21 +254,25 @@ List of localization (i18n) domains. Each entry specifies a text domain and the 
 ]
 ```
 
-* `domain` — text domain name (required)
-* `path` — path to the translations catalog (required)
+* `domain` — text domain name (required, non-empty)
+* `path` — directory holding the `.mo` files (required, non-empty)
+
+Each domain's base locale is `en`. An entry with invalid fields is **skipped with a message in the journal** and the rest are loaded: unlike most sections, a broken entry here does not stop start-up. See [Internationalisation](/en/i18n).
 
 ## task_manager section
 
-List of background tasks loaded from `.so` files and run by the scheduler. Each task is an object with the common fields `name`, `type`, `file`, `function` plus schedule fields depending on `type`.
+Background tasks loaded from `.so` files and run by the scheduler. Optional; an array.
+
+The common fields of every task — `name`, `type`, `file`, `function` — are mandatory; the schedule fields depend on `type`.
 
 | `type` | Schedule fields | Description |
 |--------|-----------------|-------------|
-| `interval` | `interval` | Run every N seconds (≥ 1) |
+| `interval` | `interval` | Every N seconds (≥ 1) |
 | `daily` | `hour`, `minute` | Daily at `hh:mm` |
 | `weekly` | `weekday`, `hour`, `minute` | Weekly on the given weekday |
 | `monthly` | `day`, `hour`, `minute` | Monthly on the given day |
 
-`weekday` accepts `sunday`…`saturday`; `hour` is 0–23, `minute` is 0–59, `day` is 1–31.
+`weekday` accepts `sunday`, `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`; `hour` is 0–23, `minute` 0–59, `day` 1–31. An unknown `type` or an out-of-range value is a configuration error.
 
 ```json
 "task_manager": [
@@ -186,34 +290,65 @@ List of background tasks loaded from `.so` files and run by the scheduler. Each 
         "minute": 30,
         "file": "/app/build/exec/handlers/tasks/libtasks.so",
         "function": "send_report"
+    },
+    {
+        "name": "weekly_digest",
+        "type": "weekly",
+        "weekday": "monday",
+        "hour": 9,
+        "minute": 0,
+        "file": "/app/build/exec/handlers/tasks/libtasks.so",
+        "function": "send_digest"
+    },
+    {
+        "name": "monthly_invoice",
+        "type": "monthly",
+        "day": 1,
+        "hour": 0,
+        "minute": 15,
+        "file": "/app/build/exec/handlers/tasks/libtasks.so",
+        "function": "build_invoices"
     }
 ]
 ```
 
+See [Task manager](/en/task-manager).
+
 ## servers section
 
-HTTP/WebSocket server configuration. Each server is a named entry (`s1`, `s2`, …).
+Required and non-empty. Each server (virtual host) is a named entry; the name (`s1`, `s2`, …) is arbitrary and used nowhere except error messages.
 
-### domains <Badge type="info" text="array of strings"/>
+**Required vhost fields:** `domains`, `ip`, `port`, `root`. The rest — `index`, `ratelimits`, `http`, `websockets`, `tls`, `http3` — are optional.
 
-Domains bound to the server. Supported:
+### domains <Badge type="info" text="array of strings"/> <Badge type="danger" text="required"/>
 
-* Exact names: `example.com`
-* Wildcards: `*.example.com`, `mail.*`
-* Regular expressions: `(api|www).example.com`, `(.1|.*|a3).example.com`
+The names this vhost answers to. Matching is against the `Host` header (or the SNI name on TLS), **case-insensitively** and **after the port is stripped**.
 
-### ip <Badge type="info" text="string"/>
+The template is converted to punycode, then into a regular expression by a few rules:
 
-Listen IP address, IPv4 or IPv6. `127.0.0.1`, `0.0.0.0`, `::1`, `::` and the
-bracketed form `[::1]` are all accepted. The address applies both to TCP
-(HTTP/1.1, HTTP/2, WebSocket) and to the HTTP/3 UDP endpoint.
+| In the template | Means |
+|-----------------|-------|
+| `example.com` | An exact name. The dot is escaped, so `a.b` does not match `axb` |
+| `*.example.com` | Outside brackets `*` expands to `.*` — but **only at the start or the end of the string** |
+| `mail.*` | The same from the other end |
+| `(api\|www).example.com` | Ordinary PCRE: groups, alternation and `[...]` classes behave as in a regex |
+| `(.1\|.*)example.com` | Inside brackets the dot and the asterisk are **metacharacters**; no escaping is applied |
 
-An IPv6 socket is created **v6-only**: it does not accept IPv4 traffic, because a
-dual-stack socket would report IPv4 peers as v4-mapped addresses, which makes a
-datagram's local address ambiguous and depends on the system's
-`net.ipv6.bindv6only`. Serving one site on both families is therefore **two
-entries** in `servers` with the same `domains` and `port`, differing only in
-`ip`:
+The template is anchored automatically: `^` and `$` are added if absent. An asterisk in the middle (`a*b`) is a configuration error, as is an unbalanced bracket.
+
+A template with no metacharacters is compared directly, bypassing PCRE — noticeably faster, and precisely why the dot is escaped rather than left as a metacharacter: otherwise no real domain name would ever take the fast path.
+
+::: warning Do not put a port in domains
+The port is stripped from `Host` before matching, so an entry like `"www.example.com:8080"` will **never** match. The port is set by the [`port`](#port) field.
+:::
+
+A vhost is identified by the triple **(address, domain, port)**, and two entries sharing that triple are a configuration error.
+
+### ip <Badge type="info" text="string"/> <Badge type="danger" text="required"/>
+
+The address to listen on — IPv4 or IPv6. `127.0.0.1`, `0.0.0.0`, `::1`, `::` and the bracketed form `[::1]` are all accepted. The address applies both to TCP (HTTP/1.1, HTTP/2, WebSocket) and to the HTTP/3 UDP endpoint.
+
+An IPv6 socket is created **v6-only**: it does not accept IPv4 traffic, because a dual-stack socket would hand back IPv4 addresses in v4-mapped form, which makes a datagram's local address ambiguous and depends on the system's `net.ipv6.bindv6only`. A site reachable over both families is therefore **two entries** in `servers` with the same `domains` and `port`, differing only in `ip`:
 
 ```json
 "servers": {
@@ -222,59 +357,67 @@ entries** in `servers` with the same `domains` and `port`, differing only in
 }
 ```
 
-Virtual host uniqueness is checked on the triple "address + domain + port", so
-such a pair is not a conflict.
+Vhost uniqueness is checked on "address + domain + port", so such a pair is not a collision.
 
-An invalid address (a typo such as `127.0.0.300` or `::1x`) **stops startup**
-with a message naming the value -- the server does not try to guess it.
+An invalid address (a typo like `127.0.0.300` or `::1x`) **stops start-up** with a message naming the value — the server does not try to guess it.
 
-### port <Badge type="info" text="number"/>
+### port <Badge type="info" text="number"/> <Badge type="danger" text="required"/>
 
-Server port (typically `80` for HTTP, `443` for HTTPS).
+The server's TCP port (usually `80` for HTTP, `443` for HTTPS). It also becomes the default UDP port for HTTP/3.
 
-### root <Badge type="info" text="string"/>
+### root <Badge type="info" text="string"/> <Badge type="danger" text="required"/>
 
-Path to the static files root directory.
+The static file root. It **must exist at start-up**, otherwise the server refuses to start. A trailing slash is stripped.
+
+Everything file-related is resolved from this directory: both the static files served when no route matches and the paths in [`static_file`](#routes).
 
 ### index <Badge type="info" text="string"/>
 
-Index file name returned for directories (e.g. `index.html`).
+The index file name served for a directory. Defaults to `index.html`. One name, not a list.
 
 ### ratelimits <Badge type="info" text="object"/>
 
-Named rate-limiting profiles. Each profile defines `burst` (peak number of requests) and `rate` (token refill rate):
+Named rate-limiting profiles (token bucket). Each profile sets `burst` (bucket capacity — the peak number of requests) and `rate` (tokens refilled per second); the window is one second.
 
 ```json
 "ratelimits": {
     "one":   { "burst": 1,  "rate": 0  },
-    "two":   { "burst": 15, "rate": 15 }
+    "strict":{ "burst": 15, "rate": 15 }
 }
 ```
 
+Both fields are mandatory and must be integers. `rate: 0` means a bucket that never refills: `burst` requests, then refusal.
+
+The profiles limit nothing on their own — they have to be assigned: through `ratelimit` in [`http`](#http), in [`websockets`](#websockets), or on an individual route method. Referring to a profile name that does not exist is a configuration error.
+
 ### http <Badge type="info" text="object"/>
 
-HTTP routes, middleware, and redirects.
+HTTP routes, middleware and redirects. All four nested keys are optional.
 
 #### ratelimit <Badge type="info" text="string"/>
 
-Default rate-limiting profile for all routes in this section.
+The default rate-limiting profile for all of the vhost's HTTP traffic.
 
 #### middlewares <Badge type="info" text="array of strings"/>
 
-Middlewares applied to all routes (names from the middleware registry):
+Middleware applied to every HTTP route. Names come from the application registry (`app/middlewares/middlewarelist.c`); an unknown name is a configuration error.
 
 ```json
 "middlewares": ["middleware_http_auth"]
 ```
 
+See [Middleware](/en/middleware).
+
 #### routes <Badge type="info" text="object"/>
 
-HTTP routes. The key is the path (supporting regular expressions and named parameters); the value is a `METHOD → { handler }` object:
+HTTP routes. The key is a path, the value an object of `METHOD → { handler }`.
+
+Supported methods: **`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`**. Others (`CONNECT`, `TRACE`) are not declared in routes.
 
 ```json
 "routes": {
     "/api/users": {
-        "GET":  { "file": "handlers/models/lib_modeluser.so", "function": "list", "ratelimit": "two" },
+        "GET":  { "file": "handlers/models/lib_modeluser.so", "function": "list", "ratelimit": "strict" },
         "POST": { "file": "handlers/models/lib_modeluser.so", "function": "create" }
     },
     "/api/users/{id|\\d+}": {
@@ -283,11 +426,13 @@ HTTP routes. The key is the path (supporting regular expressions and named param
 }
 ```
 
-Handler options:
+A path may be literal, carry named parameters (`{id|\d+}`) or be a regular expression — but **not both at once**. The syntax is covered in [Routing](/en/routing).
 
-* `file` — path to the handler `.so`
-* `function` — handler function name
-* `static_file` — path to a static file; when set, the request serves the file instead of invoking `file`/`function`. The path supports `{1}`, `{2}`, … capture-group substitution from the route's regular expression (the same spelling as `redirects`), so one route can serve a whole directory:
+Handler fields:
+
+* `file` — path to the `.so` holding the handler. The library is loaded at start-up and shared by every route that names it
+* `function` — the exported function name. Resolved at start-up; not found means the server refuses to start
+* `static_file` — a static file path. When present, `file`/`function` are **neither required nor called**: the route serves the file. The path is always resolved **relative to [`root`](#root)** — a leading `/` is stripped, it does not mean the filesystem root. Capture groups from the route's regular expression can be substituted as `{1}`, `{2}`, … (the same notation as `redirects`), so one route can serve a whole directory:
   ```json
   "/assets/(.*)": {
       "GET": {
@@ -296,12 +441,14 @@ Handler options:
       }
   }
   ```
-* `cache_control` — `Cache-Control` header for what this route answers with, a `static_file` or a handler alike. Without it every file response carries `Cache-Control: no-cache` (revalidation on each use), which is safe but makes clients re-fetch immutable build artifacts. Point routes at fingerprinted assets with `immutable` caching and leave pages on the default. A handler that sets its own `Cache-Control` keeps it — the route value is the default, not an override — and a `static_file` that turns out to be missing answers 404 without it.
-* `ratelimit` — override the rate-limiting profile for this route
+* `cache_control` — the `Cache-Control` header for whatever the route answers with, a file or a handler alike. Without it every file response carries `Cache-Control: no-cache` (revalidate on each use) — safe, but it makes the client re-download immutable build artefacts. Put immutable caching on routes whose files carry a content hash in the name, and leave pages on the default. A handler that sets its own `Cache-Control` keeps it — the route value is a default, not an override; and a missing `static_file` answers 404 without the header
+* `ratelimit` — the rate-limiting profile for this method of this route, overriding `http.ratelimit`
+
+A request matching no route is served as a static file from `root`.
 
 #### redirects <Badge type="info" text="object"/>
 
-Redirect rules with regular-expression support. Capture groups are substituted via `{1}`, `{2}`, …:
+Redirect rules. The key is a path or a regular expression, the value the target; capture groups are substituted as `{1}`, `{2}`, …:
 
 ```json
 "redirects": {
@@ -311,34 +458,56 @@ Redirect rules with regular-expression support. Capture groups are substituted v
 }
 ```
 
+Redirects are checked before routes.
+
 ### websockets <Badge type="info" text="object"/>
 
-WebSocket configuration. Supports a default handler (`default`), a shared `ratelimit`, `middlewares`, and `routes`:
+WebSocket configuration. All nested keys — `default`, `ratelimit`, `middlewares`, `routes` — are optional, but **the presence of the section itself is meaningful**.
 
 ```json
 "websockets": {
     "default": { "file": "handlers/ws/lib_wsindex.so", "function": "default_" },
+    "ratelimit": "strict",
+    "middlewares": ["middleware_ws_auth"],
     "routes": {
         "/": { "GET": { "file": "handlers/ws/lib_wsindex.so", "function": "echo" } }
     }
 }
 ```
 
+* `default` — the handler for frames matching no route. Without it the built-in default handler is used
+* `ratelimit`, `middlewares` — as in `http`, but for WebSocket traffic
+* `routes` — routes; the method key here is also `GET`
+
+::: tip The section also governs HTTP/2
+A vhost **without** a `websockets` section answers Extended CONNECT (WebSocket over HTTP/2, RFC 8441) with `501 Not Implemented`. The capability is advertised per connection while serving is per vhost, so an empty `"websockets": {}` is a meaningful "WebSocket is allowed here".
+:::
+
+See [WebSocket requests](/en/wsrequests) and [Broadcasting](/en/wsbroadcast).
+
 ### tls <Badge type="info" text="object"/>
 
-TLS/SSL settings for HTTPS:
+TLS/SSL settings. **All three fields are mandatory** when the section is present; an empty string is not allowed.
 
 ```json
 "tls": {
     "fullchain": "/path/to/fullchain.pem",
     "private": "/path/to/privkey.pem",
-    "ciphers": "TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256"
+    "ciphers": "TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256 ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
 }
 ```
 
+* `fullchain` — PEM certificate chain
+* `private` — PEM private key
+* `ciphers` — cipher list: TLS 1.3 suites separated by spaces first, then the TLS 1.2 list separated by colons
+
+The vhost is selected by SNI on TLS, and the certificate comes from the matching vhost. HTTP/2 requires an AEAD cipher with ephemeral key exchange (RFC 9113 §9.2.2) — a connection on a weak cipher gets `GOAWAY(INADEQUATE_SECURITY)`, while HTTP/1.1 on the same cipher keeps working.
+
+See [SSL certificates](/en/ssl-certs).
+
 ### http3 <Badge type="info" text="object"/>
 
-Enables HTTP/3 (over QUIC) for the server. Requires the `-DINCLUDE_HTTP3=yes` build flag (OpenSSL ≥ 3.5) and a `tls` section — QUIC has no cleartext mode. The UDP port defaults to the server's TCP port; TCP keeps serving HTTP/1.1 and HTTP/2. See [HTTP/3](/en/http3) for details.
+Enables HTTP/3 (over QUIC) for the vhost. Requires the `-DINCLUDE_HTTP3=yes` build flag (OpenSSL ≥ 3.5) and a `tls` section — QUIC has no cleartext mode; `http3.enabled` without `tls` stops start-up, as does `enabled` in a build without HTTP/3 support. TCP keeps serving HTTP/1.1 and HTTP/2 alongside.
 
 ```json
 "http3": {
@@ -349,16 +518,24 @@ Enables HTTP/3 (over QUIC) for the server. Requires the `-DINCLUDE_HTTP3=yes` bu
 }
 ```
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `enabled` | bool | `false` | Enables HTTP/3. Required for h3 to run |
-| `port` | number | server's TCP port | UDP port for QUIC (1–65535) |
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Turns HTTP/3 on. Required for h3 to work |
+| `port` | number | the vhost's TCP port | UDP port for QUIC (1–65535) |
 | `alt_svc` | bool | `true` | Advertise h3 in the `Alt-Svc` header over HTTP/1.1 and HTTP/2 |
-| `alt_svc_max_age` | number | `86400` | How long the client caches `Alt-Svc` (sec) |
+| `alt_svc_max_age` | number | `86400` | `Alt-Svc` cache lifetime (seconds, ≥ 0) |
+
+Only the port goes into `Alt-Svc` (`h3=":443"; ma=86400`), never a host name: an empty host per RFC 7838 means "the same one", which keeps the header correct for every vhost sharing the listener.
+
+QUIC's own behaviour is tuned by the `http3_*` keys in [`main.env`](#runtime-keys) — those are per process, not per vhost. See [HTTP/3](/en/http3).
 
 ## databases section
 
-Database connection configuration. Each driver is an array of hosts; connections are addressed in code as `<driver>.<host_id>` (e.g. `postgresql.p1`, `redis.r1`, `sqlite.local`). Only drivers enabled at build time (`-DINCLUDE_*`) are compiled.
+Database connections. Optional. Each driver is a **non-empty array** of hosts; in code a connection is addressed as `<driver>.<host_id>` (e.g. `postgresql.p1`, `redis.r1`, `sqlite.local`).
+
+Only the drivers enabled at build time are compiled in (`-DINCLUDE_POSTGRESQL=yes` and so on). A driver named in the config but missing from the build is **skipped with a message in the journal** — start-up continues, but code addressing it will not find the host.
+
+In every driver an **unknown field is a configuration error**, as is repeating a field twice.
 
 ### postgresql
 
@@ -370,9 +547,21 @@ Database connection configuration. Each driver is an array of hosts; connections
     "dbname": "mydb",
     "user": "dbuser",
     "password": "dbpass",
-    "connection_timeout": 3
+    "connection_timeout": 3,
+    "schema": "public"
 }]
 ```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `host_id` | string | **yes** | Host identifier; addressed as `postgresql.<host_id>` |
+| `ip` | string | **yes** | Database server address |
+| `port` | number | **yes** | Port |
+| `dbname` | string | **yes** | Database name |
+| `user` | string | **yes** | User |
+| `password` | string | **yes** | Password (may be an empty string) |
+| `connection_timeout` | number | **yes** | Connection timeout, seconds |
+| `schema` | string | no | Schema tables are looked up in. Unset means `current_schema()` |
 
 ### mysql
 
@@ -383,9 +572,17 @@ Database connection configuration. Each driver is an array of hosts; connections
     "port": 3306,
     "dbname": "mydb",
     "user": "dbuser",
-    "password": "dbpass"
+    "password": "dbpass",
+    "charset": "utf8mb4",
+    "connection_timeout": 5
 }]
 ```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `host_id`, `ip`, `port`, `dbname`, `user`, `password` | — | **yes** | As for PostgreSQL |
+| `charset` | string | no | Connection charset. Defaults to `utf8mb4` |
+| `connection_timeout` | number | no | Connection timeout, seconds. `0` or absent means no timeout is set |
 
 ### redis
 
@@ -400,6 +597,13 @@ Database connection configuration. Each driver is an array of hosts; connections
 }]
 ```
 
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `host_id`, `ip`, `port` | — | **yes** | Identifier and address |
+| `dbindex` | number | **yes** | Redis database index, **0–15** |
+| `user` | string | no | User (Redis ACL) |
+| `password` | string | no | Password |
+
 ### sqlite
 
 ```json
@@ -411,13 +615,18 @@ Database connection configuration. Each driver is an array of hosts; connections
 }]
 ```
 
-* `path` — database file path (`":memory:"` for in-memory); required
-* `journal_mode` — `PRAGMA journal_mode` (default `WAL`)
-* `busy_timeout` — `PRAGMA busy_timeout` in milliseconds (default `5000`)
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `host_id` | string | **yes** | — | Host identifier |
+| `path` | string | **yes** | — | Database file path; `":memory:"` for in-memory |
+| `journal_mode` | string | no | `WAL` | `PRAGMA journal_mode` value |
+| `busy_timeout` | number | no | `5000` | `PRAGMA busy_timeout` in ms; non-negative |
+
+See [Databases](/en/db).
 
 ## storages section
 
-Named file storages. The type is set by the `type` field.
+Named file storages. Optional. The key name is what addresses the storage in code and in `sessions.storage_name`. The kind is set by `type`; an unknown type is a configuration error.
 
 ### filesystem
 
@@ -429,6 +638,8 @@ Named file storages. The type is set by the `type` field.
     }
 }
 ```
+
+`root` is mandatory and cannot be empty.
 
 ### s3
 
@@ -447,19 +658,23 @@ Named file storages. The type is set by the `type` field.
 }
 ```
 
-`region` is optional (defaults to the provider default).
+::: warning Every field is mandatory and non-empty
+`access_id`, `access_secret`, `protocol`, `host`, `port`, `bucket`, `region` — each must be a **non-empty string**. In particular `"port": ""` (seen in older examples) stops start-up: the port is given explicitly, as a string — `"443"` or `"80"`.
+:::
+
+See [Storages](/en/storage).
 
 ## sessions section
 
-A named map of session configurations. Each key is the session name used in code (`session_create("backend", data, ttl)`). All sessions are encrypted with **AES-256-GCM**; the key is derived from the required `secret` field.
+A named set of session configurations. Optional. Each key is the session name used in code (`session_create("backend", data, ttl)`).
 
-The driver is set by the `driver` field:
+Every session is encrypted with **AES-256-GCM**; the key is derived from the mandatory `secret` field. The driver is set by `driver`:
 
-| `driver` | Storage field | Description |
-|----------|---------------|-------------|
-| `filesystem` | `storage_name` | Files in the named storage (a name from the `storages` section) |
+| `driver` | Required storage field | Description |
+|----------|------------------------|-------------|
+| `filesystem` | `storage_name` | Files in the named storage (a name from [`storages`](#storages-section)) |
 | `redis` | `host_id` | Redis, addressed as `redis.<host_id>` |
-| `database` | `host_id` | Database, addressed as `<driver>.<host_id>` (e.g. `postgresql.p1`) |
+| `database` | `host_id` | A database, addressed as `<driver>.<host_id>` (e.g. `postgresql.p1`) |
 
 ```json
 "sessions": {
@@ -481,11 +696,13 @@ The driver is set by the `driver` field:
 }
 ```
 
-The session lifetime is not set in the configuration — it is passed at creation: `session_create(name, data, duration)`.
+An unknown driver, a missing `secret` or an empty storage field is a configuration error. Session lifetime is not configured here — it is passed at creation: `session_create(name, data, duration)`.
+
+See [Sessions](/en/session).
 
 ## mail section
 
-Email sending configuration with DKIM signing:
+Email delivery with DKIM signing. Optional; an absent section is equivalent to empty values — mail goes out unsigned.
 
 ```json
 "mail": {
@@ -495,20 +712,33 @@ Email sending configuration with DKIM signing:
 }
 ```
 
+| Field | Description |
+|-------|-------------|
+| `dkim_private` | **Path** to the private key file. The file is read when the configuration loads — an unreadable path stops start-up |
+| `dkim_selector` | DKIM selector (part of the `<selector>._domainkey.<host>` TXT record name) |
+| `host` | The domain messages are signed for |
+
+Each field is individually optional, but when present it must be a non-empty string. See [Mail](/en/mail).
+
 ## mimetypes section
 
-Mapping of MIME types to file extensions:
+**Required and non-empty.** A mapping of MIME types to file extensions: the key is a type, the value a non-empty array of extensions (without the dot).
 
 ```json
 "mimetypes": {
-    "text/html": ["html", "htm"],
+    "text/html": ["html", "htm", "shtml"],
     "text/css": ["css"],
     "application/json": ["json"],
     "application/javascript": ["js"],
     "image/png": ["png"],
-    "image/jpeg": ["jpeg", "jpg"]
+    "image/jpeg": ["jpeg", "jpg"],
+    "application/octet-stream": ["bin", "exe", "dll"]
 }
 ```
+
+Two tables are built: "type → extension" and "extension → type". Only the **first** extension of an array goes into the former — that one becomes canonical for the type; all of them go into the latter. So an extension may appear under several types (the last occurrence wins), and the order inside an array matters.
+
+A file whose extension is not described here is served without a meaningful `Content-Type`, so it pays to keep the table complete. The list in the repository example mirrors nginx's and is a reasonable starting point.
 
 ## Full configuration example
 
@@ -522,10 +752,15 @@ Mapping of MIME types to file extensions:
         "tmp": "/tmp",
         "gzip": ["text/html", "text/css", "application/json", "application/javascript"],
         "log": { "enabled": true, "level": "info" },
-        "env": { "refresh_token_expiration": 15552000 }
-    },
-    "migrations": {
-        "source_directory": "/app/app/migrations"
+        "env": {
+            "refresh_token_expiration": 15552000,
+            "metrics": true,
+            "gzip_static": true,
+            "gzip_cache_size": 33554432,
+            "http2_idle_timeout_sec": 60,
+            "http3_idle_timeout_sec": 300,
+            "http3_keepalive_sec": 10
+        }
     },
     "translations": [
         { "domain": "backend", "path": "/app/locale" }
@@ -540,9 +775,9 @@ Mapping of MIME types to file extensions:
         }
     ],
     "servers": {
-        "s1": {
+        "site_v4": {
             "domains": ["example.com", "*.example.com"],
-            "ip": "127.0.0.1",
+            "ip": "0.0.0.0",
             "port": 443,
             "root": "/var/www/html",
             "index": "index.html",
@@ -555,27 +790,39 @@ Mapping of MIME types to file extensions:
                 "middlewares": ["middleware_http_auth"],
                 "routes": {
                     "/api/users": {
-                        "GET":  { "file": "handlers/models/lib_modeluser.so", "function": "list" },
-                        "POST": { "file": "handlers/models/lib_modeluser.so", "function": "create" }
+                        "GET":  { "file": "/app/build/exec/handlers/models/lib_modeluser.so", "function": "list" },
+                        "POST": { "file": "/app/build/exec/handlers/models/lib_modeluser.so", "function": "create", "ratelimit": "strict" }
+                    },
+                    "/assets/(.*)": {
+                        "GET": {
+                            "static_file": "/assets/{1}",
+                            "cache_control": "public, max-age=31536000, immutable"
+                        }
                     },
                     "/robots.txt": {
-                        "GET": { "static_file": "/var/www/html/robots.txt" }
+                        "GET": { "static_file": "/robots.txt" }
                     }
                 },
                 "redirects": {
-                    "/old": "/new"
+                    "/old": "/new",
+                    "/user(.*)/(\\d)": "/user-{1}-{2}"
                 }
             },
             "websockets": {
-                "default": { "file": "handlers/ws/lib_wsindex.so", "function": "default_" },
+                "default": { "file": "/app/build/exec/handlers/ws/lib_wsindex.so", "function": "default_" },
                 "routes": {
-                    "/ws": { "GET": { "file": "handlers/ws/lib_wsindex.so", "function": "connect" } }
+                    "/ws": { "GET": { "file": "/app/build/exec/handlers/ws/lib_wsindex.so", "function": "connect" } }
                 }
             },
             "tls": {
-                "fullchain": "/path/to/fullchain.pem",
-                "private": "/path/to/privkey.pem",
+                "fullchain": "/etc/letsencrypt/live/example.com/fullchain.pem",
+                "private": "/etc/letsencrypt/live/example.com/privkey.pem",
                 "ciphers": "TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256"
+            },
+            "http3": {
+                "enabled": true,
+                "alt_svc": true,
+                "alt_svc_max_age": 86400
             }
         }
     },
@@ -604,15 +851,19 @@ Mapping of MIME types to file extensions:
         }
     },
     "mail": {
-        "dkim_private": "/path/to/dkim_private.pem",
+        "dkim_private": "/etc/dkim/private.pem",
         "dkim_selector": "mail",
         "host": "example.com"
     },
     "mimetypes": {
         "text/html": ["html", "htm"],
+        "text/css": ["css"],
         "application/json": ["json"],
         "application/javascript": ["js"],
-        "image/png": ["png"]
+        "image/png": ["png"],
+        "image/jpeg": ["jpeg", "jpg"],
+        "image/svg+xml": ["svg"],
+        "font/woff2": ["woff2"]
     }
 }
 ```

@@ -9,7 +9,7 @@ Migrations let you version the database schema together with the application sou
 
 Typical scenarios: add a new table during development, create an index to speed up queries after going to production, rename a column, or transform data to match a new schema.
 
-C Web Framework ships a `migrate` CLI utility, compiled alongside `cpdy`, that lets you:
+C Web Framework ships a `migrate` CLI utility, compiled alongside `cwfr`, that lets you:
 
 * Create new migrations.
 * Apply migrations.

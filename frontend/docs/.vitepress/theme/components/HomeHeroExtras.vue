@@ -28,7 +28,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Release \\
   -DINCLUDE_SQLITE=yes
 cmake --build . -j\$(nproc)
 
-./exec/cpdy -c /path/to/config.json`
+./exec/cwfr -c /path/to/config.json`
 
 const route = `{
   "/": {
