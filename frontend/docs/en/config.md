@@ -44,13 +44,26 @@ Compressing static files is expensive, and the cost is paid again on every reque
 
 #### gzip_static <Badge type="info" text="boolean"/> <Badge type="tip" text="main.env"/>
 
-Serve a ready-made `<file>.gz` when one sits next to the file. Frontend builds usually know how to write them, and then the server compresses nothing at all: the body goes out from disk with a `Content-Length` instead of `chunked`.
+Serve a ready-made `<file>.gz` when one sits next to the file: then the server compresses nothing at all — the body goes out from disk with a `Content-Length` instead of `chunked`.
 
 The twin is used only when it is **not older** than the original — a stale build artefact is never served, and runtime compression takes over instead. The check costs one `open()` and runs only for responses that would have been compressed anyway (type listed in `main.gzip`, client accepts gzip, at least 1 KB), so a client that asked for no compression never pays for it.
 
 ```json
 "env": { "gzip_static": true }
 ```
+
+The server does **not** create these files — it only serves the ones already there; writing them is the build's job. Where the build cannot, post-process the finished directory:
+
+```bash
+find dist -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' \) -size +1k \
+    -exec gzip -9 -k -f {} +
+```
+
+Only the types listed in `main.gzip` are worth compressing: next to a file of any other type no twin is looked for at all. The `-size +1k` threshold mirrors the server's own — a file below 1 KB is never compressed, so its `.gz` is never asked for.
+
+Regenerate them **after every build**. `gzip -k` keeps the original's `mtime`, so a fresh twin passes the staleness check; a twin left over from the previous build, however, ends up older than the new files — and the server quietly falls back to compressing on the fly, saying nothing in the log.
+
+The `Content-Length` of such a response is the length of the **compressed** bytes: HTTP measures the body after the content-coding is applied, and `chunked` is unnecessary because the size is known before the first byte goes out (compressing on the fly it is not, which is why that path is chunked). The uncompressed size is not reported in any header, but it does reach the `ETag` — the validators are taken from the original before the swap to `.gz`.
 
 #### gzip_cache_size, gzip_cache_max_file <Badge type="info" text="numbers"/> <Badge type="tip" text="main.env"/>
 
@@ -66,6 +79,8 @@ An in-memory cache of compressed representations: a file is compressed once, and
 ```
 
 An entry is keyed by path, `mtime` **and** the source file's size, so a rewritten file is never served with its old content: change any of the three and it is a different resource, compressed anew. The budget is kept by evicting the least recently used entries, and `gzip_cache_max_file` stops one large file from evicting everything else; an entry an unfinished response is still reading stays alive until that response is done, even after the cache has let go of it.
+
+The cache is one per server: workers are threads of a single process, so `gzip_cache_size` is not multiplied by their number.
 
 The `ETag` does not depend on which path served the bytes: for a compressed representation it is weak (`W/"…-gzip"`) and describes the resource rather than the octets, so a cached answer, a `.gz` from disk and runtime compression are interchangeable to a client cache. The order is: `.gz` on disk first, then the in-memory cache, then compression on the fly.
 

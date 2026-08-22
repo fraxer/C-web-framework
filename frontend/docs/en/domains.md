@@ -32,6 +32,7 @@ The virtual server is selected by the value of the HTTP `Host` header. Before co
 1. **Port is stripped** — `example.com:8080` becomes `example.com`.
 2. **IPv6 literals** follow RFC 3986: brackets in `[::1]:8080` are removed and the bare address `::1` is used for matching.
 3. **IDN conversion** — a UTF-8 domain (e.g. `пример.рф`) is converted to Punycode (`xn--80akhbyknj4f.xn--p1ai`); see [Internationalized domains (IDN)](#internationalized-domains-idn).
+4. **Case is ignored** — a host name is case-insensitive per RFC 9110 §4.2.3, so `Host: EXAMPLE.COM` lands on the server whose domain is `example.com`. Only ASCII case is folded: by comparison time the name is already Punycode, and the locale the process was started in never decides which server a request reaches.
 
 The value is then compared, in turn, against the domains of every server bound to the same `ip:port`. **First match wins**: there is no priority between exact names, wildcards, and regexes — ordering is determined solely by the sequence in the `domains` array. Therefore, more specific names should be placed above general ones.
 
@@ -76,7 +77,7 @@ Processing details:
 
 - **Dots are escaped automatically.** A `.` outside brackets becomes `\.`, so `example.com` can be written as is, without escaping. Inside `(...)` / `[...]`, `.` keeps its "any character" meaning.
 - **Automatic anchoring.** If the expression contains neither `^` at the start nor `$` at the end, the pattern is automatically wrapped in `^...$` (full match). Providing at least one anchor disables auto-anchoring entirely.
-- **Case sensitivity.** Matching is case-sensitive; browsers typically send the `Host` header in lowercase.
+- **Case is ignored.** Expressions are compiled with `PCRE_CASELESS`, so `[a-z]` in a pattern matches capitals too and `(API|WWW).example.com` accepts `api.example.com`. The same rule applies to exact names — see [How matching works](#how-matching-works).
 
 ## Internationalized domains (IDN)
 
