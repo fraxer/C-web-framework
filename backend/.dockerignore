@@ -1,8 +1,0 @@
-# The interop image builds from backend/ (interop/Dockerfile). Everything below
-# is either rebuilt inside the image or has no business being shipped into it,
-# and the build tree alone is hundreds of megabytes of context.
-build/
-*/build/
-.git
-.gitmodules
-core/.git

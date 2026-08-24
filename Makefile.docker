@@ -1,0 +1,82 @@
+# Makefile for convenient Docker workflow
+
+.PHONY: help build run stop logs clean migrate shell
+
+# Default target
+help:
+	@echo "cwfr Docker commands:"
+	@echo ""
+	@echo "  make build        - Build Docker image"
+	@echo "  make run          - Run container"
+	@echo "  make stop         - Stop container"
+	@echo "  make logs         - View logs"
+	@echo "  make clean        - Remove containers and images"
+	@echo "  make migrate      - Run migrations"
+	@echo "  make shell        - Run shell in container"
+	@echo ""
+	@echo "Docker Compose:"
+	@echo "  make dc-up        - Start all services via docker-compose"
+	@echo "  make dc-down      - Stop all services"
+	@echo "  make dc-logs      - View all service logs"
+	@echo "  make dc-rebuild   - Rebuild and start"
+
+# Build image
+build:
+	docker build -t cwfr:latest .
+
+# Run container with frontend and SSL volumes
+run:
+	docker run -d \
+		--name cwfr \
+		-p 80:8080 \
+		-p 443:8443 \
+		-v $(PWD)/backend/config.json:/opt/cwfr/config.json:ro \
+		-v $(PWD)/frontend/dist:/opt/cwfr/frontend:ro \
+		-v $(PWD)/ssl/certs:/etc/ssl/certs:ro \
+		-v $(PWD)/ssl/private:/etc/ssl/private:ro \
+		cwfr:latest
+
+# Stop container
+stop:
+	docker stop cwfr || true
+	docker rm cwfr || true
+
+# View logs
+logs:
+	docker logs -f cwfr
+
+# Remove containers and images
+clean: stop
+	docker rmi cwfr:latest || true
+
+# Run migrations
+migrate:
+	docker run --rm \
+		-v $(PWD)/backend/config.json:/opt/cwfr/config.json:ro \
+		cwfr:latest \
+		migrate -c /opt/cwfr/config.json up
+
+# Shell in container
+shell:
+	docker run -it --rm \
+		-v $(PWD)/backend/config.json:/opt/cwfr/config.json:ro \
+		cwfr:latest \
+		/bin/bash
+
+# Docker Compose commands
+dc-up:
+	docker compose up -d
+
+dc-down:
+	docker compose down
+
+dc-logs:
+	docker compose logs -f
+
+dc-rebuild:
+	docker compose down
+	docker compose build --no-cache
+	docker compose up -d
+
+dc-ps:
+	docker compose ps

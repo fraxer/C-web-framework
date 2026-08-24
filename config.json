@@ -1,0 +1,127 @@
+{
+    "main": {
+        "workers": 1,
+        "threads": 1,
+        "reload": "hard",
+        "buffer_size": 16384,
+        "client_max_body_size": 110485760,
+        "tmp": "/tmp",
+        "gzip": [
+            "text/html",
+            "application/javascript",
+            "application/json"
+        ],
+        "log": {
+            "enabled": true,
+            "level": "info"
+        },
+        "env": {}
+    },
+    "servers": {
+        "s1": {
+            "domains": [
+                "localhost"
+            ],
+            "ip": "0.0.0.0",
+            "port": 8080,
+            "root": "/opt/cwfr/frontend",
+            "index": "index.html"
+        }
+    },
+    "mimetypes": {
+        "text/html": ["html", "htm", "shtml"],
+        "text/css": ["css"],
+        "text/xml": ["xml"],
+        "image/gif": ["gif"],
+        "image/jpeg": ["jpeg", "jpg"],
+        "application/javascript": ["js"],
+        "application/atom+xml": ["atom"],
+        "application/rss+xml": ["rss"],
+
+        "text/mathml": ["mml"],
+        "text/plain": ["txt"],
+        "text/vnd.sun.j2me.app-descriptor": ["jad"],
+        "text/vnd.wap.wml": ["wml"],
+        "text/x-component": ["htc"],
+
+        "font/ttf": ["ttf"],
+        "font/eot": ["eot"],
+        "font/otf": ["otf"],
+        "font/woff": ["woff"],
+        "font/woff2": ["woff2"],
+
+        "image/png": ["png"],
+        "image/svg+xml": ["svg", "svgz"],
+        "image/tiff": ["tif", "tiff"],
+        "image/vnd.wap.wbmp": ["wbmp"],
+        "image/webp": ["webp"],
+        "image/x-icon": ["ico"],
+        "image/x-jng": ["jng"],
+        "image/x-ms-bmp": ["bmp"],
+
+        "application/font-woff": ["woff"],
+        "application/java-archive": ["jar", "war", "ear"],
+        "application/json": ["json"],
+        "application/mac-binhex40": ["hqx"],
+        "application/msword": ["doc"],
+        "application/pdf": ["pdf"],
+        "application/postscript": ["ps", "eps", "ai"],
+        "application/rtf": ["rtf"],
+        "application/vnd.apple.mpegurl": ["m3u8"],
+        "application/vnd.google-earth.kml+xml": ["kml"],
+        "application/vnd.google-earth.kmz": ["kmz"],
+        "application/vnd.ms-excel": ["xls"],
+        "application/vnd.ms-fontobject": ["eot"],
+        "application/vnd.ms-powerpoint": ["ppt"],
+        "application/vnd.oasis.opendocument.graphics": ["odg"],
+        "application/vnd.oasis.opendocument.presentation": ["odp"],
+        "application/vnd.oasis.opendocument.spreadsheet": ["ods"],
+        "application/vnd.oasis.opendocument.text": ["odt"],
+        "application/vnd.openxmlformats-officedocument.presentationml.presentatio": ["pptx"],
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.shee": ["xlsx"],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.documen": ["docx"],
+        "application/vnd.wap.wmlc": ["wmlc"],
+        "application/x-7z-compressed": ["7z"],
+        "application/x-cocoa": ["cco"],
+        "application/x-java-archive-diff": ["jardiff"],
+        "application/x-java-jnlp-file": ["jnlp"],
+        "application/x-makeself": ["run"],
+        "application/x-perl": ["pl", "pm"],
+        "application/x-pilot": ["prc", "pdb"],
+        "application/x-rar-compressed": ["rar"],
+        "application/x-redhat-package-manager": ["rpm"],
+        "application/x-sea": ["sea"],
+        "application/x-shockwave-flash": ["swf"],
+        "application/x-stuffit": ["sit"],
+        "application/x-tcl": ["tcl", "tk"],
+        "application/x-x509-ca-cert": ["der", "pem", "crt"],
+        "application/x-xpinstall": ["xpi"],
+        "application/xhtml+xml": ["xhtml"],
+        "application/xspf+xml": ["xspf"],
+        "application/zip": ["zip"],
+        "application/x-tar": ["tar"],
+        "application/gzip": ["tar.gz", "tgz", "gz"],
+        "application/x-bzip": ["tar.bz2", "bz2"],
+
+        "application/octet-stream": ["bin", "exe", "dll", "deb", "dmg", "iso", "img", "msi", "msp", "msm"],
+
+        "audio/midi": ["mid", "midi", "kar"],
+        "audio/mpeg": ["mp3"],
+        "audio/ogg": ["ogg"],
+        "audio/x-m4a": ["m4a"],
+        "audio/x-realaudio": ["ra"],
+
+        "video/3gpp": ["3gpp", "3gp"],
+        "video/mp2t": ["ts"],
+        "video/mp4": ["mp4"],
+        "video/mpeg": ["mpeg", "mpg"],
+        "video/quicktime": ["mov"],
+        "video/webm": ["webm"],
+        "video/x-flv": ["flv"],
+        "video/x-m4v": ["m4v"],
+        "video/x-mng": ["mng"],
+        "video/x-ms-asf": ["asx", "asf"],
+        "video/x-ms-wmv": ["wmv"],
+        "video/x-msvideo": ["avi"]
+    }
+}
