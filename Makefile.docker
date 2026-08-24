@@ -1,0 +1,91 @@
+# Makefile for convenient Docker workflow
+
+CONFIG := $(PWD)/config.json
+DIST := $(PWD)/frontend/docs/.vitepress/dist
+
+.PHONY: help build run stop logs clean migrate shell
+.PHONY: dc-up dc-down dc-logs dc-rebuild dc-ps
+
+# Default target
+help:
+	@echo "cwfr Docker commands:"
+	@echo ""
+	@echo "  make build        - Build Docker image"
+	@echo "  make run          - Run container"
+	@echo "  make stop         - Stop container"
+	@echo "  make logs         - View logs"
+	@echo "  make clean        - Remove containers and images"
+	@echo "  make migrate ARGS='up all /opt/cwfr/config.json postgresql.p1 s1'"
+	@echo "  make shell        - Run shell in container"
+	@echo ""
+	@echo "Docker Compose:"
+	@echo "  make dc-up        - Start all services via docker-compose"
+	@echo "  make dc-down      - Stop all services"
+	@echo "  make dc-logs      - View all service logs"
+	@echo "  make dc-rebuild   - Rebuild and start"
+
+# Build image
+build:
+	docker build -t cwfr:latest .
+
+# Run container with frontend mounted
+run:
+	docker run -d \
+		--name cwfr \
+		-p 80:8080 \
+		-v $(CONFIG):/opt/cwfr/config.json:ro \
+		-v $(DIST):/opt/cwfr/frontend:ro \
+		cwfr:latest -c /opt/cwfr/config.json -f
+
+# Stop container
+stop:
+	docker stop cwfr || true
+	docker rm cwfr || true
+
+# View logs
+logs:
+	docker logs -f cwfr
+
+# Remove containers and images
+clean: stop
+	docker rmi cwfr:latest || true
+
+# Run migrations, e.g.:
+#   make migrate ARGS='create add_users_table /opt/cwfr/config.json /opt/cwfr/app/migrations/s1'
+#   make migrate ARGS='up all /opt/cwfr/config.json postgresql.p1 s1'
+migrate:
+	@test -n "$(ARGS)" || { echo 'usage: make migrate ARGS="<migrate arguments>"'; exit 1; }
+	docker run --rm \
+		--user $$(id -u):$$(id -g) \
+		--network cwfr-network \
+		-e LD_LIBRARY_PATH=/opt/cwfr/lib/cwfr \
+		-v $(CONFIG):/opt/cwfr/config.json:ro \
+		-v $(PWD)/backend/app:/opt/cwfr/app \
+		--entrypoint migrate \
+		cwfr:latest $(ARGS)
+
+# Shell in container
+shell:
+	docker run -it --rm \
+		--network cwfr-network \
+		-v $(CONFIG):/opt/cwfr/config.json:ro \
+		--entrypoint /bin/bash \
+		cwfr:latest
+
+# Docker Compose commands
+dc-up:
+	docker compose up -d
+
+dc-down:
+	docker compose down
+
+dc-logs:
+	docker compose logs -f
+
+dc-rebuild:
+	docker compose down
+	docker compose build --no-cache
+	docker compose up -d
+
+dc-ps:
+	docker compose ps

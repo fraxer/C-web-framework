@@ -1,0 +1,43 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: cwfr-app
+    ports:
+      - "80:8080"
+    volumes:
+      # Configuration file
+      - ./config.json:/opt/cwfr/config.json:ro
+      # Application handlers (for development)
+      - ./backend/app:/opt/cwfr/app:ro
+      # Frontend static files (built frontend - VitePress output)
+      - ./frontend/docs/.vitepress/dist:/opt/cwfr/frontend:ro
+    command: ["-c", "/opt/cwfr/config.json", "-f"]
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18
+    container_name: cwfr-postgres
+    environment:
+      POSTGRES_USER: cwfr
+      POSTGRES_PASSWORD: cwfr
+      POSTGRES_DB: cwfr
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cwfr -d cwfr"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+
+networks:
+  default:
+    name: cwfr-network
