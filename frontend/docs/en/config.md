@@ -165,6 +165,32 @@ The only optional key in `main`. A key-value store holding **both** your applica
 
 Only scalar values are copied: `string`, `number`, `bool`, `null`. Nested objects and arrays are **silently dropped** — no `env_get_*` function can read them.
 
+#### The .env file
+
+Keys can also come from a `.env` file placed next to `config.json` — one `key=value` pair per line:
+
+```dotenv
+# a comment
+refresh_token_expiration=15552000
+feature_x_enabled=true
+app_name=backend
+password="p@ss # not a comment"  # a comment after the value
+```
+
+Blank lines and lines starting with `#` are skipped, an `export ` prefix is allowed, whitespace around keys and values is trimmed. Matching quotes are stripped, and a quoted value always stays a string (for an unquoted value, everything after ` #` is dropped as a comment). The type is inferred: `true`/`false` reads as a boolean, anything that parses as a number reads as a number, everything else is a string — from there a key is indistinguishable from one set in `main.env`.
+
+The path is overridden with [`env_file`](#env-file). If a key is set both in `main.env` and in `.env`, `main.env` wins.
+
+#### env_file <Badge type="info" text="string"/> <Badge type="tip" text="main"/>
+
+Name of the variables file instead of `.env`. A relative path is resolved against the directory of `config.json`:
+
+```json
+"env_file": "secrets/.env.production"
+```
+
+If the file cannot be opened, or a line in it has no `=`, a message goes to the journal and startup continues without those keys.
+
 #### Application keys
 
 ```json
