@@ -209,6 +209,8 @@ const char* name = env_get_string("app_name", "default");
 
 Доступны: `env_get_string`, `env_get_int`, `env_get_llong`, `env_get_bool`, `env_get_double`, `env_get_ldouble` — каждое принимает ключ и значение по умолчанию. Ключа нет или у него неподходящий тип — возвращается умолчание, без ошибки.
 
+Когда умолчание в вызове — не то, что нужно поведению (например, отсутствие ключа должно отличаться от явного значения), используйте **проверяемые** варианты: `env_get_string_checked`, `env_get_llong_checked`, `env_get_bool_checked`. Они возвращают статус: `0` — ключа нет, `1` — ключ есть и тип подходит (значение записано в выходной параметр), `-1` — ключ есть, но тип не тот. Отдельные `env_config_get_string_checked` / `env_config_get_llong_checked` / `env_config_get_bool_checked` делают то же самое для явно переданного `env_t*`, а не для глобальной конфигурации — это удобно в коде, который работает с конфигурацией до её публикации или в тестах.
+
 #### Ключи рантайма
 
 Всё остальное, что настраивается в `main.env`, — это параметры самого сервера. Полный указатель; подробное описание каждого параметра — на связанных страницах.
@@ -357,12 +359,12 @@ const char* name = env_get_string("app_name", "default");
 | `example.com` | Точное имя. Точка экранируется, поэтому `a.b` не матчит `axb` |
 | `*.example.com` | `*` вне скобок раскрывается в `.*` — но **только в начале или в конце строки** |
 | `mail.*` | То же самое с другого конца |
-| `(api\|www).example.com` | Обычный PCRE: скобки, альтернатива, классы `[...]` работают как в регулярке |
+| `(api\|www).example.com` | Обычное регулярное выражение PCRE2: скобки, альтернатива, классы `[...]` работают как в регулярке |
 | `(.1\|.*)example.com` | Внутри скобок точка и звёздочка — **метасимволы**, экранирование не применяется |
 
 Шаблон автоматически привязывается к границам строки: `^` в начале и `$` в конце добавляются, если их нет. Звёздочка в середине строки (`a*b`) — ошибка конфигурации, как и незакрытая скобка.
 
-Шаблон без метасимволов сравнивается напрямую, минуя PCRE, — это заметно быстрее, и именно поэтому точка экранируется, а не оставляется метасимволом: иначе ни одно реальное доменное имя не попало бы в быструю ветку.
+Шаблон без метасимволов сравнивается напрямую, минуя PCRE2, — это заметно быстрее, и именно поэтому точка экранируется, а не оставляется метасимволом: иначе ни одно реальное доменное имя не попало бы в быструю ветку.
 
 ::: warning Порт в domains не пишется
 Порт отрезается от `Host` перед сравнением, поэтому запись вида `"www.example.com:8080"` не совпадёт **никогда**. Порт задаётся полем [`port`](#port).
@@ -774,6 +776,7 @@ TCP-порт сервера (обычно `80` для HTTP, `443` для HTTPS).
         "workers": 4,
         "threads": 2,
         "reload": "hard",
+        "env_file": "secrets/.env.production",
         "client_max_body_size": 110485760,
         "tmp": "/tmp",
         "gzip": ["text/html", "text/css", "application/json", "application/javascript"],
@@ -783,7 +786,9 @@ TCP-порт сервера (обычно `80` для HTTP, `443` для HTTPS).
             "metrics": true,
             "gzip_static": true,
             "gzip_cache_size": 33554432,
+            "gzip_cache_max_file": 1048576,
             "http2_idle_timeout_sec": 60,
+            "http2_ping_interval_sec": 30,
             "http3_idle_timeout_sec": 300,
             "http3_keepalive_sec": 10
         }
@@ -798,6 +803,14 @@ TCP-порт сервера (обычно `80` для HTTP, `443` для HTTPS).
             "interval": 60,
             "file": "/app/build/exec/handlers/tasks/libtasks.so",
             "function": "cleanup_authorization_codes"
+        },
+        {
+            "name": "nightly_report",
+            "type": "daily",
+            "hour": 3,
+            "minute": 30,
+            "file": "/app/build/exec/handlers/tasks/libtasks.so",
+            "function": "send_report"
         }
     ],
     "servers": {
@@ -836,6 +849,8 @@ TCP-порт сервера (обычно `80` для HTTP, `443` для HTTPS).
             },
             "websockets": {
                 "default": { "file": "/app/build/exec/handlers/ws/lib_wsindex.so", "function": "default_" },
+                "ratelimit": "default",
+                "middlewares": ["middleware_ws_auth"],
                 "routes": {
                     "/ws": { "GET": { "file": "/app/build/exec/handlers/ws/lib_wsindex.so", "function": "connect" } }
                 }
@@ -847,32 +862,78 @@ TCP-порт сервера (обычно `80` для HTTP, `443` для HTTPS).
             },
             "http3": {
                 "enabled": true,
+                "port": 443,
                 "alt_svc": true,
                 "alt_svc_max_age": 86400
             }
+        },
+        "site_v6": {
+            "domains": ["example.com", "*.example.com"],
+            "ip": "::",
+            "port": 443,
+            "root": "/var/www/html",
+            "index": "index.html",
+            "tls": {
+                "fullchain": "/etc/letsencrypt/live/example.com/fullchain.pem",
+                "private": "/etc/letsencrypt/live/example.com/privkey.pem",
+                "ciphers": "TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256"
+            },
+            "http3": { "enabled": true }
         }
     },
     "databases": {
         "postgresql": [{
             "host_id": "p1", "ip": "127.0.0.1", "port": 5432,
             "dbname": "mydb", "user": "dbuser", "password": "dbpass",
-            "connection_timeout": 3
+            "connection_timeout": 3,
+            "schema": "public"
+        }],
+        "mysql": [{
+            "host_id": "m1", "ip": "127.0.0.1", "port": 3306,
+            "dbname": "mydb", "user": "dbuser", "password": "dbpass",
+            "charset": "utf8mb4",
+            "connection_timeout": 5
         }],
         "redis": [{
             "host_id": "r1", "ip": "127.0.0.1", "port": 6379,
             "dbindex": 0, "user": "", "password": ""
         }],
         "sqlite": [{
-            "host_id": "local", "path": "/var/lib/app/data.sqlite"
+            "host_id": "local", "path": "/var/lib/app/data.sqlite",
+            "journal_mode": "WAL",
+            "busy_timeout": 5000
         }]
     },
     "storages": {
-        "local": { "type": "filesystem", "root": "/var/www/storage" }
+        "local": {
+            "type": "filesystem",
+            "root": "/var/www/storage"
+        },
+        "remote": {
+            "type": "s3",
+            "access_id": "your_access_id",
+            "access_secret": "your_access_secret",
+            "protocol": "https",
+            "host": "s3.amazonaws.com",
+            "port": "443",
+            "bucket": "my-bucket",
+            "region": "us-east-1"
+        }
     },
     "sessions": {
         "backend": {
             "driver": "filesystem",
             "storage_name": "local",
+            "secret": "change-me"
+        },
+        "scheduler": {
+            "driver": "redis",
+            "host_id": "redis.r1",
+            "secret": "change-me"
+        },
+        "doc-editor": {
+            "driver": "database",
+            "host_id": "postgresql.p1",
             "secret": "change-me"
         }
     },

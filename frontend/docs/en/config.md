@@ -209,6 +209,8 @@ const char* name = env_get_string("app_name", "default");
 
 Available: `env_get_string`, `env_get_int`, `env_get_llong`, `env_get_bool`, `env_get_double`, `env_get_ldouble` — each takes a key and a default. A missing key, or one of the wrong type, yields the default without an error.
 
+When a call-site default is not expressive enough — for example, a missing key must be distinguishable from an explicitly set value — use the **checked** variants: `env_get_string_checked`, `env_get_llong_checked`, `env_get_bool_checked`. They return a status: `0` — the key is absent, `1` — the key exists with a suitable type (the value is written to the out parameter), `-1` — the key exists but has the wrong type. The standalone `env_config_get_string_checked` / `env_config_get_llong_checked` / `env_config_get_bool_checked` do the same for an explicitly passed `env_t*` rather than the global configuration — handy in code that works with a configuration before it is published, and in tests.
+
 #### Runtime keys
 
 Everything else configured through `main.env` is a server parameter. A full index; each parameter is described in detail on the linked page.
@@ -357,12 +359,12 @@ The template is converted to punycode, then into a regular expression by a few r
 | `example.com` | An exact name. The dot is escaped, so `a.b` does not match `axb` |
 | `*.example.com` | Outside brackets `*` expands to `.*` — but **only at the start or the end of the string** |
 | `mail.*` | The same from the other end |
-| `(api\|www).example.com` | Ordinary PCRE: groups, alternation and `[...]` classes behave as in a regex |
+| `(api\|www).example.com` | Ordinary regular expression, PCRE2: groups, alternation and `[...]` classes behave as in a regex |
 | `(.1\|.*)example.com` | Inside brackets the dot and the asterisk are **metacharacters**; no escaping is applied |
 
 The template is anchored automatically: `^` and `$` are added if absent. An asterisk in the middle (`a*b`) is a configuration error, as is an unbalanced bracket.
 
-A template with no metacharacters is compared directly, bypassing PCRE — noticeably faster, and precisely why the dot is escaped rather than left as a metacharacter: otherwise no real domain name would ever take the fast path.
+A template with no metacharacters is compared directly, bypassing PCRE2 — noticeably faster, and precisely why the dot is escaped rather than left as a metacharacter: otherwise no real domain name would ever take the fast path.
 
 ::: warning Do not put a port in domains
 The port is stripped from `Host` before matching, so an entry like `"www.example.com:8080"` will **never** match. The port is set by the [`port`](#port) field.
@@ -774,6 +776,7 @@ A file whose extension is not described here is served without a meaningful `Con
         "workers": 4,
         "threads": 2,
         "reload": "hard",
+        "env_file": "secrets/.env.production",
         "client_max_body_size": 110485760,
         "tmp": "/tmp",
         "gzip": ["text/html", "text/css", "application/json", "application/javascript"],
@@ -783,7 +786,9 @@ A file whose extension is not described here is served without a meaningful `Con
             "metrics": true,
             "gzip_static": true,
             "gzip_cache_size": 33554432,
+            "gzip_cache_max_file": 1048576,
             "http2_idle_timeout_sec": 60,
+            "http2_ping_interval_sec": 30,
             "http3_idle_timeout_sec": 300,
             "http3_keepalive_sec": 10
         }
@@ -798,6 +803,14 @@ A file whose extension is not described here is served without a meaningful `Con
             "interval": 60,
             "file": "/app/build/exec/handlers/tasks/libtasks.so",
             "function": "cleanup_authorization_codes"
+        },
+        {
+            "name": "nightly_report",
+            "type": "daily",
+            "hour": 3,
+            "minute": 30,
+            "file": "/app/build/exec/handlers/tasks/libtasks.so",
+            "function": "send_report"
         }
     ],
     "servers": {
@@ -836,6 +849,8 @@ A file whose extension is not described here is served without a meaningful `Con
             },
             "websockets": {
                 "default": { "file": "/app/build/exec/handlers/ws/lib_wsindex.so", "function": "default_" },
+                "ratelimit": "default",
+                "middlewares": ["middleware_ws_auth"],
                 "routes": {
                     "/ws": { "GET": { "file": "/app/build/exec/handlers/ws/lib_wsindex.so", "function": "connect" } }
                 }
@@ -847,32 +862,78 @@ A file whose extension is not described here is served without a meaningful `Con
             },
             "http3": {
                 "enabled": true,
+                "port": 443,
                 "alt_svc": true,
                 "alt_svc_max_age": 86400
             }
+        },
+        "site_v6": {
+            "domains": ["example.com", "*.example.com"],
+            "ip": "::",
+            "port": 443,
+            "root": "/var/www/html",
+            "index": "index.html",
+            "tls": {
+                "fullchain": "/etc/letsencrypt/live/example.com/fullchain.pem",
+                "private": "/etc/letsencrypt/live/example.com/privkey.pem",
+                "ciphers": "TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256"
+            },
+            "http3": { "enabled": true }
         }
     },
     "databases": {
         "postgresql": [{
             "host_id": "p1", "ip": "127.0.0.1", "port": 5432,
             "dbname": "mydb", "user": "dbuser", "password": "dbpass",
-            "connection_timeout": 3
+            "connection_timeout": 3,
+            "schema": "public"
+        }],
+        "mysql": [{
+            "host_id": "m1", "ip": "127.0.0.1", "port": 3306,
+            "dbname": "mydb", "user": "dbuser", "password": "dbpass",
+            "charset": "utf8mb4",
+            "connection_timeout": 5
         }],
         "redis": [{
             "host_id": "r1", "ip": "127.0.0.1", "port": 6379,
             "dbindex": 0, "user": "", "password": ""
         }],
         "sqlite": [{
-            "host_id": "local", "path": "/var/lib/app/data.sqlite"
+            "host_id": "local", "path": "/var/lib/app/data.sqlite",
+            "journal_mode": "WAL",
+            "busy_timeout": 5000
         }]
     },
     "storages": {
-        "local": { "type": "filesystem", "root": "/var/www/storage" }
+        "local": {
+            "type": "filesystem",
+            "root": "/var/www/storage"
+        },
+        "remote": {
+            "type": "s3",
+            "access_id": "your_access_id",
+            "access_secret": "your_access_secret",
+            "protocol": "https",
+            "host": "s3.amazonaws.com",
+            "port": "443",
+            "bucket": "my-bucket",
+            "region": "us-east-1"
+        }
     },
     "sessions": {
         "backend": {
             "driver": "filesystem",
             "storage_name": "local",
+            "secret": "change-me"
+        },
+        "scheduler": {
+            "driver": "redis",
+            "host_id": "redis.r1",
+            "secret": "change-me"
+        },
+        "doc-editor": {
+            "driver": "database",
+            "host_id": "postgresql.p1",
             "secret": "change-me"
         }
     },
