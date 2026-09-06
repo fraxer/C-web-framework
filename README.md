@@ -209,9 +209,10 @@ project/
 │   │   │   └── prepare_statements.c               # named prepared statements
 │   │   ├── middlewares/               # Custom middleware
 │   │   │   ├── httpmiddlewares.c      # HTTP middleware (auth, rate limit)
-│   │   │   ├── wsmiddlewares.c        # WebSocket middleware
-│   │   │   └── middlewarelist.c       # registers middleware by name for config.json
+│   │   │   └── wsmiddlewares.c        # WebSocket middleware
 │   │   ├── contexts/                  # Request contexts (httpctx.c, wsctx.c)
+│   │   ├── app_init.c                 # app module entry point: registers
+│   │   │                              # middleware by name for config.json
 │   │   ├── auth/                      # Authentication module
 │   │   │   ├── auth.c                 # password hashing, authenticate()
 │   │   │   ├── password_validator.c   # password validation
@@ -631,6 +632,28 @@ cmake --build . -j4
 * **RelWithDebInfo** - optimized version with debug information (also sanitized)
 * **ThreadSanitizer** - `-DSANITIZE=thread` (mutually exclusive with ASan)
 * **Tests** - `-DBUILD_TESTS=yes` builds the core unit/integration tests
+
+### Building the Application Separately
+
+The framework carries nothing from the application, so it can be built and
+installed once and reused. Handlers are then written and rebuilt against the
+installed copy, with no core sources present:
+
+```bash
+# Once: build and install the framework (plus the example application)
+cmake --install build --prefix /opt/cwfr
+
+# Afterwards: the application on its own
+cmake -S backend/app -B app-build -DCMAKE_BUILD_TYPE=Release \
+      -Dcwfr_DIR=/opt/cwfr/lib/cmake/cwfr
+cmake --build app-build -j4
+```
+
+`backend/app/` builds both ways from the same files — as part of the monorepo,
+and standalone through `find_package(cwfr)`. See
+[Build and run](https://cwebframework.tech/en/build-and-run) and
+`backend/core/INSTALL.md` for the framework-only variant and the installed
+layout.
 
 ## Key Highlights
 

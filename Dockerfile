@@ -27,17 +27,19 @@ WORKDIR /build
 
 COPY backend /build/backend
 
-RUN cd backend && \
-    mkdir -p build && \
-    cd build && \
-    cmake -G Ninja \
+# Build and install into the prefix the runtime stage will use verbatim, rather
+# than copying individual files out of the build tree: `cmake --install` is what
+# lays out bin/ and lib/cwfr/ correctly, applies the $ORIGIN/../lib/cwfr RPATH,
+# and creates the libcwfr_framework.so.<major> SONAME links that handler modules
+# are linked against.
+RUN cmake -G Ninja -S backend -B backend/build \
         -DCMAKE_BUILD_TYPE=Release \
         -DINCLUDE_POSTGRESQL=yes \
         -DINCLUDE_MYSQL=yes \
         -DINCLUDE_REDIS=yes \
-        -DINCLUDE_SQLITE=yes \
-        .. && \
-    ninja
+        -DINCLUDE_SQLITE=yes && \
+    cmake --build backend/build && \
+    cmake --install backend/build --prefix /opt/cwfr
 
 
 # --- Stage 2: Frontend (VitePress documentation site) ---
@@ -75,8 +77,10 @@ RUN groupadd -r cwfr && useradd -r -g cwfr -s /sbin/nologin -c "cwfr user" cwfr
 
 ENV CWFR_PREFIX=/opt/cwfr
 
-COPY --from=builder /build/backend/build/exec ${CWFR_PREFIX}/bin
-COPY --from=builder /build/backend/build/core/framework_shared/libcwfr_framework.so ${CWFR_PREFIX}/lib/cwfr/
+# Only what the server needs to run: the headers and the CMake package that
+# `cmake --install` also produced belong in an SDK image, not this one.
+COPY --from=builder /opt/cwfr/bin ${CWFR_PREFIX}/bin
+COPY --from=builder /opt/cwfr/lib/cwfr ${CWFR_PREFIX}/lib/cwfr
 
 RUN mkdir -p ${CWFR_PREFIX}/lib/cwfr/handlers ${CWFR_PREFIX}/lib/cwfr/migrations ${CWFR_PREFIX}/frontend
 

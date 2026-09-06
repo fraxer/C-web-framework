@@ -1,16 +1,7 @@
 #include "wsctx.h"
-#include "model.h"
 
-void wsctx_init(wsctx_t* ctx, void* request, void* response) {
-    ctx->request = request;
-    ctx->response = response;
-    ctx->user_data = NULL;
-}
+/* See httpctx.c -- wsctx_init/wsctx_clear are the core's now. */
 
 void wsctx_set_user(wsctx_t* ctx, user_t* user) {
-    ctx->user_data = user;
-}
-
-void wsctx_clear(wsctx_t* ctx) {
-    model_free(ctx->user_data);
+    wsctx_set_user_data(ctx, user);
 }

@@ -41,23 +41,33 @@ typedef int (*middleware_fn_p)(void*);
 
 ### Регистрация в реестре
 
-Глобальные middleware регистрируются в файле `app/middlewares/middlewarelist.c` внутри функции `middlewares_init()` через вызов `middleware_registry_register(name, fn)`. Эта функция вызывается во время инициализации приложения (из `moduleloader`):
+Глобальные middleware регистрируются в функции `app_init()` модуля приложения — разделяемой библиотеки, указанной в [`main.modules`](/config#modules). `cwfr` загружает её при старте и вызывает `app_init()` **до** разбора секции `servers`, поэтому к моменту, когда маршрут сошлётся на middleware по имени, оно уже в реестре.
 
 ```c
-// app/middlewares/middlewarelist.c
+// app/app_init.c
+#include <stdio.h>
+
+#include "model.h"
+#include "httpcontext.h"
+#include "wscontext.h"
 #include "middleware_registry.h"
 #include "httpmiddlewares.h"
 #include "wsmiddlewares.h"
-#include "log.h"
 
-int middlewares_init(void) {
+int app_init(void) {
+    // Деструкторы для ctx->user_data: ядро знает поле как void*,
+    // а чем оно является — известно только приложению. Владелец один
+    // на процесс, поэтому с несколькими модулями второй получит 0.
+    if (!httpctx_set_user_data_free(model_free) || !wsctx_set_user_data_free(model_free))
+        return 0;
+
     if (!middleware_registry_register("middleware_http_forbidden", (middleware_fn_p)middleware_http_forbidden)) {
-        log_error("middlewares_init: failed to register middleware_http_forbidden\n");
+        fprintf(stderr, "app_init: failed to register middleware_http_forbidden\n");
         return 0;
     }
 
     if (!middleware_registry_register("middleware_http_test_header", (middleware_fn_p)middleware_http_test_header)) {
-        log_error("middlewares_init: failed to register middleware_http_test_header\n");
+        fprintf(stderr, "app_init: failed to register middleware_http_test_header\n");
         return 0;
     }
 
@@ -68,8 +78,24 @@ int middlewares_init(void) {
 }
 ```
 
+::: warning Не `log_error()`
+`app_init()` вызывается до того, как разобранная конфигурация опубликована, поэтому логгер на этот момент ещё молчит. Пишите об ошибках в `stderr` — подробнее в [`main.modules`](/config#modules).
+:::
+
 ::: tip Имя = ключ в config.json
 Строка, переданная первым аргументом в `middleware_registry_register()`, — это то самое имя, которое указывается в массиве `middlewares` конфигурации.
+:::
+
+::: warning Идемпотентность
+При `reload: hard` реестр очищается и `app_init()` вызывается заново, поэтому функция не должна накапливать состояние между вызовами. Сама библиотека при этом не выгружается — чтобы подхватить пересобранный модуль приложения, нужен рестарт сервера, а не перезагрузка конфигурации.
+:::
+
+::: details Раньше: `middlewares_init()` в `app/middlewares/middlewarelist.c`
+До появления модулей приложения регистрация жила в функции `middlewares_init()`, которую ядро вызывало напрямую. Это был неразрешённый символ внутри ядра, из-за чего код приложения приходилось вкомпилировать в `libcwfr_framework.so`, и фреймворк нельзя было собрать один раз для нескольких приложений.
+
+Сейчас `middlewares_init()` в ядре **не объявлен и не вызывается**. Старый код требует миграции: переименуйте функцию в `app_init()`, перенесите приложение в модуль и укажите его в [`main.modules`](/config#modules). Заодно нужно удалить `httpctx_init/clear` и `wsctx_init/clear` — они теперь принадлежат ядру, и их определение в приложении даёт ошибку компоновки `multiple definition`; вместо них зарегистрируйте деструктор через `httpctx_set_user_data_free()`.
+
+Если модуль всё ещё экспортирует `middlewares_init()`, сервер скажет об этом прямо при старте, а не упадёт позже на постороннем с виду `failed to find middleware`.
 :::
 
 ### API реестра
@@ -78,7 +104,6 @@ int middlewares_init(void) {
 
 | Функция | Назначение |
 | --- | --- |
-| `middlewares_init()` | Регистрирует все middleware приложения при старте. |
 | `middleware_registry_register(name, handler)` | Регистрирует middleware по имени. `1` — успех, `0` — ошибка (реестр переполнен / дубликат). |
 | `middleware_by_name(name)` | Возвращает функцию middleware по имени или `NULL`. |
 | `middleware_registry_get_all(&count)` | Возвращает массив всех зарегистрированных middleware. |
@@ -348,7 +373,7 @@ int middleware_ws_query_param_required(wsctx_t* ctx, char** keys, int size) {
 ```
 
 ::: warning WebSocket middleware — только локальные
-WS-middleware не регистрируются глобально в `middlewares_init()`. Они применяются локально — через макрос `middleware()` в самом обработчике WebSocket:
+WS-middleware не регистрируются глобально в `app_init()`. Они применяются локально — через макрос `middleware()` в самом обработчике WebSocket:
 
 ```c
 // app/routes/ws/wsindex.c

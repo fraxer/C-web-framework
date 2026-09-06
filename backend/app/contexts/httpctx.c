@@ -1,19 +1,9 @@
 #include "httpctx.h"
-#include "httprequest.h"
-#include "httpresponse.h"
-#include "model.h"
-#include "user.h"
 
-void httpctx_init(httpctx_t* ctx, void* request, void* response) {
-    ctx->request = request;
-    ctx->response = response;
-    ctx->user_data = NULL;
-}
+/* httpctx_init/httpctx_clear now live in the core (protocols/http/httpcontext.c).
+ * What stays here is the application's typed view of ctx->user_data: the core
+ * only knows it as void* plus a destructor registered in app_init(). */
 
 void httpctx_set_user(httpctx_t* ctx, user_t* user) {
-    ctx->user_data = user;
-}
-
-void httpctx_clear(httpctx_t* ctx) {
-    model_free(ctx->user_data);
+    httpctx_set_user_data(ctx, user);
 }

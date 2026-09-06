@@ -29,6 +29,87 @@ cmake --build . -j$(nproc)
 ./exec/cwfr -c ../config.json
 ```
 
+## Build methods
+
+The core and the application can be built together or apart. Three options, from the simplest to the most decoupled:
+
+| | What gets built | When you want it |
+|---|---|---|
+| **1. Monorepo** | core + application in one command | development, CI, getting to know the framework |
+| **2. Application alone** | just the application, against an installed framework | the core was built once; handlers are written and rebuilt afterwards |
+| **3. Framework only** | the core with no application at all | producing that installed framework |
+
+Methods 3 and 2 are two halves of one workflow: build the core once, then work only on the application.
+
+### 1. Monorepo
+
+What [Quick start](#quick-start) does: `backend/CMakeLists.txt` pulls in `core/` and `app/` and builds both.
+
+### 2. Application alone
+
+`backend/app/` is a CMake project in its own right. An installed framework is all it needs — the core sources are not:
+
+```bash
+cmake -S backend/app -B build -DCMAKE_BUILD_TYPE=Release \
+      -Dcwfr_DIR=/opt/cwfr/lib/cmake/cwfr
+cmake --build build -j$(nproc)
+cmake --install build --prefix /srv/myapp
+```
+
+`-Dcwfr_DIR=…` is only needed when the framework sits in a prefix CMake does not search by default; with `--prefix /usr/local`, `find_package(cwfr)` finds it on its own.
+
+`find_package(cwfr 1.0 REQUIRED)` provides:
+
+* **`cwfr::framework`** — the library together with its header paths and the macros the framework was built with (`PCRE2_CODE_UNIT_WIDTH`, `PostgreSQL_FOUND`, …). Those macros gate struct members in the database headers, so the same set of drivers is imposed on the application — it does not get to pick a different one;
+* **the build helpers** — `cwfr_add_lib()`, `cwfr_add_handlers()`, `cwfr_add_migrations()`, `cwfr_add_subdirs()`, `cwfr_install_handlers()`, `cwfr_install_migrations()`.
+
+The match is by major version, so an application refuses to configure against a core release it was not written for.
+
+::: tip One directory, two ways to build it
+`backend/app/` works both as part of the monorepo (`add_subdirectory(app)`) and on its own. The difference is a single `if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)` block in its `CMakeLists.txt`, setting up what `backend/CMakeLists.txt` provides in the first case.
+:::
+
+### 3. Framework only
+
+The core does not build standalone: it calls no `project()` and finds no dependencies — the enclosing project does. A minimal such project is a preamble plus one `add_subdirectory(core)`:
+
+```cmake
+cmake_minimum_required(VERSION 3.12.4)
+project(cwfr_framework_only LANGUAGES C)
+
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/core/cmake)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/exec")
+
+add_compile_options(-fPIC)
+add_link_options(-rdynamic)
+
+find_package(Threads REQUIRED)
+find_package(PCRE2 REQUIRED)
+add_definitions(-DPCRE2_CODE_UNIT_WIDTH=8)
+find_package(ZLIB REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(LibXml2 REQUIRED)
+find_package(IDN2 REQUIRED)
+find_package(UNISTRING REQUIRED)
+
+if(INCLUDE_POSTGRESQL STREQUAL yes)
+    find_package(PostgreSQL)
+endif()
+if(PostgreSQL_FOUND AND INCLUDE_POSTGRESQL STREQUAL yes)
+    add_definitions(-DPostgreSQL_FOUND)
+endif()
+
+add_subdirectory(core)
+```
+
+```bash
+cmake -S fwonly -B build -DCMAKE_BUILD_TYPE=Release -DINCLUDE_POSTGRESQL=yes
+cmake --build build -j$(nproc)
+cmake --install build --prefix /opt/cwfr
+```
+
+Everything else the core declares for itself — the `install()` rules included, and the CMake package that method 2 will go on to find.
+
 ## Dependencies
 
 Building requires development headers for the libraries looked up via `find_package`: **Threads**, **PCRE2**, **ZLIB**, **OpenSSL**, **LibXML2**, **libidn2**, **libunistring**. Database support is opt-in (see below) and needs the matching clients: **PostgreSQL**, **MySQL/MariaDB**, **hiredis** (Redis), **SQLite3**.
@@ -187,6 +268,7 @@ backend/
 │   ├── contexts/                  # Request contexts
 │   │   ├── httpctx.c              # HTTP context
 │   │   └── wsctx.c                # WebSocket context
+│   ├── app_init.c                 # The application module entry point
 │   └── views/                     # Templates (.tpl)
 │       ├── index.tpl
 │       └── header.tpl
@@ -202,6 +284,7 @@ After building, executables and libraries are placed in `build/exec`:
 build/exec/
 ├── cwfr                           # Main executable
 ├── migrate                        # Migration utility
+├── libapp.so                      # The application module (main.modules)
 ├── handlers/                      # Compiled handlers (.so)
 │   ├── index/lib_index.so         #   lib_<file_name>.so under the group folder
 │   ├── ws/lib_wsindex.so
@@ -214,6 +297,49 @@ build/exec/
 ```
 
 Handlers are compiled one `.so` per source file (`app/routes/<group>/<name>.c` → `handlers/<group>/lib_<name>.so`) and loaded dynamically at runtime.
+
+`libapp.so` stands apart: it is the application's own code — models, middleware, contexts — as a single shared library. The server loads it from the path in [`main.modules`](/en/config#modules) and calls `app_init()`; handlers resolve its symbols from that one instance. The core library, `libcwfr_framework.so`, holds nothing from the application, which is what makes it buildable once and reusable.
+
+The handler and migration trees can be emitted outside the build directory:
+
+```bash
+cmake .. -DCWFR_HANDLER_OUT_DIR=$HOME/handlers \
+         -DCWFR_MIGRATION_OUT_DIR=$HOME/migrations
+```
+
+## Installing
+
+```bash
+cmake --install build --prefix /opt/cwfr
+```
+
+```
+/opt/cwfr/
+├── bin/
+│   ├── cwfr                       # the server
+│   └── migrate                    # the migration utility
+├── include/cwfr/                  # public headers, flat
+└── lib/
+    ├── cwfr/
+    │   ├── libcwfr_framework.so   # plus .so.1 and .so.1.0.0
+    │   ├── libapp.so
+    │   ├── handlers/
+    │   └── migrations/
+    └── cmake/cwfr/                # the package for find_package(cwfr)
+```
+
+`cwfr` and `migrate` carry an `INSTALL_RPATH` of `$ORIGIN/../lib/cwfr`, so the tree relocates freely — neither `ldconfig` nor `LD_LIBRARY_PATH` is needed as long as `bin/` and `lib/cwfr/` keep their relative positions.
+
+Headers are installed **flat**, into one directory: the core's sources include each other by bare name (`"httprequest.h"`, not `"protocols/http/httprequest.h"`), and flattening reproduces that with a single `-I` without publishing the core's internal layout.
+
+`libcwfr_framework.so` carries a `SONAME` with its major version. Handlers record it, so an incompatible core upgrade becomes a clear load-time error instead of corruption at runtime.
+
+Handler and migration install paths are overridable independently of the prefix — an absolute path ignores `--prefix`:
+
+```bash
+cmake .. -DCWFR_HANDLER_INSTALL_DIR=/srv/myapp/handlers \
+         -DCWFR_MIGRATION_INSTALL_DIR=/srv/myapp/migrations
+```
 
 ## Launch
 

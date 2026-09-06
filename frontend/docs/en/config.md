@@ -159,6 +159,125 @@ Anything else is a configuration error.
 - **Critical systems:** `warning`/`error` — important events only.
 :::
 
+### modules <Badge type="info" text="array of strings"/>
+
+Application shared libraries that `cwfr` and `migrate` load at start-up. Optional; the array order is the load order.
+
+```json
+"modules": ["/srv/myapp/lib/cwfr/libapp.so"]
+```
+
+This is the one place where an application tells the core what the core cannot work out for itself:
+
+* the **middleware names** referenced by `servers.*.http.middlewares` and `servers.*.websockets.middlewares`;
+* the **destructors** for whatever the application attaches to `httpctx_t`/`wsctx_t` through `httpctx_set_user_data()`.
+
+These used to be link-time symbols, which forced the application's code to be compiled into `libcwfr_framework.so`. The framework is now built and installed once, knowing nothing about any application, and handlers are written and rebuilt afterwards.
+
+#### The module contract
+
+The library must export `int app_init(void)`. Returning `0` aborts start-up.
+
+```c
+#include <stdio.h>
+
+#include "model.h"
+#include "httpcontext.h"
+#include "wscontext.h"
+#include "middleware_registry.h"
+#include "httpmiddlewares.h"
+
+int app_init(void) {
+    /* One owner per process: with several modules, the second one gets 0. */
+    if (!httpctx_set_user_data_free(model_free) || !wsctx_set_user_data_free(model_free))
+        return 0;
+
+    if (!middleware_registry_register("middleware_http_auth", (middleware_fn_p)middleware_http_auth)) {
+        fprintf(stderr, "app_init: failed to register middleware_http_auth\n");
+        return 0;
+    }
+
+    return 1;
+}
+```
+
+::: warning Not `log_error()`
+`app_init()` runs before the parsed configuration is published, so the logger is still silent at that point (`log_message()` returns while `env()` is `NULL`). Report errors on `stderr`, or the message is lost and a failed start leaves nothing behind but a non-zero exit status. The core mirrors its own loader errors to `stderr` for exactly this reason.
+:::
+
+#### How it is loaded
+
+The path is handed to `dlopen()` **verbatim**, exactly like a route's `"file"` field. An absolute path is taken literally, a relative one is resolved against the process's current directory, and a bare name with no `/` goes through the normal dynamic loader search (`LD_LIBRARY_PATH`, `RPATH`, `ldconfig`). Relative paths are a common source of "file not found" under service managers and are rarely what you want.
+
+The flags are `RTLD_NOW | RTLD_LOCAL`:
+
+* `RTLD_NOW` — every unresolved symbol in the module is diagnosed here, with the path in the message, instead of later as a lazy-binding abort inside a worker;
+* `RTLD_LOCAL` — a module's symbols stay out of the global lookup scope, so [several modules](#several-modules) never collide over a shared name. Handlers are unaffected: a handler `.so` records the module in `DT_NEEDED`, and the loader satisfies that from the already-loaded instance by `SONAME`, whatever scope it was opened in.
+
+#### Ordering against the rest of the config
+
+`app_init()` is called **after** `main` is parsed and **before** `servers` is. It cannot be otherwise: a route names its middleware, and the name only enters the registry once it has been registered. An unknown name is a configuration error and the server will not start.
+
+`migrate` does the same thing in the same order — it parses `servers` too, so it needs the same populated registry.
+
+#### Several modules
+
+There may be any number of modules. They are loaded in array order, and each one's `app_init()` runs as soon as it is loaded. This is the normal layout for a monorepo whose application is built from several independent parts:
+
+```json
+"modules": [
+    "/srv/app/lib/cwfr/libcommon.so",
+    "/srv/app/lib/cwfr/libidentity.so",
+    "/srv/app/lib/cwfr/libscheduler.so"
+]
+```
+
+What is shared across the process and what belongs to a module:
+
+| | Scope | Conflict |
+|---|---|---|
+| Middleware names | one registry per process | a repeated name is refused and `app_init()` returns `0` |
+| The `ctx->user_data` destructor | one per process | a second module with a **different** function gets `0` and a message |
+| A module's own symbols | private to the module | none: modules are opened with `RTLD_LOCAL` |
+
+Symbol isolation matters: two modules may each carry their own `user_create()`, and without it the second would silently bind to the first module's implementation. `RTLD_LOCAL` prevents that and costs nothing — a handler reaches its module through `DT_NEEDED`, not through the global lookup scope.
+
+::: tip `ctx->user_data` has one owner
+`httpctx_set_user_data_free()` and `wsctx_set_user_data_free()` return `0` when the destructor is already held by a different function, and say so. Registering the **same** function again succeeds — otherwise `app_init()` could not be re-run on reload.
+
+Check the return value: unchecked, the conflict is only a line in the journal and the server comes up using the wrong destructor for half its requests.
+:::
+
+#### Config reload
+
+On reload (`SIGUSR1`) the middleware registry is cleared and `app_init()` runs again, so it **must be idempotent**: registering the same name twice returns `0`, which would abort start-up if the function accumulated state.
+
+The library itself is **not unloaded**. Old-generation workers may be executing a middleware from it at that moment, so unmapping it is never safe.
+
+::: danger A rebuilt module needs a restart
+A config reload will not pick up a rebuilt `.so` — the process keeps the code it already has. Handler modules carry the same constraint; the way around it is a new build under a new name and a new path — see [Hot reload](/en/hot-reload#updating-code-without-a-restart).
+
+Nor can one reload add **both** a new module **and** a route using its middleware: the configuration is validated against the **old** registry before the reload commits, the new name is not in it, and the reload is refused — the previous configuration keeps running. That needs a restart.
+:::
+
+#### Validation and errors
+
+The value must be an array of non-empty strings; anything else is a configuration error. Each entry then faces three checks, and any of them aborts start-up with a message on `stderr` and in the log:
+
+| What went wrong | Message |
+|---|---|
+| The file cannot be opened | `can't load module <path>: <dlerror text>` |
+| No `app_init()` | `module <path> exports no app_init()` |
+| `app_init()` returned `0` | `app_init() failed in <path>` |
+
+If a module exports no `app_init()` but does export `middlewares_init()` — the hook the core no longer calls — a migration hint is appended. Without it the mistake would surface much later and in an unrelated shape: `failed to find middleware <name>` while `servers` is parsed.
+
+#### Without this key
+
+The server starts, but the middleware registry stays empty and `ctx->user_data` has no destructor. That is a valid configuration for serving static files, or for routes with no application middleware; the moment the configuration names a middleware, start-up fails.
+
+See [Middleware](/en/middleware), and `core/INSTALL.md` — the sections "The application module" and "Building an application against an installed framework".
+
 ### env <Badge type="info" text="object"/>
 
 The only optional key in `main`. A key-value store holding **both** your application's own settings **and** every behavioural parameter of the protocols.
@@ -428,7 +547,7 @@ The default rate-limiting profile for all of the vhost's HTTP traffic.
 
 #### middlewares <Badge type="info" text="array of strings"/>
 
-Middleware applied to every HTTP route. Names come from the application registry (`app/middlewares/middlewarelist.c`); an unknown name is a configuration error.
+Middleware applied to every HTTP route. Names come from the application registry — `app_init()` in the module named by [`main.modules`](#modules) registers them; an unknown name is a configuration error.
 
 ```json
 "middlewares": ["middleware_http_auth"]
@@ -776,6 +895,7 @@ A file whose extension is not described here is served without a meaningful `Con
         "workers": 4,
         "threads": 2,
         "reload": "hard",
+        "modules": ["/app/build/exec/libapp.so"],
         "env_file": "secrets/.env.production",
         "client_max_body_size": 110485760,
         "tmp": "/tmp",
@@ -954,3 +1074,10 @@ A file whose extension is not described here is served without a meaningful `Con
     }
 }
 ```
+
+Two references in this example point outside the configuration, and both must resolve or the server will not start:
+
+* `middleware_http_auth` under `http.middlewares` — a name from the registry that `app_init()` fills in, in the `/app/build/exec/libapp.so` module declared in [`main.modules`](#modules). Drop that entry from `modules` and the registry is empty, so start-up fails with `failed to find middleware middleware_http_auth`.
+* the `file` fields on routes and tasks — handler paths resolved with `dlopen()` at start-up; a missing file or an unknown `function` aborts start-up just the same.
+
+The `secret` values are placeholders. They belong in the file named by [`env_file`](#env-file), not in the configuration itself.

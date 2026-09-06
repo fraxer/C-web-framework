@@ -41,23 +41,33 @@ Global middleware are configured in `config.json` and apply to all HTTP server r
 
 ### Registering in the Registry
 
-Global middleware are registered in `app/middlewares/middlewarelist.c`, inside the `middlewares_init()` function, via `middleware_registry_register(name, fn)`. This function is called during application initialization (from the `moduleloader`):
+Global middleware are registered in `app_init()`, the entry point of the application module — the shared library named in [`main.modules`](/en/config#modules). `cwfr` loads it at start-up and calls `app_init()` **before** the `servers` section is parsed, so every name is in the registry by the time a route refers to one.
 
 ```c
-// app/middlewares/middlewarelist.c
+// app/app_init.c
+#include <stdio.h>
+
+#include "model.h"
+#include "httpcontext.h"
+#include "wscontext.h"
 #include "middleware_registry.h"
 #include "httpmiddlewares.h"
 #include "wsmiddlewares.h"
-#include "log.h"
 
-int middlewares_init(void) {
+int app_init(void) {
+    // Destructors for ctx->user_data: the core knows the field as void*,
+    // only the application knows what it actually holds. There is one owner
+    // per process, so with several modules the second one gets 0.
+    if (!httpctx_set_user_data_free(model_free) || !wsctx_set_user_data_free(model_free))
+        return 0;
+
     if (!middleware_registry_register("middleware_http_forbidden", (middleware_fn_p)middleware_http_forbidden)) {
-        log_error("middlewares_init: failed to register middleware_http_forbidden\n");
+        fprintf(stderr, "app_init: failed to register middleware_http_forbidden\n");
         return 0;
     }
 
     if (!middleware_registry_register("middleware_http_test_header", (middleware_fn_p)middleware_http_test_header)) {
-        log_error("middlewares_init: failed to register middleware_http_test_header\n");
+        fprintf(stderr, "app_init: failed to register middleware_http_test_header\n");
         return 0;
     }
 
@@ -68,8 +78,24 @@ int middlewares_init(void) {
 }
 ```
 
+::: warning Not `log_error()`
+`app_init()` runs before the parsed configuration is published, so the logger is still silent at that point. Report errors on `stderr` — see [`main.modules`](/en/config#modules) for the detail.
+:::
+
 ::: tip Name = config.json key
 The string passed as the first argument to `middleware_registry_register()` is exactly the name referenced in the configuration `middlewares` array.
+:::
+
+::: warning Idempotence
+Under `reload: hard` the registry is cleared and `app_init()` runs again, so it must not accumulate state between calls. The library itself is not unloaded — picking up a rebuilt application module takes a server restart, not a config reload.
+:::
+
+::: details Previously: `middlewares_init()` in `app/middlewares/middlewarelist.c`
+Before application modules existed, registration lived in `middlewares_init()`, which the core called directly. It was an unresolved symbol inside the core, which is why the application's code had to be compiled into `libcwfr_framework.so` and why the framework could not be built once and shared between applications.
+
+The core now **neither declares nor calls** `middlewares_init()`. Existing code has to be migrated: rename the function to `app_init()`, move the application into a module and name it in [`main.modules`](/en/config#modules). `httpctx_init/clear` and `wsctx_init/clear` have to go at the same time — they belong to the core now, and defining them in the application is a `multiple definition` link error; register a destructor with `httpctx_set_user_data_free()` instead.
+
+A module that still exports `middlewares_init()` is called out by name at start-up, rather than failing later as an unrelated-looking `failed to find middleware`.
 :::
 
 ### Registry API
@@ -78,7 +104,6 @@ The registry interface is declared in `core/framework/middleware/middleware_regi
 
 | Function | Purpose |
 | --- | --- |
-| `middlewares_init()` | Registers all application middleware at startup. |
 | `middleware_registry_register(name, handler)` | Registers a middleware by name. `1` on success, `0` on error (full / duplicate). |
 | `middleware_by_name(name)` | Returns the middleware function by name, or `NULL`. |
 | `middleware_registry_get_all(&count)` | Returns the array of all registered middleware. |
@@ -348,7 +373,7 @@ int middleware_ws_query_param_required(wsctx_t* ctx, char** keys, int size) {
 ```
 
 ::: warning WebSocket middleware are local only
-WS middleware are not registered globally in `middlewares_init()`. They are applied locally — via the `middleware()` macro inside the WebSocket handler itself:
+WS middleware are not registered globally in `app_init()`. They are applied locally — via the `middleware()` macro inside the WebSocket handler itself:
 
 ```c
 // app/routes/ws/wsindex.c
