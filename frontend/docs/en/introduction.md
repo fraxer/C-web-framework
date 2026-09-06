@@ -106,7 +106,7 @@ The framework provides a complete set of tools for developing modern web applica
 * **Glibc** 2.35 or higher
 * **GCC** 9.5.0 or higher
 * **CMake** 3.12.4 or higher
-* **PCRE** 8.43 (regular expression library)
+* **PCRE2** 10.x (regular expression library)
 * **Zlib** 1.2.11 (data compression library)
 * **OpenSSL** 1.1.1k or higher
 * **LibXml2** 2.9.13

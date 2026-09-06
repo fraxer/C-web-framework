@@ -1,13 +1,13 @@
 ---
 outline: deep
-description: Step-by-step C Web Framework installation on Linux. Setting up GCC, CMake, OpenSSL, PCRE, Zlib, LibXml2, libidn2, libunistring and connecting PostgreSQL, MySQL, Redis, SQLite.
+description: Step-by-step C Web Framework installation on Linux. Setting up GCC, CMake, OpenSSL, PCRE2, Zlib, LibXml2, libidn2, libunistring and connecting PostgreSQL, MySQL, Redis, SQLite.
 ---
 
 # Install dependencies
 
 The framework requires the following components to build and run:
 
-**Required:** GCC 9.5+, CMake 3.12+, OpenSSL 1.1.1+, PCRE 8.43+, Zlib 1.2.11+, LibXml2 2.9.13+, libidn2 2.3.0+, libunistring 0.9.12+
+**Required:** GCC 9.5+, CMake 3.12+, OpenSSL 1.1.1+, PCRE2 10+, Zlib 1.2.11+, LibXml2 2.9.13+, libidn2 2.3.0+, libunistring 0.9.12+
 
 **Optional:** PostgreSQL, MySQL/MariaDB, Redis, SQLite — install if you need to work with the corresponding databases.
 
@@ -15,7 +15,7 @@ The framework requires the following components to build and run:
 All required libraries and DB clients in a single command:
 ```bash
 sudo apt install build-essential cmake pkg-config \
-                 libpcre3-dev zlib1g-dev libssl-dev libxml2-dev \
+                 libpcre2-dev zlib1g-dev libssl-dev libxml2-dev \
                  libidn2-dev libunistring-dev \
                  libpq-dev libmariadb-dev libhiredis-dev libsqlite3-dev
 ```
@@ -97,12 +97,12 @@ The `pkg-config` utility is used by the build system to locate headers and libra
 sudo apt install pkg-config
 ```
 
-## PCRE
+## PCRE2
 
 Regular expression library (used for routing and regex-based virtual hosts):
 
 ```bash
-sudo apt install libpcre3-dev
+sudo apt install libpcre2-dev
 ```
 
 ## Zlib

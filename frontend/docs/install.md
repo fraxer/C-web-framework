@@ -1,13 +1,13 @@
 ---
 outline: deep
-description: Пошаговая установка C Web Framework на Linux. Настройка GCC, CMake, OpenSSL, PCRE, Zlib, LibXml2, libidn2, libunistring и подключение PostgreSQL, MySQL, Redis, SQLite.
+description: Пошаговая установка C Web Framework на Linux. Настройка GCC, CMake, OpenSSL, PCRE2, Zlib, LibXml2, libidn2, libunistring и подключение PostgreSQL, MySQL, Redis, SQLite.
 ---
 
 # Установка зависимостей
 
 Для сборки и работы фреймворка требуются следующие компоненты:
 
-**Обязательные:** GCC 9.5+, CMake 3.12+, OpenSSL 1.1.1+, PCRE 8.43+, Zlib 1.2.11+, LibXml2 2.9.13+, libidn2 2.3.0+, libunistring 0.9.12+
+**Обязательные:** GCC 9.5+, CMake 3.12+, OpenSSL 1.1.1+, PCRE2 10+, Zlib 1.2.11+, LibXml2 2.9.13+, libidn2 2.3.0+, libunistring 0.9.12+
 
 **Опциональные:** PostgreSQL, MySQL/MariaDB, Redis, SQLite — устанавливаются при необходимости работы с соответствующими базами данных.
 
@@ -15,7 +15,7 @@ description: Пошаговая установка C Web Framework на Linux. �
 Все обязательные библиотеки и клиенты БД одной командой:
 ```bash
 sudo apt install build-essential cmake pkg-config \
-                 libpcre3-dev zlib1g-dev libssl-dev libxml2-dev \
+                 libpcre2-dev zlib1g-dev libssl-dev libxml2-dev \
                  libidn2-dev libunistring-dev \
                  libpq-dev libmariadb-dev libhiredis-dev libsqlite3-dev
 ```
@@ -97,12 +97,12 @@ sudo make install
 sudo apt install pkg-config
 ```
 
-## PCRE
+## PCRE2
 
 Библиотека регулярных выражений (используется для маршрутизации и виртуальных хостов с regex):
 
 ```bash
-sudo apt install libpcre3-dev
+sudo apt install libpcre2-dev
 ```
 
 ## Zlib

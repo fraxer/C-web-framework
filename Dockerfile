@@ -16,7 +16,6 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     libidn2-dev \
     libunistring-dev \
-    libargon2-dev \
     libpq-dev \
     postgresql \
     libmysqlclient-dev \
@@ -50,7 +49,6 @@ RUN apt-get update && apt-get install -y \
     libxml2-16 \
     libidn2-0 \
     libunistring5 \
-    libargon2-1 \
     libpq5 \
     libmariadb3 \
     libmysqlclient24 \

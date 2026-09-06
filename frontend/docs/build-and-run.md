@@ -31,13 +31,13 @@ cmake --build . -j$(nproc)
 
 ## Зависимости
 
-Сборка требует установленных библиотек разработки (ищутся через `find_package`): **Threads**, **PCRE**, **ZLIB**, **OpenSSL**, **LibXML2**, **libidn2**, **libunistring**. Поддержка БД включается по желанию (см. ниже) и требует соответствующих клиентов: **PostgreSQL**, **MySQL/MariaDB**, **hiredis** (Redis), **SQLite3**.
+Сборка требует установленных библиотек разработки (ищутся через `find_package`): **Threads**, **PCRE2**, **ZLIB**, **OpenSSL**, **LibXML2**, **libidn2**, **libunistring**. Поддержка БД включается по желанию (см. ниже) и требует соответствующих клиентов: **PostgreSQL**, **MySQL/MariaDB**, **hiredis** (Redis), **SQLite3**.
 
 Пример установки в Ubuntu/Debian:
 
 ```bash
 sudo apt install build-essential cmake pkg-config \
-                 libpcre3-dev zlib1g-dev libssl-dev libxml2-dev \
+                 libpcre2-dev zlib1g-dev libssl-dev libxml2-dev \
                  libidn2-dev libunistring-dev \
                  libpq-dev libmariadb-dev libhiredis-dev libsqlite3-dev
 ```

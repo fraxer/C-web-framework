@@ -31,13 +31,13 @@ cmake --build . -j$(nproc)
 
 ## Dependencies
 
-Building requires development headers for the libraries looked up via `find_package`: **Threads**, **PCRE**, **ZLIB**, **OpenSSL**, **LibXML2**, **libidn2**, **libunistring**. Database support is opt-in (see below) and needs the matching clients: **PostgreSQL**, **MySQL/MariaDB**, **hiredis** (Redis), **SQLite3**.
+Building requires development headers for the libraries looked up via `find_package`: **Threads**, **PCRE2**, **ZLIB**, **OpenSSL**, **LibXML2**, **libidn2**, **libunistring**. Database support is opt-in (see below) and needs the matching clients: **PostgreSQL**, **MySQL/MariaDB**, **hiredis** (Redis), **SQLite3**.
 
 Example install on Ubuntu/Debian:
 
 ```bash
 sudo apt install build-essential cmake pkg-config \
-                 libpcre3-dev zlib1g-dev libssl-dev libxml2-dev \
+                 libpcre2-dev zlib1g-dev libssl-dev libxml2-dev \
                  libidn2-dev libunistring-dev \
                  libpq-dev libmariadb-dev libhiredis-dev libsqlite3-dev
 ```
