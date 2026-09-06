@@ -31,7 +31,7 @@ const items = computed(() => [
     value: null,
     literal: 'MIT',
     label: isEn.value ? 'open source' : 'открытый код',
-    sub: isEn.value ? 'no runtime, no reverse proxy' : 'без рантайма и обратного прокси'
+    sub: isEn.value ? 'source code freely available on GitHub' : 'исходный код свободно доступен на GitHub'
   }
 ])
 

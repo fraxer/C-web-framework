@@ -79,8 +79,8 @@ const categories = [
     },
     link: '/wsrequests',
     items: {
-      ru: ['Именованные каналы и фильтрация получателей', 'permessage-deflate сжатие', 'Работает и поверх HTTP/2, и поверх HTTP/3'],
-      en: ['Named channels and recipient filtering', 'permessage-deflate compression', 'Runs over both HTTP/2 and HTTP/3']
+      ru: ['Именованные каналы и фильтрация получателей', 'permessage-deflate сжатие', 'Работает поверх HTTP/1.1 и HTTP/2 (Extended CONNECT)'],
+      en: ['Named channels and recipient filtering', 'permessage-deflate compression', 'Runs over HTTP/1.1 and HTTP/2 (Extended CONNECT)']
     }
   },
   {
