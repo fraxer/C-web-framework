@@ -138,6 +138,7 @@ HTTP/2 behavioral parameters are environment variables from the `main.env` secti
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `http2_idle_timeout_sec` | `120` | Connection idle timeout (sec). `0` — disable |
+| `http2_request_timeout_sec` | `120` | Request body inactivity and header block completion timeout (sec). `0` — disable |
 | `http2_ping_interval_sec` | `0` | Send PING after N sec of silence. `0` — watchdog off |
 | `http2_ping_ack_timeout_sec` | `min(interval, 15)` | Grace for the PING ACK before closing the connection |
 | `http2_settings_ack_timeout_sec` | `10` | SETTINGS ACK timeout (§6.5.3). `0` — disable |
@@ -145,7 +146,9 @@ HTTP/2 behavioral parameters are environment variables from the `main.env` secti
 | `http2_recv_window_max` | `4194304` | Auto-scaler ceiling (4 MB). Set equal to `initial` to disable scaling |
 | `http2_write_quantum` | `65536` | Bytes a stream emits per round before yielding the socket (min 1024) |
 
-`http2_idle_timeout_sec` — the connection is closed when it holds no open streams and has seen no activity for N seconds. A connection with a request in flight or a half-written response does not count as idle, even if the client fell silent forever — a client that vanished mid-work is caught by the PING watchdog (the next parameter). The close is graceful: the client receives a `GOAWAY` and has time to finish what it started.
+`http2_idle_timeout_sec` — the connection is closed when it holds no open streams and has seen no activity for N seconds. A connection with a request in flight or a half-written response does not count as idle. The server sends `GOAWAY` before closing.
+
+`http2_request_timeout_sec` — an incomplete request receives `RST_STREAM(CANCEL)` after N seconds without body data. PING, empty DATA, padding, and traffic on other streams do not extend this deadline. A HEADERS/CONTINUATION block must finish within N seconds of its first HEADERS; otherwise the connection closes because the block prevents processing other streams. WebSocket tunnels and requests already dispatched to handlers are exempt. Increase this value or set it to `0` for clients that pause uploads for long periods.
 
 `http2_ping_interval_sec` — a watchdog for half-dead clients. If the client has been silent for N seconds, the server sends a `PING` and waits for the acknowledgement; if none arrives, the connection is closed. Unlike the idle timeout, the watchdog works with streams open too. Off by default: a healthy connection needs no keepalive, and silence with no streams is already handled by the idle timeout. Enable it when the server has nothing to send on its own initiative (long polling, rare events) and it is the server, not the client's own timeout, that should break a stalled connection.
 
