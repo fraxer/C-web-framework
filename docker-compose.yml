@@ -12,8 +12,6 @@ services:
       - ./config.json:/opt/cwfr/config.json:ro
       # Application handlers (for development)
       - ./backend/app:/opt/cwfr/app:ro
-      # Frontend static files (built frontend - VitePress output)
-      - ./frontend/docs/.vitepress/dist:/opt/cwfr/frontend:ro
     command: ["-c", "/opt/cwfr/config.json", "-f"]
     restart: unless-stopped
 

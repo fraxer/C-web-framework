@@ -40,7 +40,21 @@ RUN cd backend && \
     ninja
 
 
-# --- Stage 2: Runtime ---
+# --- Stage 2: Frontend (VitePress documentation site) ---
+# npm >= 11 is required: the lock file's deduped @types/node tree only
+# validates with it (older npm resolves a "*" spec differently and fails).
+FROM node:24-alpine AS frontend
+
+WORKDIR /site
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/docs ./docs
+RUN npm run docs:build
+
+
+# --- Stage 3: Runtime ---
 FROM ubuntu:26.04 AS runtime
 
 RUN apt-get update && apt-get install -y \
@@ -66,8 +80,8 @@ COPY --from=builder /build/backend/build/core/framework_shared/libcwfr_framework
 
 RUN mkdir -p ${CWFR_PREFIX}/lib/cwfr/handlers ${CWFR_PREFIX}/lib/cwfr/migrations ${CWFR_PREFIX}/frontend
 
-# Copy frontend files (for production)
-COPY frontend/docs/.vitepress/dist ${CWFR_PREFIX}/frontend/
+# Copy frontend files (built in the frontend stage)
+COPY --from=frontend /site/docs/.vitepress/dist ${CWFR_PREFIX}/frontend/
 
 RUN chown -R cwfr:cwfr ${CWFR_PREFIX}
 

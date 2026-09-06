@@ -23,9 +23,11 @@ This document describes building and running cwfr in Docker containers.
 
 The `Dockerfile` is multi-stage: the `builder` stage compiles the framework
 from `backend/` (Release, PostgreSQL/MySQL/Redis/SQLite enabled) on Ubuntu,
-the `runtime` stage installs only the shared libraries needed at runtime,
-creates the unprivileged `cwfr` user and copies the frontend build
-(`frontend/docs/.vitepress/dist`).
+the `frontend` stage builds the VitePress site with Node (`npm ci` +
+`npm run docs:build`), and the `runtime` stage installs only the shared
+libraries needed at runtime, creates the unprivileged `cwfr` user and copies
+both build results in. No local Node toolchain or pre-built frontend output
+is required — the frontend is built together with the backend.
 
 Basic image build:
 
@@ -58,7 +60,8 @@ docker run -d \
   cwfr:latest -c /opt/cwfr/config.json -f
 ```
 
-Run with the built frontend mounted instead of the baked-in copy:
+Run with a locally built frontend mounted over the baked-in copy (build it
+first — see [Frontend](#frontend)):
 
 ```bash
 docker run -d \
@@ -165,23 +168,26 @@ The compose file mounts:
 |----------|---------------|---------|
 | `./config.json` | `/opt/cwfr/config.json:ro` | Configuration file |
 | `./backend/app` | `/opt/cwfr/app:ro` | Application handlers (development) |
-| `./frontend/docs/.vitepress/dist` | `/opt/cwfr/frontend:ro` | Frontend static files |
 
 Plus the named volume `postgres-data` for the database.
 
 ### Frontend
 
-Build the frontend before running:
+The frontend is built inside the image by the `frontend` stage (Node +
+`npm ci` + `vitepress build docs`), so building the image is enough — there
+is no separate build step and no `dist` mount in compose. The result is
+copied to `/opt/cwfr/frontend` in the container.
+
+For local development of the docs, build on the host and mount the output
+over the baked-in copy (the `docker run` example with the
+`-v $(pwd)/frontend/docs/.vitepress/dist:/opt/cwfr/frontend:ro` mount in
+[Running the container](#running-the-container)), or add the same volume to
+the compose file temporarily:
 
 ```bash
 cd frontend
 npm run docs:build
-cd ..
 ```
-
-The output in `frontend/docs/.vitepress/dist` is mounted to
-`/opt/cwfr/frontend` in the container (and also copied into the image at
-build time).
 
 ### SSL Certificates
 

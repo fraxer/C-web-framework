@@ -10,6 +10,8 @@ docs/
 
 # Frontend (VitePress documentation site)
 #frontend/
+**/node_modules/
+frontend/docs/.vitepress/dist/
 
 # Build artifacts (local)
 build/

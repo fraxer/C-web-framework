@@ -1,7 +1,6 @@
 # Makefile for convenient Docker workflow
 
 CONFIG := $(PWD)/config.json
-DIST := $(PWD)/frontend/docs/.vitepress/dist
 
 .PHONY: help build run stop logs clean migrate shell
 .PHONY: dc-up dc-down dc-logs dc-rebuild dc-ps
@@ -28,13 +27,12 @@ help:
 build:
 	docker build -t cwfr:latest .
 
-# Run container with frontend mounted
+# Run container (frontend is baked into the image)
 run:
 	docker run -d \
 		--name cwfr \
 		-p 80:8080 \
 		-v $(CONFIG):/opt/cwfr/config.json:ro \
-		-v $(DIST):/opt/cwfr/frontend:ro \
 		cwfr:latest -c /opt/cwfr/config.json -f
 
 # Stop container
