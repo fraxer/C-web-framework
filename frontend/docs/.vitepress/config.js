@@ -4,6 +4,9 @@ import { createWriteStream } from 'node:fs'
 import { resolve } from 'node:path'
 
 // https://vitepress.dev/reference/site-config
+const SITE = 'https://cwebframework.tech'
+const OG_IMAGE = `${SITE}/og-image.jpg`
+
 export default defineConfig({
   title: "C Web Framework — HTTP и WebSocket сервер на C",
   description: "C Web Framework — легковесный веб-фреймворк на языке C для создания HTTP и WebSocket серверов. Поддержка баз данных, ORM, миграций, шаблонизатора и SSL.",
@@ -258,5 +261,43 @@ export default defineConfig({
     sitemap.end()
 
     await new Promise((r) => writeStream.on('finish', r))
+  },
+
+  // Per-page Open Graph / Twitter Card markup (VitePress emits none of it by
+  // itself). URL mapping mirrors the sitemap: index pages → directory URLs,
+  // everything else keeps its .html (cleanUrls is not enabled).
+  transformPageData(pageData) {
+    const isEn = pageData.relativePath.startsWith('en/')
+    const url = `${SITE}/${pageData.relativePath
+      .replace(/index\.md$/, '')
+      .replace(/\.md$/, '.html')}`
+
+    const title =
+      pageData.title ||
+      (isEn ? 'C Web Framework — high-performance C web framework' : 'C Web Framework — веб-фреймворк на Си')
+    const description =
+      pageData.description ||
+      (isEn
+        ? 'Fast C web framework for Linux. HTTP/1, HTTP/2, HTTP/3 (QUIC), WebSocket, databases, ORM and SSL.'
+        : 'Быстрый веб-фреймворк на Си для Linux. HTTP/1, HTTP/2, HTTP/3 (QUIC), WebSocket, базы данных, ORM и SSL.')
+
+    pageData.frontmatter.head ||= []
+    pageData.frontmatter.head.push(
+      ['meta', { property: 'og:site_name', content: 'C Web Framework' }],
+      ['meta', { property: 'og:type', content: pageData.relativePath.endsWith('index.md') ? 'website' : 'article' }],
+      ['meta', { property: 'og:title', content: title }],
+      ['meta', { property: 'og:description', content: description }],
+      ['meta', { property: 'og:url', content: url }],
+      ['meta', { property: 'og:image', content: OG_IMAGE }],
+      ['meta', { property: 'og:image:width', content: '1200' }],
+      ['meta', { property: 'og:image:height', content: '630' }],
+      ['meta', { property: 'og:image:alt', content: 'C Web Framework' }],
+      ['meta', { property: 'og:locale', content: isEn ? 'en_US' : 'ru_RU' }],
+      ['meta', { property: 'og:locale:alternate', content: isEn ? 'ru_RU' : 'en_US' }],
+      ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+      ['meta', { name: 'twitter:title', content: title }],
+      ['meta', { name: 'twitter:description', content: description }],
+      ['meta', { name: 'twitter:image', content: OG_IMAGE }]
+    )
   }
 })

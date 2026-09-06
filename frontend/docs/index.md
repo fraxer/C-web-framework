@@ -3,14 +3,14 @@
 layout: home
 title: C Web Framework — высокопроизводительный веб-фреймворк на Си
 titleTemplate: C Web Framework
-description: Быстрый веб-фреймворк на C для Linux. HTTP/1, HTTP/2, HTTP/3 (QUIC), WebSocket, PostgreSQL, MySQL, Redis, ORM, аутентификация, S3-хранилище. Создавайте масштабируемые веб-приложения.
+description: Быстрый веб-фреймворк на Си для Linux. HTTP/1, HTTP/2, HTTP/3 (QUIC), WebSocket, PostgreSQL, MySQL, Redis, ORM, аутентификация, S3-хранилище. Создавайте масштабируемые веб-приложения.
 
 hero:
-  name: "Веб-фреймворк на Си"
-  tagline: "Высокопроизводительный сервер с поддержкой HTTP/1, HTTP/2 и HTTP/3 (QUIC), WebSocket, баз данных и ORM из коробки"
+  name: "Веб-фреймворк<br>на чистом Си"
+  tagline: "Высокопроизводительный сервер для Linux: HTTP/1, HTTP/2 и HTTP/3 (QUIC), WebSocket, базы данных и ORM из коробки — без обратного прокси и рантайм-зависимостей"
   actions:
     - theme: brand
-      text: Документация
+      text: Начать
       link: /introduction
     - theme: alt
       text: Github

@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useData } from 'vitepress'
 
 const { lang } = useData()
@@ -60,6 +60,23 @@ const codeDesc = computed(() =>
 )
 const guideLink = computed(() => `${pref.value}/build-and-run`)
 const guideText = computed(() => (isEn.value ? 'Build & run guide' : 'Руководство по сборке'))
+
+// Copy-to-clipboard for the install card.
+const copied = ref(false)
+let copyTimer = null
+const copyText = computed(() => (isEn.value ? 'Copy' : 'Копировать'))
+const copiedText = computed(() => (isEn.value ? 'Copied' : 'Скопировано'))
+
+async function copyInstall() {
+  try {
+    await navigator.clipboard.writeText(terminal)
+    copied.value = true
+    clearTimeout(copyTimer)
+    copyTimer = setTimeout(() => (copied.value = false), 1600)
+  } catch {
+    /* clipboard unavailable — the button just does nothing */
+  }
+}
 
 /* --- Minimal, dependency-free syntax highlighting ----------------------- */
 // Each language is a list of [pattern, className] rules. Patterns must use
@@ -137,6 +154,11 @@ const handlerHtml = computed(() => highlight(handler, C))
           <div class="code-head">
             <span class="dot red" /><span class="dot yellow" /><span class="dot green" />
             <span class="code-name">bash</span>
+            <button class="code-copy" :class="{ done: copied }" @click="copyInstall">
+              <svg v-if="!copied" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              {{ copied ? copiedText : copyText }}
+            </button>
           </div>
           <pre class="code-body"><code v-html="terminalHtml" /></pre>
         </div>

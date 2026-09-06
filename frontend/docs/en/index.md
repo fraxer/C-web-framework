@@ -6,11 +6,11 @@ titleTemplate: C Web Framework
 description: Fast C web framework for Linux. HTTP/1, HTTP/2, HTTP/3 (QUIC), WebSocket, PostgreSQL, MySQL, Redis, ORM, authentication, S3 storage. Build scalable web applications.
 
 hero:
-  name: "The C framework\nfor web"
-  tagline: A high-performance server with HTTP/1, HTTP/2 and HTTP/3 (QUIC), WebSockets, databases and ORM out of the box
+  name: "The C framework<br>for the web"
+  tagline: "A high-performance Linux server: HTTP/1, HTTP/2 and HTTP/3 (QUIC), WebSockets, databases and ORM out of the box — no reverse proxy, no runtime"
   actions:
     - theme: brand
-      text: Docs
+      text: Get started
       link: /en/introduction
     - theme: alt
       text: Github

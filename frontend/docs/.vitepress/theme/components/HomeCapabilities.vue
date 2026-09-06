@@ -1,4 +1,7 @@
 <script setup>
+// Bento capability grid: HTTP/3 gets a featured double tile with a small
+// "many streams → one QUIC connection" animation; the rest are compact tiles.
+// Trimmed to the essentials on purpose — the linked doc page carries the rest.
 import { computed } from 'vue'
 import { useData } from 'vitepress'
 
@@ -21,39 +24,32 @@ const icons = {
 const tileSvg = (id) =>
   `<svg class="feat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[id]}</svg>`
 
+const checkSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`
+
 const categories = [
   {
-    id: 'http',
-    color: '#3b82f6',
-    color2: '#2563eb',
-    title: { ru: 'HTTP/1.1', en: 'HTTP/1.1' },
+    id: 'http3',
+    color: '#d946ef',
+    color2: '#a21caf',
+    xl: true,
+    title: { ru: 'HTTP/3 · QUIC', en: 'HTTP/3 · QUIC' },
     desc: {
-      ru: 'Полный HTTP/1.1 сервер и клиент — маршрутизация, виртуальные хосты, middleware и TLS.',
-      en: 'A complete HTTP/1.1 server and client — routing, virtual hosts, middleware and TLS.'
+      ru: 'Собственный стек QUIC (RFC 9000) поверх UDP: рукопожатие TLS 1.3 за один RTT, нет блокировки головы очереди, миграция соединений между сетями — телефон перешёл с Wi-Fi на LTE, соединение живо.',
+      en: 'A hand-written QUIC stack (RFC 9000) over UDP: TLS 1.3 handshake in one RTT, no head-of-line blocking, connection migration across networks — switch from Wi-Fi to LTE and the connection survives.'
     },
-    link: '/routing',
+    link: '/http3',
     items: {
       ru: [
-        'Полная поддержка HTTP/1.1',
-        'Гибкая маршрутизация с динамическими параметрами',
-        'Виртуальные хосты с regex-доменами и поддержкой IDN',
-        'Middleware и фильтры: gzip, range, chunked, cache control',
-        'Cookie с secure, httpOnly, sameSite',
-        'Обработка multipart/form-data и загрузка файлов',
-        'Автоматическое сжатие gzip для поддерживаемых типов',
-        'Редиректы с регулярными выражениями и группами захвата',
-        'Встроенный HTTP-клиент: TLS 1.2+, keep-alive pool, редиректы'
+        'Параллельные потоки запросов в одном соединении',
+        'QPACK-сжатие заголовков',
+        'Трейлеры, 103 Early Hints, 100 Continue',
+        'Автоанонс через Alt-Svc — клиенты переходят сами'
       ],
       en: [
-        'Full HTTP/1.1 support',
-        'Flexible routing with dynamic parameters',
-        'Virtual hosts with regex domains and IDN support',
-        'Middleware and filters: gzip, range, chunked, cache control',
-        'Cookies with secure, httpOnly, sameSite',
-        'multipart/form-data parsing and file uploads',
-        'Automatic gzip compression for supported content types',
-        'Redirects with regular expressions and capture groups',
-        'Built-in HTTP client: TLS 1.2+, keep-alive pool, redirects'
+        'Parallel request streams over one connection',
+        'QPACK header compression',
+        'Trailers, 103 Early Hints, 100 Continue',
+        'Auto-advertised via Alt-Svc — clients upgrade themselves'
       ]
     }
   },
@@ -63,64 +59,13 @@ const categories = [
     color2: '#0284c7',
     title: { ru: 'HTTP/2', en: 'HTTP/2' },
     desc: {
-      ru: 'Мультиплексирование, сжатие HPACK и управление потоком — множество запросов в одном соединении.',
-      en: 'Multiplexing, HPACK compression and flow control — many requests over a single connection.'
+      ru: 'Мультиплексирование до 100 потоков, HPACK и защита от Rapid Reset.',
+      en: 'Up to 100 multiplexed streams, HPACK and Rapid Reset protection.'
     },
     link: '/http2',
     items: {
-      ru: [
-        'Мультиплексирование до 100 потоков на соединение',
-        'Двухуровневое управление потоком с авторасширением окна',
-        'Сжатие заголовков HPACK с кодированием Хаффмана',
-        'Трейлеры и 103 Early Hints',
-        'WebSocket поверх HTTP/2 (Extended CONNECT)',
-        'h2c upgrade для plaintext-соединений',
-        'Защита от Rapid Reset и других DoS-атак',
-        'Включается автоматически через ALPN поверх TLS'
-      ],
-      en: [
-        'Multiplexing up to 100 streams per connection',
-        'Two-level flow control with auto window scaling',
-        'HPACK header compression with Huffman coding',
-        'Trailers and 103 Early Hints',
-        'WebSocket over HTTP/2 (Extended CONNECT)',
-        'h2c upgrade for plaintext connections',
-        'Rapid Reset and other DoS protection',
-        'Enabled automatically via ALPN over TLS'
-      ]
-    }
-  },
-  {
-    id: 'http3',
-    color: '#d946ef',
-    color2: '#c026d3',
-    title: { ru: 'HTTP/3', en: 'HTTP/3' },
-    desc: {
-      ru: 'Транспорт на QUIC поверх UDP — нет HOL-blocking, быстрый старт и независимые потоки запросов.',
-      en: 'QUIC transport over UDP — no HOL-blocking, fast startup and independent request streams.'
-    },
-    link: '/http3',
-    items: {
-      ru: [
-        'Полный стек QUIC (RFC 9000) на UDP',
-        'Рукопожатие TLS 1.3 за один RTT',
-        'Миграция соединений и валидация пути',
-        'QPACK-сжатие заголовков',
-        'Трейлеры, 103 Early Hints и 100 Continue',
-        'Параллельные запросы в одном соединении',
-        'Автоанонс через заголовок Alt-Svc',
-        'Требует OpenSSL 3.5+ (флаг -DINCLUDE_HTTP3=yes)'
-      ],
-      en: [
-        'Full QUIC stack (RFC 9000) over UDP',
-        'TLS 1.3 handshake in a single RTT',
-        'Connection migration and path validation',
-        'QPACK header compression',
-        'Trailers, 103 Early Hints and 100 Continue',
-        'Concurrent requests over one connection',
-        'Auto-advertised via the Alt-Svc header',
-        'Requires OpenSSL 3.5+ (-DINCLUDE_HTTP3=yes flag)'
-      ]
+      ru: ['WebSocket поверх h2 (Extended CONNECT)', 'Трейлеры и 103 Early Hints', 'h2c upgrade для plaintext'],
+      en: ['WebSocket over h2 (Extended CONNECT)', 'Trailers and 103 Early Hints', 'h2c upgrade for plaintext']
     }
   },
   {
@@ -129,58 +74,44 @@ const categories = [
     color2: '#6d28d9',
     title: { ru: 'WebSocket', en: 'WebSocket' },
     desc: {
-      ru: 'Двунаправленные каналы реального времени с broadcasting и именованными группами.',
-      en: 'Bidirectional real-time channels with broadcasting and named recipient groups.'
+      ru: 'Каналы реального времени с broadcasting и именованными группами.',
+      en: 'Real-time channels with broadcasting and named groups.'
     },
     link: '/wsrequests',
     items: {
-      ru: [
-        'Полная поддержка протокола WebSocket',
-        'Система broadcasting для групп клиентов',
-        'Именованные каналы с фильтрацией получателей',
-        'Встроенная поддержка JSON-сообщений',
-        'Middleware для WebSocket-запросов'
-      ],
-      en: [
-        'Full WebSocket protocol support',
-        'Broadcasting system for groups of clients',
-        'Named channels with recipient filtering',
-        'Built-in JSON message support',
-        'Middleware for WebSocket requests'
-      ]
+      ru: ['Именованные каналы и фильтрация получателей', 'permessage-deflate сжатие', 'Работает и поверх HTTP/2, и поверх HTTP/3'],
+      en: ['Named channels and recipient filtering', 'permessage-deflate compression', 'Runs over both HTTP/2 and HTTP/3']
+    }
+  },
+  {
+    id: 'http',
+    color: '#3b82f6',
+    color2: '#2563eb',
+    title: { ru: 'HTTP/1.1', en: 'HTTP/1.1' },
+    desc: {
+      ru: 'Полный сервер и клиент: маршрутизация, виртуальные хосты, TLS.',
+      en: 'Full server and client: routing, vhosts, TLS.'
+    },
+    link: '/routing',
+    items: {
+      ru: ['Маршруты с динамическими параметрами', 'Виртуальные хосты, regex-домены, IDN', 'multipart/form-data и загрузка файлов'],
+      en: ['Routes with dynamic parameters', 'Virtual hosts, regex domains, IDN', 'multipart/form-data and file uploads']
     }
   },
   {
     id: 'db',
     color: '#10b981',
     color2: '#047857',
+    chips: ['PostgreSQL', 'MySQL', 'Redis', 'SQLite'],
     title: { ru: 'Базы данных', en: 'Databases' },
     desc: {
-      ru: 'PostgreSQL, MySQL, SQLite и Redis за единой API с ORM и миграциями.',
-      en: 'PostgreSQL, MySQL, SQLite and Redis behind one unified API with ORM and migrations.'
+      ru: 'Четыре драйвера за единой API с ORM и миграциями.',
+      en: 'Four drivers behind one unified API with ORM and migrations.'
     },
     link: '/db',
     items: {
-      ru: [
-        'PostgreSQL — нативная поддержка с prepared statements',
-        'MySQL — нативная поддержка с защитой от SQL-инъекций',
-        'SQLite — встраиваемая БД без отдельного сервера',
-        'Redis — для кеширования и сессий',
-        'ORM-модели для работы с таблицами',
-        'Миграции — версионирование схемы базы данных',
-        'Query Builder — безопасное построение SQL-запросов',
-        'Транзакции и connection pool'
-      ],
-      en: [
-        'PostgreSQL — native support with prepared statements',
-        'MySQL — native support with SQL injection protection',
-        'SQLite — embedded database without a separate server',
-        'Redis — for caching and sessions',
-        'ORM models for working with tables',
-        'Migrations — database schema versioning',
-        'Query Builder — safe SQL query construction',
-        'Transactions and connection pool'
-      ]
+      ru: ['ORM-модели и prepared statements', 'Миграции схемы из коробки', 'Транзакции и пулы соединений'],
+      en: ['ORM models and prepared statements', 'Schema migrations out of the box', 'Transactions and connection pools']
     }
   },
   {
@@ -189,29 +120,13 @@ const categories = [
     color2: '#e11d48',
     title: { ru: 'Безопасность', en: 'Security' },
     desc: {
-      ru: 'Аутентификация, сессии, RBAC, rate limiting и современное хеширование паролей.',
-      en: 'Authentication, sessions, RBAC, rate limiting and modern password hashing.'
+      ru: 'Аутентификация, сессии и RBAC без внешних сервисов.',
+      en: 'Authentication, sessions and RBAC without external services.'
     },
     link: '/auth',
     items: {
-      ru: [
-        'Встроенная система регистрации и авторизации',
-        'Сессии на файлах, в Redis и в базе данных',
-        'Секреты сессий защищены через AES-256-GCM',
-        'Хеширование паролей PBKDF2-HMAC-SHA256',
-        'Валидаторы email, паролей и других данных',
-        'RBAC — система ролевого доступа',
-        'Rate Limiting — защита от DDoS'
-      ],
-      en: [
-        'Built-in registration and authorization system',
-        'Sessions in files, Redis and the database',
-        'Session secrets protected with AES-256-GCM',
-        'Password hashing with PBKDF2-HMAC-SHA256',
-        'Validators for email, passwords and other data',
-        'RBAC — role-based access control',
-        'Rate Limiting — DDoS protection'
-      ]
+      ru: ['PBKDF2-HMAC-SHA256 для паролей', 'Сессии: файлы, Redis, БД (AES-256-GCM)', 'Rate limiting и валидаторы данных'],
+      en: ['PBKDF2-HMAC-SHA256 password hashing', 'Sessions: files, Redis, DB (AES-256-GCM)', 'Rate limiting and data validators']
     }
   },
   {
@@ -220,29 +135,13 @@ const categories = [
     color2: '#ea580c',
     title: { ru: 'Хранилище и Email', en: 'Storage & Email' },
     desc: {
-      ru: 'Локальное и S3-хранилище плюс транзакционная почта с DKIM.',
-      en: 'Local and S3 storage plus transactional email with DKIM.'
+      ru: 'Локальный FS и S3 плюс транзакционная почта с DKIM.',
+      en: 'Local FS and S3 plus transactional email with DKIM.'
     },
     link: '/storage',
     items: {
-      ru: [
-        'Локальное файловое хранилище',
-        'S3-совместимые сервисы',
-        'CRUD-операции над файлами',
-        'multipart-загрузка с сохранением в хранилище',
-        'SMTP-клиент для отправки писем',
-        'DKIM-подписи для аутентификации отправителя',
-        'Шаблоны писем'
-      ],
-      en: [
-        'Local file storage',
-        'S3-compatible services',
-        'CRUD operations on files',
-        'multipart uploads saved to storage',
-        'SMTP client for sending email',
-        'DKIM signatures for sender authentication',
-        'Email templates'
-      ]
+      ru: ['S3-совместимые сервисы', 'multipart-загрузка файлов в хранилище', 'SMTP-клиент и шаблоны писем'],
+      en: ['S3-compatible services', 'multipart uploads into storage', 'SMTP client and email templates']
     }
   },
   {
@@ -251,31 +150,21 @@ const categories = [
     color2: '#0891b2',
     title: { ru: 'Инструменты', en: 'Tooling' },
     desc: {
-      ru: 'Шаблонизатор, i18n, JSON, JWT, планировщик задач и набор str_t / HashMap.',
-      en: 'Template engine, i18n, JSON, JWT, task scheduler and the str_t / HashMap toolkit.'
+      ru: 'Шаблонизатор, i18n, JSON, JWT и планировщик задач.',
+      en: 'Template engine, i18n, JSON, JWT and the task scheduler.'
     },
     link: '/view',
     items: {
-      ru: [
-        'Шаблонизатор: переменные, циклы, интеграция с моделями',
-        'i18n на базе gettext: плюрализм, автоопределение языка, fallback',
-        'Высокопроизводительный JSON-парсер и сериализация',
-        'JWT, UUID, Base64, SHA-1/256',
-        'Планировщик задач: interval, daily, weekly, monthly',
-        'AES-256-GCM, генератор случайных чисел',
-        'str_t с SSO, Array, HashMap/Map, упорядоченная очередь'
-      ],
-      en: [
-        'Template engine: variables, loops, model integration',
-        'i18n on gettext: pluralization, language auto-detection, fallback',
-        'High-performance JSON parser and serialization',
-        'JWT, UUID, Base64, SHA-1/256',
-        'Task scheduler: interval, daily, weekly, monthly',
-        'AES-256-GCM, random number generator',
-        'str_t with SSO, Array, HashMap/Map, ordered queue'
-      ]
+      ru: ['i18n на gettext: плюрализм, fallback', 'Планировщик: interval, daily, weekly', 'str_t с SSO, HashMap, JSON-парсер'],
+      en: ['gettext i18n: plurals, fallback', 'Scheduler: interval, daily, weekly', 'str_t with SSO, HashMap, JSON parser']
     }
   }
+]
+
+const lanes = [
+  { label: '/api/users', color: '#e879f9' },
+  { label: '/static/app.js', color: '#38bdf8' },
+  { label: '/chat · ws', color: '#a78bfa' }
 ]
 
 const moreText = computed(() => (isEn.value ? 'Learn more' : 'Подробнее'))
@@ -288,6 +177,16 @@ const desc = computed(() =>
     ? 'A complete toolkit for modern web services — protocols, databases, security and utilities out of the box.'
     : 'Полный набор инструментов для современных веб-сервисов — протоколы, базы данных, безопасность и утилиты из коробки.'
 )
+const laneCaption = computed(() =>
+  isEn.value ? 'dozens of streams → one UDP connection' : 'десятки потоков → одно UDP-соединение'
+)
+const allTitle = computed(() => (isEn.value ? 'And that is not all' : 'И это ещё не всё'))
+const allDesc = computed(() =>
+  isEn.value
+    ? 'Hot reload of handlers, logging, the HTTP client, scheduled tasks and more — in the docs.'
+    : 'Горячая перезагрузка обработчиков, логирование, HTTP-клиент, планировщик задач и другое — в документации.'
+)
+const allLinkText = computed(() => (isEn.value ? 'Open the docs' : 'Открыть документацию'))
 </script>
 
 <template>
@@ -299,11 +198,12 @@ const desc = computed(() =>
         <p class="home-desc">{{ desc }}</p>
       </div>
 
-      <div class="feat-grid">
+      <div class="bento">
         <a
           v-for="c in categories"
           :key="c.id"
           class="feat-card"
+          :class="{ 'feat-card--xl': c.xl }"
           :href="`${pref}${c.link}`"
           :style="{ '--feat': c.color, '--feat-2': c.color2 }"
         >
@@ -311,14 +211,40 @@ const desc = computed(() =>
           <h3 class="feat-title">{{ lc(c.title) }}</h3>
           <p class="feat-desc">{{ lc(c.desc) }}</p>
 
+          <span v-if="c.chips" class="feat-chips">
+            <span v-for="chip in c.chips" :key="chip" class="feat-chip">{{ chip }}</span>
+          </span>
+
           <ul class="feat-list">
             <li v-for="(item, idx) in lc(c.items)" :key="idx" class="feat-item">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              <span v-html="checkSvg" />
               <span>{{ item }}</span>
             </li>
           </ul>
 
+          <!-- Featured tile: packets from several streams merge into one QUIC pipe -->
+          <div v-if="c.xl" class="quic-viz" aria-hidden="true">
+            <div v-for="lane in lanes" :key="lane.label" class="quic-lane">
+              <span class="quic-lane-label">{{ lane.label }}</span>
+              <span class="quic-lane-track">
+                <i class="quic-packet" :style="{ '--pc': lane.color }" />
+                <i class="quic-packet d2" :style="{ '--pc': lane.color }" />
+                <i class="quic-packet d3" :style="{ '--pc': lane.color }" />
+              </span>
+            </div>
+            <div class="quic-merge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              <span>{{ laneCaption }}</span>
+            </div>
+          </div>
+
           <span class="feat-more">{{ moreText }} <span class="arrow">→</span></span>
+        </a>
+
+        <a class="feat-card feat-card--more" :href="`${pref}/introduction`">
+          <h3 class="feat-title">{{ allTitle }}</h3>
+          <p class="feat-desc">{{ allDesc }}</p>
+          <span class="feat-more">{{ allLinkText }} <span class="arrow">→</span></span>
         </a>
       </div>
     </section>
