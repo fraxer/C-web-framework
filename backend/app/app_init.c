@@ -14,8 +14,12 @@
  * call app_init() once, before the `servers` section is parsed -- so everything
  * the config refers to by name has to be registered here.
  *
- * On a hard reload the middleware registry is cleared and app_init() runs again;
- * it must therefore stay idempotent. The library itself is never dlclose'd.
+ * On a reload the middleware registry is cleared and app_init() runs again -- and
+ * twice at that, once on the validation pass and once for real -- so it must stay
+ * idempotent and do nothing but register. A rebuilt library is loaded as a new
+ * instance for the new generation and the previous one is closed when the last
+ * thread using it has gone, so nothing here carries over: static state inside the
+ * module does not survive a reload.
  *
  * Errors go to stderr, not log_error(): app_init() runs before the parsed
  * configuration is published, so the logger is still silent at this point.
