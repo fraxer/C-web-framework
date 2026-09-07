@@ -9,7 +9,7 @@ description: Building C Web Framework from source code. Release and Debug build 
 
 ```bash
 # Clone the repository
-git clone git@github.com:fraxer/C-web-framework.git
+git clone --recurse-submodules git@github.com:fraxer/C-web-framework.git
 cd C-web-framework/backend
 
 # Create build directory
@@ -25,8 +25,8 @@ cmake .. -DCMAKE_BUILD_TYPE=Release \
 # Build the project
 cmake --build . -j$(nproc)
 
-# Run the application (config.json lives at the backend/ root)
-./exec/cwfr -c ../config.json
+# Run the application (config.json lives at the repository root)
+./exec/cwfr -c ../../config.json
 ```
 
 ## Build methods
@@ -149,7 +149,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Debug \
 # Build with core unit tests (core/tests)
 cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=yes
 cmake --build . -j$(nproc)
-ctest --test-dir build
+ctest --output-on-failure
 ```
 
 ## CMake parameters
@@ -191,89 +191,103 @@ cmake .. -DCMAKE_C_COMPILER=/usr/bin/gcc-12
 
 ## Project structure
 
-`backend/` is the build root (it holds `CMakeLists.txt` and `config.json`). `core/` is the framework core (a git submodule); `app/` is the example application.
+`backend/` is the build root (it holds `CMakeLists.txt`); `config.json` lives at the repository root, next to `Dockerfile` and `docker-compose.yml`. `core/` is the framework core (a git submodule); `app/` is the example application.
 
 ```
-backend/
-├── core/                          # Framework core (submodule)
-│   ├── apps/                      # Executable entry points
-│   │   ├── server/                # → cwfr (main.c)
-│   │   └── migrate/               # → migrate (main.c)
-│   ├── framework/                 # Framework components
-│   │   ├── database/              # DB layer (PostgreSQL, MySQL, Redis, SQLite)
-│   │   ├── model/                 # ORM model system
-│   │   ├── session/               # Sessions (FS, Redis, DB; AES-256-GCM)
-│   │   ├── storage/               # Storage (FS, S3)
-│   │   ├── view/                  # Template engine
-│   │   ├── middleware/            # Middleware system
-│   │   ├── taskmanager/           # Background task scheduler
-│   │   └── translation/           # i18n
-│   ├── protocols/                 # Protocol implementations
-│   │   ├── http/                  # HTTP/1.1 server and client
-│   │   ├── websocket/             # WebSocket
-│   │   └── smtp/                  # SMTP client, DKIM
-│   ├── src/                       # Runtime
-│   │   ├── server/                # HTTP server, workers
-│   │   ├── multiplexing/          # Epoll multiplexing
-│   │   ├── thread/                # Thread pool
-│   │   ├── connection/            # Connection management
-│   │   ├── socket/                # Sockets
-│   │   ├── signal/                # Signal handling (incl. hot reload)
-│   │   ├── route/                 # Routing
-│   │   ├── domain/                # Virtual hosts, regex, IDN
-│   │   ├── config/                # Config loading
-│   │   ├── mimetype/              # MIME types
-│   │   ├── moduleloader/          # Dynamic .so loading
-│   │   ├── ratelimiter/           # Rate limiting
-│   │   ├── openssl/               # OpenSSL helpers
-│   │   └── broadcast/             # Broadcasting
-│   ├── misc/                      # Utilities (header-only)
-│   │   ├── str.h                  # Dynamic strings (SSO)
-│   │   ├── array.h, hashmap.h, map.h  # Collections
-│   │   ├── json.h                 # JSON parser/generator
-│   │   ├── jwt.h, sha256.h, base64.h, uuid.h  # Crypto/encoding
-│   │   ├── query.h, queryparser.h # Query-string parsing
-│   │   ├── log.h                  # Logging
-│   │   └── gzip.h                 # Gzip
-│   └── tests/                     # Core unit tests (BUILD_TESTS=yes)
+project/
+├── backend/
+│   ├── core/                          # Framework core (submodule)
+│   │   ├── apps/                      # Executable entry points
+│   │   │   ├── server/                # → cwfr (main.c)
+│   │   │   └── migrate/               # → migrate (main.c)
+│   │   ├── framework/                 # Framework components
+│   │   │   ├── database/              # DB layer (PostgreSQL, MySQL, Redis, SQLite)
+│   │   │   ├── model/                 # ORM model system
+│   │   │   ├── session/               # Sessions (FS, Redis, DB; AES-256-GCM)
+│   │   │   ├── storage/               # Storage (FS, S3)
+│   │   │   ├── view/                  # Template engine
+│   │   │   ├── middleware/            # Middleware system
+│   │   │   ├── taskmanager/           # Background task scheduler
+│   │   │   └── translation/           # i18n
+│   │   ├── protocols/                 # Protocol implementations
+│   │   │   ├── http/                  # HTTP/1.1 server and client, h2c upgrade
+│   │   │   ├── http2/                 # HTTP/2 (frames, HPACK, WebSocket over h2)
+│   │   │   ├── http3/                 # HTTP/3 (frames, QPACK) — INCLUDE_HTTP3=yes
+│   │   │   ├── quic/                  # QUIC transport — INCLUDE_HTTP3=yes
+│   │   │   ├── hq/                    # HTTP/0.9 interop shim — INCLUDE_HQ_INTEROP=yes
+│   │   │   ├── websocket/             # WebSocket
+│   │   │   └── smtp/                  # SMTP client, DKIM
+│   │   ├── src/                       # Runtime
+│   │   │   ├── server/                # HTTP server, workers
+│   │   │   ├── multiplexing/          # Epoll multiplexing
+│   │   │   ├── thread/                # Thread pool
+│   │   │   ├── connection/            # Connection management
+│   │   │   ├── socket/                # Sockets
+│   │   │   ├── udp/                   # UDP socket and QUIC endpoint (GSO)
+│   │   │   ├── signal/                # Signal handling (incl. hot reload)
+│   │   │   ├── route/                 # Routing
+│   │   │   ├── domain/                # Virtual hosts, regex, IDN
+│   │   │   ├── config/                # Config loading
+│   │   │   ├── metrics/               # Concurrency counters
+│   │   │   ├── mimetype/              # MIME types
+│   │   │   ├── moduleloader/          # Dynamic .so loading
+│   │   │   ├── ratelimiter/           # Rate limiting
+│   │   │   ├── openssl/               # OpenSSL helpers
+│   │   │   └── broadcast/             # Broadcasting
+│   │   ├── misc/                      # Utilities
+│   │   │   ├── str.h                  # Dynamic strings (SSO)
+│   │   │   ├── array.h, hashmap.h, map.h  # Collections
+│   │   │   ├── arena.h, bufo.h, cqueue.h  # Arena, buffers, queue
+│   │   │   ├── json.h                 # JSON parser/generator
+│   │   │   ├── jwt.h, sha256.h, base64.h, uuid.h  # Crypto/encoding
+│   │   │   ├── query.h, queryparser.h # Query-string parsing
+│   │   │   ├── i18n.h, idn_utils.h    # i18n and IDN domains
+│   │   │   ├── ipaddr.h, utf8.h, file.h   # IP addresses, UTF-8, files
+│   │   │   ├── log.h                  # Logging
+│   │   │   └── gzip.h                 # Gzip
+│   │   ├── framework_shared/          # Builds libcwfr_framework.so
+│   │   ├── cmake/                     # Find modules and the cwfr_add_* helpers
+│   │   └── tests/                     # Core unit tests (BUILD_TESTS=yes)
+│   │
+│   └── app/                           # User application
+│       ├── routes/                    # HTTP/WebSocket handlers (compiled to .so)
+│       │   ├── auth/                  # Authentication (login, registration, session)
+│       │   ├── index/                 # Main page
+│       │   ├── ws/                    # WebSocket handlers
+│       │   ├── models/                # Model API (modeluser, modeluserview)
+│       │   ├── db/                    # Database examples
+│       │   ├── files/                 # File / storage operations
+│       │   ├── email/                 # Email sending
+│       │   ├── httpclient/            # HTTP client
+│       │   ├── json/                  # JSON examples
+│       │   ├── middleware/            # Middleware examples
+│       │   └── bench/                 # Handler concurrency benchmarks, /metrics
+│       ├── models/                    # ORM models and view models
+│       │   ├── user.c, userview.c
+│       │   ├── role.c, permission.c
+│       │   ├── user_role.c, role_permission.c
+│       │   └── *view.c                # View models for JOIN queries
+│       ├── middlewares/               # Custom middlewares
+│       │   ├── httpmiddlewares.c      # HTTP middleware (auth, etc.)
+│       │   └── wsmiddlewares.c        # WebSocket middleware
+│       ├── migrations/                # Database migrations
+│       │   ├── s1/                    # Migrations for server s1
+│       │   └── s2/                    # Migrations for server s2
+│       ├── broadcasting/              # Broadcasting channels (mybroadcast)
+│       ├── auth/                      # Authentication module
+│       │   ├── auth.c                 # Hashing, authenticate()
+│       │   ├── password_validator.c   # Password validation
+│       │   └── email_validator.c      # Email validation
+│       ├── contexts/                  # Request contexts
+│       │   ├── httpctx.c              # HTTP context
+│       │   └── wsctx.c                # WebSocket context
+│       ├── app_init.c                 # The application module entry point
+│       └── views/                     # Templates (.tpl)
+│           ├── index.tpl
+│           └── header.tpl
 │
-├── app/                           # User application
-│   ├── routes/                    # HTTP/WebSocket handlers (compiled to .so)
-│   │   ├── auth/                  # Authentication (login, registration, session)
-│   │   ├── index/                 # Main page
-│   │   ├── ws/                    # WebSocket handlers
-│   │   ├── models/                # Model API (modeluser, modeluserview)
-│   │   ├── db/                    # Database examples
-│   │   ├── files/                 # File / storage operations
-│   │   ├── email/                 # Email sending
-│   │   ├── httpclient/            # HTTP client
-│   │   ├── json/                  # JSON examples
-│   │   └── middleware/            # Middleware examples
-│   ├── models/                    # ORM models and view models
-│   │   ├── user.c, userview.c
-│   │   ├── role.c, permission.c
-│   │   ├── user_role.c, role_permission.c
-│   │   └── *view.c                # View models for JOIN queries
-│   ├── middlewares/               # Custom middlewares
-│   │   ├── httpmiddlewares.c      # HTTP middleware (auth, etc.)
-│   │   └── wsmiddlewares.c        # WebSocket middleware
-│   ├── migrations/                # Database migrations
-│   │   ├── s1/                    # Migrations for server s1
-│   │   └── s2/                    # Migrations for server s2
-│   ├── broadcasting/              # Broadcasting channels (mybroadcast)
-│   ├── auth/                      # Authentication module
-│   │   ├── auth.c                 # Hashing, authenticate()
-│   │   ├── password_validator.c   # Password validation
-│   │   └── email_validator.c      # Email validation
-│   ├── contexts/                  # Request contexts
-│   │   ├── httpctx.c              # HTTP context
-│   │   └── wsctx.c                # WebSocket context
-│   ├── app_init.c                 # The application module entry point
-│   └── views/                     # Templates (.tpl)
-│       ├── index.tpl
-│       └── header.tpl
-│
-└── config.json                    # Application configuration
+├── config.json                        # Application configuration
+└── frontend/                          # Documentation (VitePress)
 ```
 
 ## Build results
@@ -344,16 +358,16 @@ cmake .. -DCWFR_HANDLER_INSTALL_DIR=/srv/myapp/handlers \
 ## Launch
 
 ```bash
-# Run with a configuration file
-./exec/cwfr -c ../config.json
+# Run with a configuration file (from the backend/build directory)
+./exec/cwfr -c ../../config.json
 
 # Stay in the foreground (what containers and supervisors need)
-./exec/cwfr -c ../config.json -f
+./exec/cwfr -c ../../config.json -f
 ```
 
 The application starts and listens on the ports defined in `config.json`. See [Configuration](./config.md) for details.
 
-A `Release` build detaches from the terminal unless `-f` is given. `-f` is what you want wherever a supervisor watches the process: to it, a process that forks and exits looks like one that crashed.
+`Release` and `RelWithDebInfo` builds detach from the terminal unless `-f` is given. `-f` is what you want wherever a supervisor watches the process: to it, a process that forks and exits looks like one that crashed.
 
 **The exit status is meaningful in both modes.** The process does not report success until the configuration has been read, accepted and applied **and every worker is listening**, so `cwfr -c config.json && ...` behaves as written: a rejected configuration and a socket that cannot be bound both exit non-zero, and neither leaves a process behind. The detaching parent waits for that moment, which means the server is already accepting connections by the time the command returns.
 

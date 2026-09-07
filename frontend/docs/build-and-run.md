@@ -9,8 +9,8 @@ description: Сборка C Web Framework из исходного кода. Ре
 
 ```bash
 # Клонирование репозитория
-git clone git@github.com:fraxer/C-web-framework.git
-cd C-web-framework
+git clone --recurse-submodules git@github.com:fraxer/C-web-framework.git
+cd C-web-framework/backend
 
 # Создание директории сборки
 mkdir build && cd build
@@ -25,8 +25,8 @@ cmake .. -DCMAKE_BUILD_TYPE=Release \
 # Сборка проекта
 cmake --build . -j$(nproc)
 
-# Запуск приложения (config.json — в корне backend/)
-./exec/cwfr -c /path/to/config.json
+# Запуск приложения (config.json — в корне репозитория)
+./exec/cwfr -c ../../config.json
 ```
 
 ## Способы сборки
@@ -149,7 +149,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Debug \
 # Сборка с модульными тестами ядра (core/tests)
 cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=yes
 cmake --build . -j$(nproc)
-ctest --test-dir build
+ctest --output-on-failure
 ```
 
 ## Параметры CMake
@@ -191,89 +191,103 @@ cmake .. -DCMAKE_C_COMPILER=/usr/bin/gcc-12
 
 ## Структура проекта
 
-`backend/` — корень сборки (здесь находятся `CMakeLists.txt` и `config.json`). `core/` — ядро фреймворка (git-субмодуль), `app/` — пример приложения.
+`backend/` — корень сборки (здесь лежит `CMakeLists.txt`); `config.json` живёт в корне репозитория, рядом с `Dockerfile` и `docker-compose.yml`. `core/` — ядро фреймворка (git-субмодуль), `app/` — пример приложения.
 
 ```
-backend/
-├── core/                          # Ядро фреймворка (субмодуль)
-│   ├── apps/                      # Точка входа исполняемых файлов
-│   │   ├── server/                # → cwfr (main.c)
-│   │   └── migrate/               # → migrate (main.c)
-│   ├── framework/                 # Компоненты фреймворка
-│   │   ├── database/              # Слой БД (PostgreSQL, MySQL, Redis, SQLite)
-│   │   ├── model/                 # ORM-система моделей
-│   │   ├── session/               # Сессии (FS, Redis, БД; AES-256-GCM)
-│   │   ├── storage/               # Хранилища (FS, S3)
-│   │   ├── view/                  # Шаблонизатор
-│   │   ├── middleware/            # Система middleware
-│   │   ├── taskmanager/           # Планировщик фоновых задач
-│   │   └── translation/           # i18n
-│   ├── protocols/                 # Реализация протоколов
-│   │   ├── http/                  # HTTP/1.1 сервер и клиент
-│   │   ├── websocket/             # WebSocket
-│   │   └── smtp/                  # SMTP клиент, DKIM
-│   ├── src/                       # Среда выполнения
-│   │   ├── server/                # HTTP-сервер, воркеры
-│   │   ├── multiplexing/          # Epoll мультиплексирование
-│   │   ├── thread/                # Пул потоков
-│   │   ├── connection/            # Управление соединениями
-│   │   ├── socket/                # Сокеты
-│   │   ├── signal/                # Обработка сигналов (вкл. горячую перезагрузку)
-│   │   ├── route/                 # Маршрутизация
-│   │   ├── domain/                # Виртуальные хосты, regex, IDN
-│   │   ├── config/                # Загрузка конфигурации
-│   │   ├── mimetype/              # MIME-типы
-│   │   ├── moduleloader/          # Динамическая загрузка .so
-│   │   ├── ratelimiter/           # Ограничение частоты запросов
-│   │   ├── openssl/               # Обёртки OpenSSL
-│   │   └── broadcast/             # Broadcasting
-│   ├── misc/                      # Утилиты (header-only)
-│   │   ├── str.h                  # Динамические строки (SSO)
-│   │   ├── array.h, hashmap.h, map.h  # Коллекции
-│   │   ├── json.h                 # JSON парсер/генератор
-│   │   ├── jwt.h, sha256.h, base64.h, uuid.h  # Крипто/кодирование
-│   │   ├── query.h, queryparser.h # Разбор query-строк
-│   │   ├── log.h                  # Логирование
-│   │   └── gzip.h                 # Gzip
-│   └── tests/                     # Модульные тесты ядра (BUILD_TESTS=yes)
+project/
+├── backend/
+│   ├── core/                          # Ядро фреймворка (субмодуль)
+│   │   ├── apps/                      # Точки входа исполняемых файлов
+│   │   │   ├── server/                # → cwfr (main.c)
+│   │   │   └── migrate/               # → migrate (main.c)
+│   │   ├── framework/                 # Компоненты фреймворка
+│   │   │   ├── database/              # Слой БД (PostgreSQL, MySQL, Redis, SQLite)
+│   │   │   ├── model/                 # ORM-система моделей
+│   │   │   ├── session/               # Сессии (FS, Redis, БД; AES-256-GCM)
+│   │   │   ├── storage/               # Хранилища (FS, S3)
+│   │   │   ├── view/                  # Шаблонизатор
+│   │   │   ├── middleware/            # Система middleware
+│   │   │   ├── taskmanager/           # Планировщик фоновых задач
+│   │   │   └── translation/           # i18n
+│   │   ├── protocols/                 # Реализация протоколов
+│   │   │   ├── http/                  # HTTP/1.1 сервер и клиент, upgrade до h2c
+│   │   │   ├── http2/                 # HTTP/2 (кадры, HPACK, WebSocket поверх h2)
+│   │   │   ├── http3/                 # HTTP/3 (кадры, QPACK) — INCLUDE_HTTP3=yes
+│   │   │   ├── quic/                  # Транспорт QUIC — INCLUDE_HTTP3=yes
+│   │   │   ├── hq/                    # HTTP/0.9 для interop — INCLUDE_HQ_INTEROP=yes
+│   │   │   ├── websocket/             # WebSocket
+│   │   │   └── smtp/                  # SMTP клиент, DKIM
+│   │   ├── src/                       # Среда выполнения
+│   │   │   ├── server/                # HTTP-сервер, воркеры
+│   │   │   ├── multiplexing/          # Epoll мультиплексирование
+│   │   │   ├── thread/                # Пул потоков
+│   │   │   ├── connection/            # Управление соединениями
+│   │   │   ├── socket/                # Сокеты
+│   │   │   ├── udp/                   # UDP-сокет и QUIC-эндпоинт (GSO)
+│   │   │   ├── signal/                # Обработка сигналов (вкл. горячую перезагрузку)
+│   │   │   ├── route/                 # Маршрутизация
+│   │   │   ├── domain/                # Виртуальные хосты, regex, IDN
+│   │   │   ├── config/                # Загрузка конфигурации
+│   │   │   ├── metrics/               # Счётчики конкурентности
+│   │   │   ├── mimetype/              # MIME-типы
+│   │   │   ├── moduleloader/          # Динамическая загрузка .so
+│   │   │   ├── ratelimiter/           # Ограничение частоты запросов
+│   │   │   ├── openssl/               # Обёртки OpenSSL
+│   │   │   └── broadcast/             # Broadcasting
+│   │   ├── misc/                      # Утилиты
+│   │   │   ├── str.h                  # Динамические строки (SSO)
+│   │   │   ├── array.h, hashmap.h, map.h  # Коллекции
+│   │   │   ├── arena.h, bufo.h, cqueue.h  # Арена, буферы, очередь
+│   │   │   ├── json.h                 # JSON парсер/генератор
+│   │   │   ├── jwt.h, sha256.h, base64.h, uuid.h  # Крипто/кодирование
+│   │   │   ├── query.h, queryparser.h # Разбор query-строк
+│   │   │   ├── i18n.h, idn_utils.h    # i18n и IDN-домены
+│   │   │   ├── ipaddr.h, utf8.h, file.h   # IP-адреса, UTF-8, файлы
+│   │   │   ├── log.h                  # Логирование
+│   │   │   └── gzip.h                 # Gzip
+│   │   ├── framework_shared/          # Сборка libcwfr_framework.so
+│   │   ├── cmake/                     # Find-модули и хелперы cwfr_add_*
+│   │   └── tests/                     # Модульные тесты ядра (BUILD_TESTS=yes)
+│   │
+│   └── app/                           # Пользовательское приложение
+│       ├── routes/                    # HTTP/WebSocket обработчики (компилируются в .so)
+│       │   ├── auth/                  # Аутентификация (login, registration, session)
+│       │   ├── index/                 # Главная страница
+│       │   ├── ws/                    # WebSocket обработчики
+│       │   ├── models/                # API для моделей (modeluser, modeluserview)
+│       │   ├── db/                    # Примеры работы с БД
+│       │   ├── files/                 # Операции с файлами / хранилищем
+│       │   ├── email/                 # Отправка email
+│       │   ├── httpclient/            # HTTP-клиент
+│       │   ├── json/                  # Примеры JSON
+│       │   ├── middleware/            # Примеры middleware
+│       │   └── bench/                 # Замеры конкурентности обработчиков, /metrics
+│       ├── models/                    # ORM-модели и view-модели
+│       │   ├── user.c, userview.c
+│       │   ├── role.c, permission.c
+│       │   ├── user_role.c, role_permission.c
+│       │   └── *view.c                # View-модели для JOIN-запросов
+│       ├── middlewares/               # Пользовательские middleware
+│       │   ├── httpmiddlewares.c      # HTTP middleware (auth и др.)
+│       │   └── wsmiddlewares.c        # WebSocket middleware
+│       ├── migrations/                # Миграции БД
+│       │   ├── s1/                    # Миграции сервера s1
+│       │   └── s2/                    # Миграции сервера s2
+│       ├── broadcasting/              # Каналы broadcasting (mybroadcast)
+│       ├── auth/                      # Модуль аутентификации
+│       │   ├── auth.c                 # Хеширование, authenticate()
+│       │   ├── password_validator.c   # Валидация паролей
+│       │   └── email_validator.c      # Валидация email
+│       ├── contexts/                  # Контексты запросов
+│       │   ├── httpctx.c              # HTTP-контекст
+│       │   └── wsctx.c                # WebSocket-контекст
+│       ├── app_init.c                 # Точка входа модуля приложения
+│       └── views/                     # Шаблоны (.tpl)
+│           ├── index.tpl
+│           └── header.tpl
 │
-├── app/                           # Пользовательское приложение
-│   ├── routes/                    # HTTP/WebSocket обработчики (компилируются в .so)
-│   │   ├── auth/                  # Аутентификация (login, registration, session)
-│   │   ├── index/                 # Главная страница
-│   │   ├── ws/                    # WebSocket обработчики
-│   │   ├── models/                # API для моделей (modeluser, modeluserview)
-│   │   ├── db/                    # Примеры работы с БД
-│   │   ├── files/                 # Операции с файлами / хранилищем
-│   │   ├── email/                 # Отправка email
-│   │   ├── httpclient/            # HTTP-клиент
-│   │   ├── json/                  # Примеры JSON
-│   │   └── middleware/            # Примеры middleware
-│   ├── models/                    # ORM-модели и view-модели
-│   │   ├── user.c, userview.c
-│   │   ├── role.c, permission.c
-│   │   ├── user_role.c, role_permission.c
-│   │   └── *view.c                # View-модели для JOIN-запросов
-│   ├── middlewares/               # Пользовательские middleware
-│   │   ├── httpmiddlewares.c      # HTTP middleware (auth и др.)
-│   │   └── wsmiddlewares.c        # WebSocket middleware
-│   ├── migrations/                # Миграции БД
-│   │   ├── s1/                    # Миграции сервера s1
-│   │   └── s2/                    # Миграции сервера s2
-│   ├── broadcasting/              # Каналы broadcasting (mybroadcast)
-│   ├── auth/                      # Модуль аутентификации
-│   │   ├── auth.c                 # Хеширование, authenticate()
-│   │   ├── password_validator.c   # Валидация паролей
-│   │   └── email_validator.c      # Валидация email
-│   ├── contexts/                  # Контексты запросов
-│   │   ├── httpctx.c              # HTTP-контекст
-│   │   └── wsctx.c                # WebSocket-контекст
-│   ├── app_init.c                 # Точка входа модуля приложения
-│   └── views/                     # Шаблоны (.tpl)
-│       ├── index.tpl
-│       └── header.tpl
-│
-└── config.json                    # Конфигурация приложения
+├── config.json                        # Конфигурация приложения
+└── frontend/                          # Документация (VitePress)
 ```
 
 ## Результаты сборки
@@ -344,16 +358,16 @@ cmake .. -DCWFR_HANDLER_INSTALL_DIR=/srv/myapp/handlers \
 ## Запуск
 
 ```bash
-# Запуск с указанием конфигурационного файла
-./build/exec/cwfr -c /path/to/config.json
+# Запуск с указанием конфигурационного файла (из каталога сборки backend/build)
+./exec/cwfr -c ../../config.json
 
 # Остаться на переднем плане (нужно контейнерам и супервизорам)
-./build/exec/cwfr -c /path/to/config.json -f
+./exec/cwfr -c ../../config.json -f
 ```
 
 Приложение запускается и слушает порты, заданные в `config.json`. Подробности — в разделе [Конфигурация](./config.md).
 
-Сборка `Release` отделяется от терминала, если не передан `-f`. Флаг `-f` нужен там, где процесс наблюдает супервизор: для него процесс, который сделал fork и вышел, выглядит как упавший.
+Сборки `Release` и `RelWithDebInfo` отделяются от терминала, если не передан `-f`. Флаг `-f` нужен там, где процесс наблюдает супервизор: для него процесс, который сделал fork и вышел, выглядит как упавший.
 
 **Код возврата осмыслен в обоих режимах.** Процесс не сообщает об успехе, пока конфигурация не прочитана, проверена и применена, **а все воркеры не начали слушать**. Поэтому `cwfr -c config.json && ...` работает так, как написано: и отвергнутый конфиг, и сокет, который не удалось привязать, дают ненулевой код и не оставляют висящего процесса. Отделяющийся родитель ждёт этого момента, а значит к возврату команды сервер уже принимает соединения.
 
