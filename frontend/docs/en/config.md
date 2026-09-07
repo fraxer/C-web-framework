@@ -73,6 +73,8 @@ It is checked twice, with different outcomes: a `Content-Length` header above th
 
 Temporary file directory: large request bodies and uploads are spooled there. **No trailing slash** — `"/tmp/"` is a configuration error, `"/tmp"` is correct.
 
+It is also the fallback directory for the shadow copies of rebuilt handlers, used when the directory holding the `.so` itself is not writable (see [Hot reload](/en/hot-reload#a-rebuilt-handler)).
+
 ### gzip <Badge type="info" text="array of strings"/> <Badge type="danger" text="required"/>
 
 MIME types eligible for automatic response compression. The key is mandatory, but the array may be empty (`[]`) — that turns compression off.
@@ -252,12 +254,16 @@ Check the return value: unchecked, the conflict is only a line in the journal an
 
 On reload (`SIGUSR1`) the middleware registry is cleared and `app_init()` runs again, so it **must be idempotent**: registering the same name twice returns `0`, which would abort start-up if the function accumulated state.
 
-The library itself is **not unloaded**. Old-generation workers may be executing a middleware from it at that moment, so unmapping it is never safe.
+It runs **twice** per reload: once on the validation pass that decides whether the new configuration is usable, and once for real. Both start from an empty registry, so no duplicate ever arises — but whatever `app_init()` does besides registering happens twice per reload.
 
-::: danger A rebuilt module needs a restart
-A config reload will not pick up a rebuilt `.so` — the process keeps the code it already has. Handler modules carry the same constraint; the way around it is a new build under a new name and a new path — see [Hot reload](/en/hot-reload#updating-code-without-a-restart).
+Where the module has been rebuilt, `app_init()` runs on the **new** instance, whose static variables are its own: no state carries across generations. Anything that has to survive a reload belongs outside the module.
 
-Nor can one reload add **both** a new module **and** a route using its middleware: the configuration is validated against the **old** registry before the reload commits, the new name is not in it, and the reload is refused — the previous configuration keeps running. That needs a restart.
+The library belongs to the configuration generation: rebuilt in place, it is loaded again — as a copy, under that generation's `SONAME` — and the previous one is unloaded when the last thread of the previous generation is gone. Unmapping it any earlier is never safe, because a worker may still be executing a middleware from it.
+
+::: tip A rebuilt module is picked up by `SIGUSR1`
+The path does not have to change. How it works, what it costs and when it does not apply after all is in [Hot reload → The application module](/en/hot-reload#the-application-module).
+
+One reload can add **both** a new middleware in `app_init()` **and** a route naming it: the validation pass runs the **new** module's `app_init()`, so the names a rebuilt module introduces are visible to it.
 :::
 
 #### Validation and errors
@@ -271,6 +277,8 @@ The value must be an array of non-empty strings; anything else is a configuratio
 | `app_init()` returned `0` | `app_init() failed in <path>` |
 
 If a module exports no `app_init()` but does export `middlewares_init()` — the hook the core no longer calls — a migration hint is appended. Without it the mistake would surface much later and in an unrelated shape: `failed to find middleware <name>` while `servers` is parsed.
+
+The first two checks also run **before** a reload, while the new configuration is validated — but only for modules not already loaded in this process, and without calling `app_init()`. A typo in a path therefore refuses the reload while the old generation is still serving. `app_init()` failing stays fatal: that is an application bug rather than a configuration mistake, and it shows up on the first start.
 
 #### Without this key
 
@@ -577,7 +585,7 @@ A path may be literal, carry named parameters (`{id|\d+}`) or be a regular expre
 
 Handler fields:
 
-* `file` — path to the `.so` holding the handler. The library is loaded at start-up and shared by every route that names it
+* `file` — path to the `.so` holding the handler. The library is loaded at start-up and shared by every route that names it. Rebuilt in place, it is picked up on the next `SIGUSR1` — the path does not have to change (see [Hot reload](/en/hot-reload#a-rebuilt-handler))
 * `function` — the exported function name. Resolved at start-up; not found means the server refuses to start
 * `static_file` — a static file path. When present, `file`/`function` are **neither required nor called**: the route serves the file. The path is always resolved **relative to [`root`](#root)** — a leading `/` is stripped, it does not mean the filesystem root. Capture groups from the route's regular expression can be substituted as `{1}`, `{2}`, … (the same notation as `redirects`), so one route can serve a whole directory:
   ```json
