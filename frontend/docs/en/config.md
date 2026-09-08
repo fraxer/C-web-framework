@@ -127,12 +127,13 @@ The `ETag` does not depend on the mode: a compressed representation gets a weak 
 
 ### log <Badge type="info" text="object"/> <Badge type="danger" text="required"/>
 
-Logging settings. Both nested fields are mandatory. The journal goes to **syslog** — read it with `journalctl -t cwfr`, not from stdout.
+Logging settings. `enabled` and `level` are mandatory, `access` is not. The journal goes to **syslog** — read it with `journalctl -t cwfr`, not from stdout.
 
 ```json
 "log": {
     "enabled": true,
-    "level": "info"
+    "level": "info",
+    "access": false
 }
 ```
 
@@ -159,6 +160,43 @@ Anything else is a configuration error.
 - **Production:** `info` or `notice` — a balance between detail and performance.
 - **Development:** `debug` — maximum detail.
 - **Critical systems:** `warning`/`error` — important events only.
+:::
+
+
+#### access <Badge type="info" text="boolean"/>
+
+The access log: one record per answered request — who asked, for what, and what they got. Optional, `false` by default.
+
+This is a log of **requests**, not of server events, and it does not depend on `enabled`: wanting request records without debug chatter is the ordinary case, not an exotic one. So that `journalctl -t cwfr` stays readable, access records go to their own syslog facility, `local7`:
+
+```bash
+journalctl -t cwfr SYSLOG_FACILITY=23   # requests
+journalctl -t cwfr SYSLOG_FACILITY=1    # server events
+```
+
+The format is fixed — Apache's `vhost_combined` with the processing time appended:
+
+```
+example.com 203.0.113.7 - - [08/Sep/2026:22:41:07 +0700] "GET /page?a=1 HTTP/2" 200 1234 "https://ref/" "Mozilla/5.0" 0.002
+```
+
+The fields, in order: the vhost (the `Host` value), the client address, two dashes where identd and the HTTP user would be, the time, the request line, the status code, the body size, `Referer`, `User-Agent`, and the duration in seconds. For GoAccess:
+
+```
+log-format %v:%^ %h %^[%d:%t %^] "%r" %s %b "%R" "%u" %T
+date-format %d/%b/%Y
+time-format %H:%M:%S
+```
+
+Records are identical across HTTP/1.1, HTTP/2 and HTTP/3, and cover everything the vhost serves — static files, handler responses, `304`, the `429` of a rate limit, redirects. The body size is the bytes that actually went on the wire: compressed for a compressed response, the part size for a `Range`, zero for a `304`. The request line is the one the client sent: a redirect is recorded under the path that was asked for, not under its destination.
+
+What does **not** reach a record:
+
+* a request the parser refused before it finished reading it (a malformed request line, an unknown `Host`) — the method and the target are already gone by then, and dashes stand in their place;
+* a response that could not be finished on the socket: a torn response was not served.
+
+::: warning The cost
+Every record is a synchronous write to syslog. On a synthetic static benchmark (`wrk`, keep-alive, one worker) turning the access log on costs about half the throughput: 273k → 121k requests per second. That is far beyond any real site's load, but it shows on a load rig. With `false` there is no cost at all: the flag is tested before anything is formatted and before the clock is read.
 :::
 
 ### modules <Badge type="info" text="array of strings"/>
@@ -547,7 +585,7 @@ The profiles limit nothing on their own — they have to be assigned: through `r
 
 ### http <Badge type="info" text="object"/>
 
-HTTP routes, middleware and redirects. All four nested keys are optional.
+HTTP routes, middleware, response headers and redirects. All five nested keys are optional.
 
 #### ratelimit <Badge type="info" text="string"/>
 
@@ -614,6 +652,24 @@ Redirect rules. The key is a path or a regular expression, the value the target;
 ```
 
 Redirects are checked before routes.
+
+The request's query string is carried onto the target when the target has no `?` of its own: `/old?utm_source=ya` lands on `/index.html?utm_source=ya`. A target with its own parameters (`"/old": "/new?b=2"`) is left alone — they were written deliberately, and merging two sets would be a surprise. The match is still made against the path without the query, so `(.*)` never captures the query.
+
+#### headers <Badge type="info" text="object"/>
+
+Response headers this vhost puts on **every** answer it gives. The key is the header name, the value a string; an empty value is a configuration error.
+
+```json
+"headers": {
+    "X-Content-Type-Options": "nosniff",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Referrer-Policy": "strict-origin-when-cross-origin"
+}
+```
+
+This is where the headers decided once per site live. A handler cannot reach them: static files are served by the core, and middleware runs on routes — while static files are what a request gets when it matches none. Here the header lands on everything: on static files, on a handler's output, on `send_default(404)`, on a `304` — and identically over HTTP/1.1, HTTP/2 and HTTP/3.
+
+The configured value is a **default**: a handler that set its own `Referrer-Policy` keeps its value, and no duplicate field appears. This is the same rule a route's `cache_control` follows.
 
 ### websockets <Badge type="info" text="object"/>
 
@@ -958,7 +1014,7 @@ A file whose extension is not described here is served without a meaningful `Con
         "client_max_body_size": 110485760,
         "tmp": "/tmp",
         "gzip": ["text/html", "text/css", "application/json", "application/javascript"],
-        "log": { "enabled": true, "level": "info" },
+        "log": { "enabled": true, "level": "info", "access": true },
         "env": {
             "refresh_token_expiration": 15552000,
             "metrics": true,
@@ -1023,6 +1079,11 @@ A file whose extension is not described here is served without a meaningful `Con
                 "redirects": {
                     "/old": "/new",
                     "/user(.*)/(\\d)": "/user-{1}-{2}"
+                },
+                "headers": {
+                    "X-Content-Type-Options": "nosniff",
+                    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+                    "Referrer-Policy": "strict-origin-when-cross-origin"
                 }
             },
             "websockets": {
