@@ -170,8 +170,8 @@ The access log: one record per answered request — who asked, for what, and wha
 This is a log of **requests**, not of server events, and it does not depend on `enabled`: wanting request records without debug chatter is the ordinary case, not an exotic one. So that `journalctl -t cwfr` stays readable, access records go to their own syslog facility, `local7`:
 
 ```bash
-journalctl -t cwfr SYSLOG_FACILITY=23   # requests
-journalctl -t cwfr SYSLOG_FACILITY=1    # server events
+journalctl -t cwfr SYSLOG_FACILITY=23 -o cat   # requests, one line each
+journalctl -t cwfr SYSLOG_FACILITY=1           # server events
 ```
 
 The format is fixed — Apache's `vhost_combined` with the processing time appended:
@@ -195,8 +195,22 @@ What does **not** reach a record:
 * a request the parser refused before it finished reading it (a malformed request line, an unknown `Host`) — the method and the target are already gone by then, and dashes stand in their place;
 * a response that could not be finished on the socket: a torn response was not served.
 
-::: warning The cost
-Every record is a synchronous write to syslog. On a synthetic static benchmark (`wrk`, keep-alive, one worker) turning the access log on costs about half the throughput: 273k → 121k requests per second. That is far beyond any real site's load, but it shows on a load rig. With `false` there is no cost at all: the flag is tested before anything is formatted and before the clock is read.
+#### Delivery in batches
+
+Records accumulate in the worker's buffer and reach syslog **a batch at a time** — one send per batch, not per request. This is not optimisation for its own sake: journald charges per *journal entry*, not per byte, and one send per response cost 4.3 µs, more than the rest of the response put together. A batch of sixty records costs about 60 ns each.
+
+What that means in practice:
+
+* **One journal entry may hold several lines.** `journalctl -o cat` — what an analyser is fed — prints them as separate lines, exactly one per request; the default `journalctl` view indents the continuations. Every line carries its own timestamp, so nothing about a record depends on which batch carried it.
+* **A record may lag by up to about half a second.** The buffer is flushed when it fills, on the worker's timer (a 500 ms tick), and at shutdown. On a quiet server that is the upper bound on the delay; no record is lost, including across a configuration reload.
+* **Ordering between workers is batch-grained.** Within one connection it is exact — a connection is served by one worker. nginx's per-worker buffers have the same property.
+
+::: tip The cost
+On a synthetic static benchmark (`wrk`, keep-alive) turning the access log on costs about **5%** of throughput: 159.6k → 151.9k requests per second. The profile attributes 1.7% of the worker to it, 0.6% of that being the delivery itself; the rest is journald burning CPU in the next process.
+
+Before batching — one send per request — the same thing cost 24% (159.6k → 121.6k), and on a faster machine as much as half. Batching the *syscalls* (`sendmmsg`) does not help here: what is expensive is journald taking each entry, not the call that hands it over.
+
+With `false` there is no cost at all: the flag is tested before anything is formatted and before the clock is read; on the benchmark the disabled log is indistinguishable from a build without it (158.9k against 159.6k).
 :::
 
 ### modules <Badge type="info" text="array of strings"/>
