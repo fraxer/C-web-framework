@@ -37,7 +37,7 @@ description: Полное описание конфигурации C Web Framew
 | [`sessions`](#секция-sessions) | нет | Сессии недоступны |
 | [`task_manager`](#секция-task-manager) | нет | Планировщик не запускается |
 | [`translations`](#секция-translations) | нет | i18n отключён |
-| [`mail`](#секция-mail) | нет | DKIM-поля пустые, письма уходят без подписи |
+| [`mail`](#секция-mail) | нет | Прямая доставка на MX, письма уходят без подписи |
 | [`migrations`](#секция-migrations) | нет | Ничего: секция рантаймом не читается |
 
 ## Секция main
@@ -857,7 +857,7 @@ TCP-порт сервера (обычно `80` для HTTP, `443` для HTTPS).
 
 ## Секция mail
 
-Конфигурация отправки email с DKIM-подписью. Необязательная; отсутствие секции равносильно пустым значениям — письма уходят без подписи.
+Конфигурация отправки email. Необязательная; отсутствие секции равносильно пустым значениям — письма уходят напрямую на MX получателя и без подписи.
 
 ```json
 "mail": {
@@ -872,8 +872,58 @@ TCP-порт сервера (обычно `80` для HTTP, `443` для HTTPS).
 | `dkim_private` | **Путь** к файлу приватного ключа. Файл читается при загрузке конфигурации — недоступный путь останавливает запуск |
 | `dkim_selector` | DKIM-селектор (часть имени TXT-записи `<selector>._domainkey.<host>`) |
 | `host` | Домен, от имени которого подписываются письма |
+| `relay` | Объект: отправка через SMTP-релей вместо прямой доставки (см. ниже) |
 
-Каждое поле по отдельности необязательно, но если оно есть — это непустая строка. Подробности — в разделе [Почта](/mail).
+Каждое поле по отдельности необязательно, но если оно есть — это непустая строка. `dkim_private` и `dkim_selector` при этом задаются **вместе**: одно без другого — ошибка конфигурации. Если не задано ни одно, DKIM не применяется и письма уходят без подписи.
+
+### mail.relay
+
+Наличие объекта `relay` переключает доставку с прямой на релейную: письмо передаётся заданному SMTP-серверу с аутентификацией, MX-записи получателя не запрашиваются.
+
+```json
+"mail": {
+    "host": "example.com",
+    "relay": {
+        "host": "smtp.mail.ru",
+        "port": 587,
+        "security": "starttls",
+        "user": "info@example.com",
+        "password": "...",
+        "auth": "auto",
+        "timeout": 15,
+        "verify": true
+    }
+}
+```
+
+| Поле | Обязательное | По умолчанию | Описание |
+|------|--------------|--------------|----------|
+| `host` | **да** | — | Имя или адрес сервера-релея. Резолвится через `getaddrinfo()` (A и AAAA) |
+| `port` | нет | по `security`: 587 / 465 / 25 | Порт, 1..65535 |
+| `security` | нет | `starttls` | `starttls`, `tls` (рукопожатие до баннера), `none` |
+| `user` | нет | — | Логин; без него `AUTH` не выполняется |
+| `password` | нет | — | Пароль. Не попадает в журнал |
+| `auth` | нет | `auto` | `auto`, `plain`, `login`, `none` |
+| `timeout` | нет | 30 | Таймаут операций сокета, секунды, 1..3600 |
+| `verify` | нет | `true` | Проверять сертификат и имя хоста релея |
+
+Сочетание `security: "none"` с `user` допустимо, но пишет в журнал предупреждение — учётные данные уйдут открытым текстом. Остальные нарушения останавливают запуск:
+
+| Конфигурация | Сообщение |
+|--------------|-----------|
+| `relay` без `host` | `mail.relay.host is required` |
+| `"host": ""` | `mail.relay.host must be not empty` |
+| `user` без `password` | `mail.relay.user without mail.relay.password` |
+| `password` без `user` | `mail.relay.password without mail.relay.user` |
+| `"security": "ssl"` | `mail.relay.security must be one of: starttls, tls, none` |
+| `"auth": "cram-md5"` | `mail.relay.auth must be one of: auto, plain, login, none` |
+| `"port": 70000` | `mail.relay.port must be in range 1..65535` |
+| `"timeout": 0` | `mail.relay.timeout must be in range 1..3600` |
+| `"verify": "yes"` | `mail.relay.verify must be bool` — нужен `true`/`false`, не строка |
+| `"relay": "smtp.mail.ru"` | `mail.relay must be object` |
+| `dkim_selector` без `dkim_private` (и наоборот) | `mail.dkim_private and mail.dkim_selector must be set together` |
+
+Готовые варианты конфигурации на каждый режим — в разделе [Почта](/mail#готовые-варианты).
 
 ## Секция mimetypes
 

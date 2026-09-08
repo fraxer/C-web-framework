@@ -37,7 +37,7 @@ Two practical consequences:
 | [`sessions`](#sessions-section) | no | No sessions |
 | [`task_manager`](#task-manager-section) | no | The scheduler does not start |
 | [`translations`](#translations-section) | no | i18n disabled |
-| [`mail`](#mail-section) | no | DKIM fields empty, mail goes unsigned |
+| [`mail`](#mail-section) | no | Direct delivery to the recipient's MX, mail goes unsigned |
 | [`migrations`](#migrations-section) | no | Nothing: the section is not read at runtime |
 
 ## main section
@@ -857,7 +857,7 @@ See [Sessions](/en/session).
 
 ## mail section
 
-Email delivery with DKIM signing. Optional; an absent section is equivalent to empty values — mail goes out unsigned.
+Email delivery. Optional; an absent section is equivalent to empty values — mail goes straight to the recipient's MX and goes out unsigned.
 
 ```json
 "mail": {
@@ -872,8 +872,58 @@ Email delivery with DKIM signing. Optional; an absent section is equivalent to e
 | `dkim_private` | **Path** to the private key file. The file is read when the configuration loads — an unreadable path stops start-up |
 | `dkim_selector` | DKIM selector (part of the `<selector>._domainkey.<host>` TXT record name) |
 | `host` | The domain messages are signed for |
+| `relay` | Object: submit through an SMTP relay instead of delivering directly (see below) |
 
-Each field is individually optional, but when present it must be a non-empty string. See [Mail](/en/mail).
+Each field is individually optional, but when present it must be a non-empty string. `dkim_private` and `dkim_selector` are configured **together**, though: one without the other is a configuration error. With neither set, DKIM is not applied and messages go out unsigned.
+
+### mail.relay
+
+The presence of the `relay` object switches delivery from direct to relayed: the message is handed to the configured SMTP server with authentication, and the recipient's MX records are never queried.
+
+```json
+"mail": {
+    "host": "example.com",
+    "relay": {
+        "host": "smtp.mail.ru",
+        "port": 587,
+        "security": "starttls",
+        "user": "info@example.com",
+        "password": "...",
+        "auth": "auto",
+        "timeout": 15,
+        "verify": true
+    }
+}
+```
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `host` | **yes** | — | Name or address of the relay. Resolved with `getaddrinfo()` (A and AAAA) |
+| `port` | no | per `security`: 587 / 465 / 25 | Port, 1..65535 |
+| `security` | no | `starttls` | `starttls`, `tls` (handshake before the banner), `none` |
+| `user` | no | — | Login; without it no `AUTH` is performed |
+| `password` | no | — | Password. Never reaches the log |
+| `auth` | no | `auto` | `auto`, `plain`, `login`, `none` |
+| `timeout` | no | 30 | Socket operation timeout, seconds, 1..3600 |
+| `verify` | no | `true` | Verify the relay's certificate and hostname |
+
+Combining `security: "none"` with `user` is allowed but logs a warning — the credentials will travel in the clear. Every other violation stops start-up:
+
+| Configuration | Message |
+|---------------|---------|
+| `relay` with no `host` | `mail.relay.host is required` |
+| `"host": ""` | `mail.relay.host must be not empty` |
+| `user` without `password` | `mail.relay.user without mail.relay.password` |
+| `password` without `user` | `mail.relay.password without mail.relay.user` |
+| `"security": "ssl"` | `mail.relay.security must be one of: starttls, tls, none` |
+| `"auth": "cram-md5"` | `mail.relay.auth must be one of: auto, plain, login, none` |
+| `"port": 70000` | `mail.relay.port must be in range 1..65535` |
+| `"timeout": 0` | `mail.relay.timeout must be in range 1..3600` |
+| `"verify": "yes"` | `mail.relay.verify must be bool` — `true`/`false`, not a string |
+| `"relay": "smtp.mail.ru"` | `mail.relay must be object` |
+| `dkim_selector` without `dkim_private` (or the reverse) | `mail.dkim_private and mail.dkim_selector must be set together` |
+
+Ready-made configurations for each mode are in [Mail](/en/mail#ready-made-variants).
 
 ## mimetypes section
 
