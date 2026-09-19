@@ -91,6 +91,7 @@ export default defineConfig({
                   { text: 'Подготовленные запросы', link: '/prepared-statements' },
                 ]
               },
+              { text: 'Обработка входных данных', link: '/forms' },
               { text: 'Middleware', link: '/middleware' },
               { text: 'Аутентификация', link: '/auth' },
               { text: 'Сессии', link: '/session' },
@@ -118,6 +119,7 @@ export default defineConfig({
             text: 'Примеры',
             items: [
               { text: 'Запросы и ответы', link: '/examples-req-res' },
+              { text: 'Обработка входных данных', link: '/examples-form' },
               { text: 'Базы данных', link: '/examples-db' },
               { text: 'Json', link: '/examples-json' },
             ]
@@ -195,6 +197,7 @@ export default defineConfig({
                   { text: 'Prepared statements', link: '/en/prepared-statements' },
                 ]
               },
+              { text: 'Input validation', link: '/en/forms' },
               { text: 'Middleware', link: '/en/middleware' },
               { text: 'Authentication', link: '/en/auth' },
               { text: 'Sessions', link: '/en/session' },
@@ -222,6 +225,7 @@ export default defineConfig({
             text: 'Examples',
             items: [
               { text: 'Requests and responses', link: '/en/examples-req-res' },
+              { text: 'Input validation', link: '/en/examples-form' },
               { text: 'Databases', link: '/en/examples-db' },
               { text: 'Json', link: '/en/examples-json' },
             ]

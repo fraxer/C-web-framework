@@ -287,3 +287,7 @@ void upload_to_storage(httpctx_t* ctx) {
 - The `file_content_t` from `get_payload_file*` **does not own** the data — copying happens only when you call `make_file()` / `content()`. The buffer from `content()` is freed with `free()`, and the `file_t` from `make_file()` is closed with `close()`.
 - Always check the result for `NULL` (strings/JSON) or the `ok` field (`file_content_t` / `file_t`) before use.
 - The maximum request body size is limited by the `client_max_body_size` parameter in the `main` section of the configuration.
+
+::: tip Next step — validation
+The `get_payload*` methods return raw strings. To clean, type-check and validate the input — length, format, ranges, files and cross-field relations — use the form module described in the [Input validation](/en/forms) section.
+:::
