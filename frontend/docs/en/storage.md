@@ -52,6 +52,18 @@ Storages are configured in the `storages` section of the `config.json` file. It 
 For the `s3` driver, every field listed above is required — the storage will not load if any of them is missing.
 :::
 
+### Serving a storage through a route
+
+A storage can be served directly, without a handler: the `storage` key goes next to `static_file` in the `http.routes` section.
+
+```json
+"/videos/(.*)": {
+    "GET": { "static_file": "{1}", "storage": "media" }
+}
+```
+
+The markup stays on the local disk, the large files move to S3, and the route is the only place that says so. The details are in [`storage` on routes](/en/routing#serving-from-a-storage): what changes for S3 (chunked fetching, ranges, conditional requests) and how a storage route differs from ordinary statics.
+
 ### Temporary files
 
 To work with temporary files, specify a directory in the `main` section:

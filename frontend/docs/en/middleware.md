@@ -396,17 +396,17 @@ Request rate limiting is configured separately — in `config.json`, not through
     "servers": {
         "s1": {
             "ratelimits": {
-                "one":  { "burst": 1,  "rate": 0 },
+                "one":  { "burst": 1,  "rate": 1 },
                 "two":  { "burst": 15, "rate": 15 }
             },
             "http": {
-                "ratelimit": "one",
+                "ratelimit": "two",
                 "routes": {
                     "/api/login": {
                         "POST": {
                             "file": "...",
                             "function": "login",
-                            "ratelimit": "two"
+                            "ratelimit": "one"
                         }
                     }
                 }
@@ -417,4 +417,8 @@ Request rate limiting is configured separately — in `config.json`, not through
 ```
 
 - `burst` — bucket size (maximum number of instantaneous requests);
-- `rate` — bucket refill rate (requests per second); `0` means no refill.
+- `rate` — bucket refill rate (requests per second); `0` turns the limit off entirely — the profile lets every request through.
+
+Rate limiting applies to HTTP handler routes, routes with a `static_file` from `root` or from `storage`, and statics from `root` when a request matches no route. The route's profile overrides `http.ratelimit`; a route without its own profile shares the client bucket with static requests outside routes.
+
+For files from `root`, the check runs before looking up the file, so requests for missing files also spend tokens. An exhausted limit returns `429` with `Retry-After: 1`. Middlewares do not run on statics served from `root`, but this does not disable rate limiting. See [Rate limiting for static files](/en/routing#rate-limiting-for-static-files).
