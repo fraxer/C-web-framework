@@ -25,7 +25,33 @@
             "ip": "0.0.0.0",
             "port": 8080,
             "root": "/opt/cwfr/frontend",
-            "index": "index.html"
+            "index": "index.html",
+            "ratelimits": {
+                "default": { "burst": 100, "rate": 50 },
+                "assets": { "burst": 200, "rate": 100 },
+                "downloads": { "burst": 10, "rate": 2 },
+                "unlimited": { "burst": 1, "rate": 0 }
+            },
+            "http": {
+                "ratelimit": "default",
+                "routes": {
+                    "/assets/(.*)": {
+                        "GET": { "static_file": "assets/{1}", "ratelimit": "assets" }
+                    },
+                    "/downloads/(.*)": {
+                        "GET": { "static_file": "downloads/{1}", "storage": "assets", "ratelimit": "downloads" }
+                    },
+                    "/robots.txt": {
+                        "GET": { "static_file": "robots.txt", "ratelimit": "unlimited" }
+                    }
+                }
+            }
+        }
+    },
+    "storages": {
+        "assets": {
+            "type": "filesystem",
+            "root": "/opt/cwfr/frontend"
         }
     },
     "mimetypes": {

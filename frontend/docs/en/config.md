@@ -584,18 +584,25 @@ The index file name served for a directory. Defaults to `index.html`. One name, 
 
 ### ratelimits <Badge type="info" text="object"/>
 
-Named rate-limiting profiles (token bucket). Each profile sets `burst` (bucket capacity — the peak number of requests) and `rate` (tokens refilled per second); the window is one second.
+Named rate-limiting profiles (token bucket). Each profile sets `burst` (bucket capacity — the peak number of requests) and `rate` (tokens refilled per second). Each allowed request spends one token; the bucket refills as time passes rather than resetting at each second boundary.
 
 ```json
 "ratelimits": {
-    "one":   { "burst": 1,  "rate": 0  },
-    "strict":{ "burst": 15, "rate": 15 }
+    "default":   { "burst": 100, "rate": 50 },
+    "strict":    { "burst": 1,   "rate": 1 },
+    "unlimited": { "burst": 1,   "rate": 0 }
 }
 ```
 
-Both fields are mandatory and must be integers. `rate: 0` means a bucket that never refills: `burst` requests, then refusal.
+Both fields are mandatory and must be integers. Each client address gets a bucket of its own. `rate: 0` **turns the profile off**: such a limiter lets every request through, and `burst` is not consulted. There is no bucket that never refills ("`burst` requests, then refusal for good") — the strictest profile is `{ "burst": 1, "rate": 1 }`, one request per second.
 
 The profiles limit nothing on their own — they have to be assigned: through `ratelimit` in [`http`](#http), in [`websockets`](#websockets), or on an individual route method. Referring to a profile name that does not exist is a configuration error.
+
+For example, `{ "burst": 100, "rate": 50 }` allows up to 100 consecutive requests from a full bucket, then replenishes up to 50 tokens per second. `burst` bounds the reserve; `rate` controls how quickly it recovers.
+
+Clients are identified by the connection address: the full IPv4 address or the IPv6 `/64` prefix. Buckets live in each worker process and are not shared across workers or server instances. A profile name shares settings, not a bucket across all assignments: separate routes with their own profiles have separate limiters; routes without one use the `http.ratelimit` limiter.
+
+The `ratelimit` field is declared inside a method, but the limiter belongs to the whole route and applies to all its methods. Use the same profile for methods of one route; use separate routes for different limits.
 
 ### http <Badge type="info" text="object"/>
 
@@ -603,7 +610,9 @@ HTTP routes, middleware, response headers and redirects. All five nested keys ar
 
 #### ratelimit <Badge type="info" text="string"/>
 
-The default rate-limiting profile for all of the vhost's HTTP traffic.
+The default rate-limiting profile for all HTTP routes of the vhost without a `ratelimit` of their own, and statics from [`root`](#root) served to a request that matched no route. Routes without their own profile and those statics share the client bucket.
+
+For file routes served from `root` and requests that match no route, the limit is checked before looking up the file. Missing files also spend tokens; an exhausted limit returns `429` with `Retry-After: 1`. The route's profile takes precedence, including `rate: 0`, which disables limiting for that route. Without an assigned profile, requests are not limited. Redirects from `http.redirects` do not check this limiter.
 
 #### middlewares <Badge type="info" text="array of strings"/>
 
@@ -625,7 +634,7 @@ Supported methods: **`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`*
 "routes": {
     "/api/users": {
         "GET":  { "file": "handlers/models/lib_modeluser.so", "function": "list", "ratelimit": "strict" },
-        "POST": { "file": "handlers/models/lib_modeluser.so", "function": "create" }
+        "POST": { "file": "handlers/models/lib_modeluser.so", "function": "create", "ratelimit": "strict" }
     },
     "/api/users/{id|\\d+}": {
         "PATCH": { "file": "handlers/models/lib_modeluser.so", "function": "update" }
@@ -648,8 +657,14 @@ Handler fields:
       }
   }
   ```
+* `storage` — the name of a storage from the [`storages`](#storages) section that `static_file` is taken from. Without it the path is resolved against [`root`](#root), as before. It requires `static_file` and cannot be combined with `file`/`function`; an unknown name refuses the start. Unlike ordinary statics, a storage route **does run middlewares**, and `cache_control` lands only on what the storage served (`200`/`206`/`304`) — not on a `404`, a `429` or a middleware's refusal. For an S3 storage the object is asked for with `HEAD` first, the body arrives in 8 MB chunks (further clamped by [`client_max_body_size`](#client-max-body-size)), and a client `Range` is cut by S3 itself — see [Serving from a storage](/en/routing#serving-from-a-storage):
+  ```json
+  "/videos/(.*)": {
+      "GET": { "static_file": "{1}", "storage": "media" }
+  }
+  ```
 * `cache_control` — the `Cache-Control` header for whatever the route answers with, a file or a handler alike. Without it every file response carries `Cache-Control: no-cache` (revalidate on each use) — safe, but it makes the client re-download immutable build artefacts. Put immutable caching on routes whose files carry a content hash in the name, and leave pages on the default. A handler that sets its own `Cache-Control` keeps it — the route value is a default, not an override; and a missing `static_file` answers 404 without the header
-* `ratelimit` — the rate-limiting profile for this method of this route, overriding `http.ratelimit`
+* `ratelimit` — the rate-limiting profile for this route (declared inside a method), overriding `http.ratelimit`. It applies to handler routes and to routes with `static_file`, including files from [`root`](#root) and from `storage` (see [Rate limiting for static files](/en/routing#rate-limiting-for-static-files))
 
 A request matching no route is served as a static file from `root`.
 
@@ -1069,8 +1084,11 @@ A file whose extension is not described here is served without a meaningful `Con
             "root": "/var/www/html",
             "index": "index.html",
             "ratelimits": {
-                "default": { "burst": 15, "rate": 15 },
-                "strict":  { "burst": 1,  "rate": 0  }
+                "default":   { "burst": 100, "rate": 50 },
+                "strict":    { "burst": 1,   "rate": 1 },
+                "assets":    { "burst": 200, "rate": 100 },
+                "downloads": { "burst": 10,  "rate": 2 },
+                "unlimited": { "burst": 1,   "rate": 0 }
             },
             "http": {
                 "ratelimit": "default",
@@ -1078,16 +1096,23 @@ A file whose extension is not described here is served without a meaningful `Con
                 "routes": {
                     "/api/users": {
                         "GET":  { "file": "/app/build/exec/handlers/models/lib_modeluser.so", "function": "list" },
-                        "POST": { "file": "/app/build/exec/handlers/models/lib_modeluser.so", "function": "create", "ratelimit": "strict" }
+                        "POST": { "file": "/app/build/exec/handlers/models/lib_modeluser.so", "function": "create" }
                     },
                     "/assets/(.*)": {
                         "GET": {
                             "static_file": "/assets/{1}",
-                            "cache_control": "public, max-age=31536000, immutable"
+                            "cache_control": "public, max-age=31536000, immutable",
+                            "ratelimit": "assets"
                         }
                     },
+                    "/downloads/(.*)": {
+                        "GET": { "static_file": "downloads/{1}", "storage": "local", "ratelimit": "downloads" }
+                    },
+                    "/api/login": {
+                        "POST": { "file": "/app/build/exec/handlers/models/lib_modeluser.so", "function": "login", "ratelimit": "strict" }
+                    },
                     "/robots.txt": {
-                        "GET": { "static_file": "/robots.txt" }
+                        "GET": { "static_file": "/robots.txt", "ratelimit": "unlimited" }
                     }
                 },
                 "redirects": {

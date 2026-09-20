@@ -32,8 +32,9 @@ Handler fields:
 | `file`        | string | Path to the handler `.so` (relative to the process root, or absolute)               |
 | `function`    | string | Name of the handler function                                                         |
 | `static_file` | string | Path to a static file; when set, the file is served instead of calling `file`/`function`. Supports `{1}`, `{2}`, … capture-group substitution from the route pattern |
+| `storage`     | string | Name of a storage from the [`storages`](/en/storage) section that `static_file` is taken from, instead of the server's `root`. Only together with `static_file` — see [Serving from a storage](#serving-from-a-storage) |
 | `cache_control` | string | `Cache-Control` header for what the route answers with, file or handler (file default: `no-cache`) |
-| `ratelimit`   | string | Name of the rate limiting profile for this route (overrides `http.ratelimit`)        |
+| `ratelimit`   | string | Name of the rate limiting profile for this route (overrides `http.ratelimit`) |
 
 ## Route matching
 
@@ -190,6 +191,70 @@ By default every file answer is sent with `Cache-Control: no-cache`, so the clie
 
 `cache_control` applies to handler routes as well, where it acts as the route's default: a handler that sets `Cache-Control` itself keeps its own value. A `static_file` that is missing still answers 404 without the header, so a long `max-age` never lands on an error.
 
+### Serving from a storage
+
+By default `static_file` is resolved against the server's `root`. The `storage` key moves the route into a named storage from the [`storages`](/en/storage) section — filesystem and S3 alike. The route-to-storage binding becomes a line of configuration instead of a handler that programs it:
+
+```json
+"/assets/(.*)": {
+    "GET": {
+        "static_file": "{1}",
+        "storage": "assets",
+        "cache_control": "public, max-age=31536000, immutable"
+    }
+},
+"/videos/(.*)": {
+    "GET": { "static_file": "{1}", "storage": "media" }
+}
+```
+
+The usual case: the markup sits next to the code on a fast disk, while keeping video there is expensive — `assets` points at a directory, `media` at an S3 bucket, and the client cannot tell.
+
+A route without `storage` behaves exactly as before, relative to `root`.
+
+The key is set per method, not per route: `GET` and `HEAD` of the same path each name it. A method without an entry skips this route, and if nothing further matches, the file is looked up in `root`.
+
+#### How a storage route differs from ordinary statics
+
+The same for a filesystem storage and for S3:
+
+* **Route middlewares and the route's ratelimit run on it.** Middlewares do not run on statics served from `root`: a private video behind authorization becomes configuration rather than a handler, and a request into S3 costs egress that has to be limitable. The ratelimit is checked first (a refusal is `429` with `Retry-After`), then the middlewares; a request a middleware turns down gets that middleware's answer, and the storage is never asked.
+* **The route's `cache_control` lands only on what the storage served** — `200`, `206` and `304`. Neither a `404`, nor a `429`, nor a middleware's refusal, nor an S3 error carries it, so a year-long `max-age` never caches an error.
+* **The answer is prepared in a worker thread** from the `main.threads` pool, as a handler's is, rather than on the event loop: that is where the middlewares can run.
+
+```json
+"/private/(.*)": {
+    "GET": {
+        "static_file": "{1}",
+        "storage": "media",
+        "ratelimit": "downloads",
+        "cache_control": "private, max-age=3600"
+    }
+}
+```
+
+Middlewares come from the vhost's shared `http.middlewares` list — a route has no list of its own. If other routes of the vhost do not need the same check, the middleware decides for itself, by the request path.
+
+#### A filesystem storage
+
+Serves the file the way statics from `root` do: `sendfile`, range requests, `ETag`, `gzip_static`. The path comes from the request, so patterns in it (`*`, `?`, `[`, `~`) are refused rather than expanded, and so is anything leaving the storage (`..`). A directory, a FIFO and any other non-regular file answer `404`.
+
+#### An S3 storage
+
+The object is asked for with `HEAD` first — that answers the size, `ETag`, `Last-Modified` and `Content-Type`, and it is also what serves the HTTP `HEAD` method, with no body downloaded. The body then arrives in 8 MB chunks, so the HTTP client's timeout is spent on a chunk rather than on the whole file. The chunk is further clamped by [`client_max_body_size`](/en/config#client-max-body-size): the client refuses a response above it.
+
+* A client `Range` is cut by S3 itself — only what was asked for is pulled off an object of hundreds of megabytes. An open end (`bytes=100-`) is clipped to the chunk size: RFC 9110 §14.2 allows serving a subset of what was requested, and a player continues with explicit ranges.
+* Several ranges in one header pull the whole object, and the ordinary machinery slices it afterwards — the answer arrives as `multipart/byteranges`.
+* `If-None-Match` and `If-Modified-Since` are proxied to S3, and its `304` is relayed without fetching a body. `If-Range` is checked against the `ETag` locally.
+* `gzip` is not applied to the S3 branch: `gzip_static` and the compressed cache are local machinery, and video is not in `main.gzip` anyway.
+* A `403` from S3 reaches the client as `502`: it is the server's keys that are wrong, not the client's rights to the object. A timeout or an unreachable endpoint is `503`.
+
+An S3 chunk occupies a worker thread from the shared `main.threads` pool — the same one handlers run in. With a narrow pool a slow S3 will slow the whole virtual host down.
+
+::: warning The storage key requires static_file
+`storage` without `static_file` is a configuration error, and so is `storage` together with `file`/`function`. An unknown storage name will not let the server start either: the name is checked against the `storages` section when the configuration is loaded.
+:::
+
 ### Combining with handlers
 
 Static files and handlers can be combined in the same route for different methods:
@@ -203,12 +268,18 @@ Static files and handlers can be combined in the same route for different method
 
 ### Rate limiting for static files
 
-Rate limiting can be applied to static files:
+A `static_file` served from `root` uses the route's `ratelimit`, or `http.ratelimit` without one. The check runs before looking up the file: requests for missing files also spend tokens. An exhausted limit returns `429` with `Retry-After: 1`; the route's `cache_control` is not applied to that response.
+
+A request that matches no route is also checked against `http.ratelimit` before looking up the file in `root`. Those requests and routes without their own profile spend tokens from the same client bucket: a series of requests for missing files can exhaust the limit for existing files too. Once the bucket refills, a missing file receives the usual `404` again.
+
+If neither the route nor `http` has a profile assigned, there is no limit. A route profile with `rate: 0` disables limiting for that route even when `http.ratelimit` is set. Middlewares still do not run on statics served from `root` — rate limiting works independently of them.
+
+A profile can be assigned directly to a file route:
 
 ```json
-"/downloads/report.pdf": {
+"/downloads/(.*)": {
     "GET": {
-        "static_file": "files/report.pdf",
+        "static_file": "{1}",
         "ratelimit": "downloads"
     }
 }
@@ -220,7 +291,7 @@ Use `static_file` for files that don't require processing: HTML pages, images, d
 
 ## Middleware
 
-Middleware are executed before the handler and apply to all routes of the section (`http.middlewares` / `websockets.middlewares`):
+Middleware are executed before the handler and apply to all routes of the section (`http.middlewares` / `websockets.middlewares`). In HTTP these are handler routes and [storage routes](#serving-from-a-storage); statics from `root` — both through `static_file` and for a request that matched no route — are served without middlewares:
 
 ### Global middleware
 
@@ -258,7 +329,7 @@ Rate limiting profiles are defined at the server level — in the `ratelimits` s
 "s1": {
     "ratelimits": {
         "default": { "burst": 15,  "rate": 15 },
-        "strict":  { "burst": 1,   "rate": 0 },
+        "strict":  { "burst": 1,   "rate": 1 },
         "api":     { "burst": 100, "rate": 100 }
     },
     "http": {
@@ -266,15 +337,21 @@ Rate limiting profiles are defined at the server level — in the `ratelimits` s
         "routes": {
             "/api/users": {
                 "GET":  { "file": "handlers/libapi.so", "function": "get_users",   "ratelimit": "api" },
-                "POST": { "file": "handlers/libapi.so", "function": "create_user", "ratelimit": "strict" }
+                "POST": { "file": "handlers/libapi.so", "function": "create_user", "ratelimit": "api" }
+            },
+            "/api/login": {
+                "POST": { "file": "handlers/libapi.so", "function": "login", "ratelimit": "strict" }
             }
         }
     }
 }
 ```
 
-* `http.ratelimit` — the default profile for all HTTP routes of the server.
-* A `ratelimit` on a specific route overrides the profile for that route.
+* `http.ratelimit` — the default profile for all HTTP routes and statics from `root` served to a request that matched no route. Routes without their own profile and those statics share one bucket per client address.
+* A `ratelimit` on a specific route overrides the profile for that route. The profile is declared inside a method but applies to the whole route; use separate routes for different limits.
+* The limit applies to both a `static_file` served from `root` and [storage routes](#serving-from-a-storage). Requests for missing files also spend tokens. An exhausted limit returns HTTP `429` with `Retry-After: 1`.
+* Redirects from `http.redirects` are handled before routing and do not spend tokens from this limiter.
+* Each client address gets a bucket of its own. `rate: 0` turns the profile off — the limiter lets every request through; the strictest profile is `{ "burst": 1, "rate": 1 }`, see [ratelimits](/en/config#ratelimits).
 
 ## Redirects
 
@@ -370,6 +447,44 @@ void ws_message(wsctx_t* ctx) {
     }
 }
 ```
+
+### Statics in storages
+
+Markup in a directory on disk, video in S3, downloads behind authorization and a rate limit:
+
+```json
+"storages": {
+    "assets": { "type": "filesystem", "root": "/var/www/assets" },
+    "media": {
+        "type": "s3", "access_id": "...", "access_secret": "...",
+        "protocol": "https", "host": "s3.example.com", "port": "",
+        "bucket": "media", "region": "us-east-1"
+    }
+},
+"servers": {
+    "s1": {
+        "ratelimits": { "downloads": { "burst": 5, "rate": 1 } },
+        "http": {
+            "middlewares": ["middleware_auth"],
+            "routes": {
+                "/assets/(.*)": {
+                    "GET": {
+                        "static_file": "{1}",
+                        "storage": "assets",
+                        "cache_control": "public, max-age=31536000, immutable"
+                    }
+                },
+                "/videos/(.*)": {
+                    "GET":  { "static_file": "{1}", "storage": "media", "ratelimit": "downloads" },
+                    "HEAD": { "static_file": "{1}", "storage": "media" }
+                }
+            }
+        }
+    }
+}
+```
+
+`middleware_auth` runs here for both `/assets/` and `/videos/`: the middleware list is shared by the vhost. A middleware that should guard only the videos checks the request path itself.
 
 ### Mixed site (pages + API)
 
