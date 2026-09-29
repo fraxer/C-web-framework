@@ -127,6 +127,8 @@ For complex patterns, use full regular expressions. Capture groups are available
 }
 ```
 
+A route pattern may have at most 64 capture groups, counting the groups of `{name|…}` parameters. A route with more does not load, and the log says why.
+
 ## HTTP methods
 
 Supported methods:
@@ -289,6 +291,8 @@ Redirects are described in the `http.redirects` section. The key is a PCRE regul
 ```
 
 A redirect location is **not anchored**, and it is matched against the request path without the query string: `"/user": "/persons"` fires on any path that contains `/user` — including `/api/user/42`. To have a redirect answer one exact path, anchor it: `"^/user$"`.
+
+A redirect location, like a route pattern, may have at most 64 capture groups.
 
 ## WebSocket routes
 
