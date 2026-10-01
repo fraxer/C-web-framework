@@ -40,7 +40,7 @@ The value is then compared, in turn, against the domains of every server bound t
 Because `*.example.com` captures both `www.example.com` and deeper addresses, place exact names and narrower patterns above the wildcard so they are not "shadowed".
 :::
 
-If no matching server is found, the client receives **404 Not Found**. An empty or missing `Host` header (mandatory in HTTP/1.1) results in **400 Bad Request**.
+If no matching server is found, the client receives **404 Not Found**. An empty or missing `Host` header (mandatory in HTTP/1.1) results in **400 Bad Request**. On HTTP/1.1 both answers, like any answer to a request the server could not parse, carry `Connection: close`, and the connection is closed right after it: where the refused request ends is unknown, so the bytes behind it are not parsed as the next request (RFC 9112 §9.3, §9.6).
 
 In HTTP/2 and HTTP/3 the same job is done by the `:authority` pseudo-header, and the outcome is deliberately identical: a name this listener does not serve answers **404**, not a stream or connection error. A request for the wrong name is an ordinary miss, and a client should learn that in the same way whichever protocol version it speaks. Over HTTP/3 these misses have their own counter, `/metrics` → `http3.misdirected`, kept apart from the 404s a handler produces: a rising one means either clients addressing the wrong name or a `domains` list missing something they actually use.
 
