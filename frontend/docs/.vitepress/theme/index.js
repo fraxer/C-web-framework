@@ -7,6 +7,7 @@ import HomeHeroVisual from './components/HomeHeroVisual.vue'
 import HomeStats from './components/HomeStats.vue'
 import HomeHeroExtras from './components/HomeHeroExtras.vue'
 import HomeCapabilities from './components/HomeCapabilities.vue'
+import HomePerformance from './components/HomePerformance.vue'
 import HomeTests from './components/HomeTests.vue'
 import HomeFooterExtras from './components/HomeFooterExtras.vue'
 
@@ -18,7 +19,7 @@ export default {
       'home-hero-info-before': () => h(HomeHeroBadge),
       'home-hero-image': () => h(HomeHeroVisual),
       'home-features-before': () => h(HomeStats),
-      'home-features-after': () => [h(HomeHeroExtras), h(HomeCapabilities), h(HomeTests), h(HomeFooterExtras)]
+      'home-features-after': () => [h(HomeHeroExtras), h(HomeCapabilities), h(HomePerformance), h(HomeTests), h(HomeFooterExtras)]
     })
   },
   enhanceApp({ app, router, siteData }) {

@@ -60,6 +60,7 @@ export default defineConfig({
           {
             items: [
               { text: 'Введение', link: '/introduction' },
+              { text: 'Производительность', link: '/performance' },
               { text: 'Установка зависимостей', link: '/install' },
               { text: 'Сборка и запуск', link: '/build-and-run' },
               { text: 'Файл конфигурации', link: '/config' },
@@ -166,6 +167,7 @@ export default defineConfig({
           {
             items: [
               { text: 'Intro', link: '/en/introduction' },
+              { text: 'Performance', link: '/en/performance' },
               { text: 'Install', link: '/en/install' },
               { text: 'Build and run', link: '/en/build-and-run' },
               { text: 'Configuration file', link: '/en/config' },

@@ -69,6 +69,26 @@ Maximum request body size in bytes, ≥ 1.
 
 In HTTP/1.1, a `Content-Length` header above the limit results in `400 Bad Request` while the headers are still being parsed; the body is never read, the response carries `Connection: close`, and the connection is closed. Incoming requests with `Transfer-Encoding`, including `chunked`, are not supported and also receive `400 Bad Request` with the connection closed. In HTTP/2, exceeding the limit while receiving the body resets the stream (`RST_STREAM` with `INTERNAL_ERROR`); in HTTP/3, it results in `413 Content Too Large`. The same value caps WebSocket frames and the responses the built-in HTTP client accepts.
 
+### body_store <Badge type="info" text="object"/>
+
+Optional settings for incoming request body storage. Defaults to:
+
+```json
+"body_store": {
+    "mode": "auto",
+    "file_threshold": 1048576
+}
+```
+
+* `mode`: "auto", "memory" or "file"; defaults to "auto". `auto` uses the `file_threshold` to keep the request body in RAM, `file` writes the request body to a file in `main.tmp`.
+* `file_threshold`: an integer number of bytes from 0 to 4294967295; defaults to 1048576 (1 MiB).
+
+In `auto` mode a body smaller than the threshold is kept in memory, and a body equal to or greater than the threshold goes to a temporary file. `0` forces files.
+
+The `memory` and `file` modes do not use `file_threshold`.
+
+Applies to HTTP/1.1, HTTP/2, HTTP/3 and both WebSocket protocols, including decompressed messages. `client_max_body_size` applies in all modes.
+
 ### tmp <Badge type="info" text="string"/> <Badge type="danger" text="required"/>
 
 Temporary file directory: large request bodies and uploads are spooled there. **No trailing slash** — `"/tmp/"` is a configuration error, `"/tmp"` is correct.
@@ -1056,6 +1076,10 @@ A file whose extension is not described here is served without a meaningful `Con
             "http2_ping_interval_sec": 30,
             "http3_idle_timeout_sec": 300,
             "http3_keepalive_sec": 10
+        },
+        "body_store": {
+            "mode": "auto",
+            "file_threshold": 1048576
         }
     },
     "translations": [
