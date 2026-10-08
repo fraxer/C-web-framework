@@ -116,6 +116,10 @@ Valid values (in order of decreasing priority):
 
 ## Where Logs are Stored
 
+`slow_request`, `slow_request_complete`, `request_timeout` and `websocket_timeout` are info-level events. They require `main.log.enabled: true` and an `info` or `debug` level; `notice` and stricter levels filter them out. See [Timeouts and slow requests](/en/timeouts#logs) for event fields and stages.
+
+The access log is enabled separately with [`main.log.access`](/en/config#access), is independent of event logging, and uses syslog facility `local7`. Its duration includes request reception, queueing, handler execution and sending. Timeout metrics are collected with both logs disabled.
+
 All messages are written to the system syslog and are usually available in `/var/log/syslog`.
 
 To view logs use:

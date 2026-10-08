@@ -64,6 +64,7 @@ export default defineConfig({
               { text: 'Установка зависимостей', link: '/install' },
               { text: 'Сборка и запуск', link: '/build-and-run' },
               { text: 'Файл конфигурации', link: '/config' },
+              { text: 'Таймауты и медленные запросы', link: '/timeouts' },
               { text: 'HTTP', collapsed: true,
                 items: [
                   { text: 'Запросы', link: '/requests' },
@@ -171,6 +172,7 @@ export default defineConfig({
               { text: 'Install', link: '/en/install' },
               { text: 'Build and run', link: '/en/build-and-run' },
               { text: 'Configuration file', link: '/en/config' },
+              { text: 'Timeouts and slow requests', link: '/en/timeouts' },
               { text: 'HTTP', collapsed: true,
                 items: [
                   { text: 'Requests', link: '/en/requests' },

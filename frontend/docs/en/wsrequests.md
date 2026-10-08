@@ -10,6 +10,10 @@ WebSocket provides a persistent bidirectional connection between the client and 
 
 ## Request context
 
+Connection liveness, Ping/Pong and message reception timeouts use [`timeouts`](/en/timeouts#websocket) in `main` or the virtual host. Checks cover HTTP/1.1 and HTTP/2. HTTP body timeouts no longer apply to messages after session establishment.
+
+A resource route's `websockets.routes.<path>.<method>.timeouts` can override `ws_*` except handshake. The route is message based, so overrides take effect after the first complete message selecting that route. Timeout closure does not stop a running C handler.
+
 WebSocket requests are handled through the `wsctx_t` context. It holds pointers to the request and response objects and a slot for arbitrary user data.
 
 ```c

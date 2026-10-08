@@ -43,7 +43,11 @@ If you enable `http3` in `config.json` but build the server without `-DINCLUDE_H
 
 ## Configuration
 
-HTTP/3 is configured by an `http3` section inside a specific server. The same vhost keeps serving HTTP/1.1 and HTTP/2 over TCP — the UDP port serves only h3.
+Header/body reception and per-request sending use the [shared `timeouts` policy](/en/timeouts). Expiration cancels the affected stream with `H3_REQUEST_CANCELLED`; neighboring streams continue. Other streams and QUIC ACKs do not extend this request's body idle clock. QPACK blocking is included in the header budget.
+
+QUIC connection idle still uses `main.env.http3_idle_timeout_sec`, rather than `keepalive_timeout_ms`. `tls_handshake_timeout_ms` applies to TCP TLS. WebSocket over HTTP/3 is not supported yet.
+
+HTTP/3 is configured by an `http3` section inside a specific server. The same virtual host keeps serving HTTP/1.1 and HTTP/2 over TCP — the UDP port serves only h3.
 
 ```json
 {
@@ -76,19 +80,19 @@ HTTP/3 is configured by an `http3` section inside a specific server. The same vh
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `enabled` | bool | `false` | Enables HTTP/3 for the server. Required for h3 to run |
-| `port` | number | server's TCP port | UDP port for QUIC (1–65535). Defaults to the vhost's `port` — what Alt-Svc advertises and what clients try first |
+| `port` | number | server's TCP port | UDP port for QUIC (1–65535). Defaults to the virtual host's `port` — what Alt-Svc advertises and what clients try first |
 | `alt_svc` | bool | `true` | Advertise HTTP/3 in the `Alt-Svc` header over HTTP/1.1 and HTTP/2 responses |
 | `alt_svc_max_age` | number | `86400` | How long the client caches `Alt-Svc` (sec) |
 
 ::: tip Why no host in Alt-Svc
-The `Alt-Svc` value is built as `h3=":port"; ma=max_age` — with no host name. Per RFC 7838 an empty host means "the same one", which is correct for every vhost on this listener and keeps clients from pinning to a name the certificate may not cover.
+The `Alt-Svc` value is built as `h3=":port"; ma=max_age` — with no host name. Per RFC 7838 an empty host means "the same one", which is correct for every virtual host on this listener and keeps clients from pinning to a name the certificate may not cover.
 :::
 
 With `http3.enabled: true` and no `tls` section this is a configuration error ("http3 requires a tls section"); QUIC mandates TLS 1.3.
 
 ## Coexistence with HTTP/1.1 and HTTP/2
 
-A single vhost serves all three protocol versions at once:
+A single virtual host serves all three protocol versions at once:
 
 ```
 TCP :443  →  ALPN negotiates  h2  or  http/1.1
@@ -96,7 +100,7 @@ UDP :443  →  only  h3
 ```
 
 - ALPN negotiation is split: a QUIC connection offers **only** `h3`, TCP offers `h2` and `http/1.1`. Mixing is forbidden.
-- Vhost selection inside a connection is by **SNI**, identical to TCP+TLS.
+- Virtual host selection inside a connection is by **SNI**, identical to TCP+TLS.
 - The client learns about h3 availability from the `Alt-Svc` header that the server adds to HTTP/1.1 and HTTP/2 responses. A browser never probes UDP speculatively — it learns about h3 from this header (or from a DNS HTTPS record).
 
 After receiving `Alt-Svc: h3=":443"; ma=86400` the browser tries HTTP/3 in the background and switches on success. If UDP is blocked the client silently stays on TCP — no server-side fallback logic is needed.

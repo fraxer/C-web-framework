@@ -15,7 +15,22 @@
             "enabled": true,
             "level": "info"
         },
-        "env": {}
+        "env": {},
+        "timeouts": {
+            "request_header_timeout_ms": 60000,
+            "request_body_idle_timeout_ms": 60000,
+            "request_body_total_timeout_ms": 0,
+            "slow_request_threshold_ms": 1000,
+            "ws_ping_interval_ms": 30000,
+            "ws_pong_timeout_ms": 10000,
+            "ws_message_idle_timeout_ms": 60000,
+            "ws_send_idle_timeout_ms": 60000,
+            "ws_close_timeout_ms": 5000
+        },
+        "body_store": {
+            "mode": "auto",
+            "file_threshold": 16384
+        }
     },
     "servers": {
         "s1": {

@@ -116,6 +116,10 @@ log_debug("Query executed in %d ms: %s\n", duration, query);
 
 ## Где хранятся логи
 
+События `slow_request`, `slow_request_complete`, `request_timeout` и `websocket_timeout` имеют уровень `info`. Для них нужны `main.log.enabled: true` и уровень `info` или `debug`; `notice` и более строгие уровни их фильтруют. Формат событий и стадии описаны в разделе [Таймауты и медленные запросы](/timeouts#журнал).
+
+Access log отдельно включается через [`main.log.access`](/config#access), не зависит от event log и использует syslog-facility `local7`. Его длительность включает приём запроса, очередь, обработчик и отправку. Метрики таймаутов собираются при выключенных обоих журналах.
+
 Все сообщения записываются в системный журнал syslog и обычно доступны в файле `/var/log/syslog`.
 
 Для просмотра логов используйте:

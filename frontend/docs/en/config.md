@@ -42,7 +42,7 @@ Two practical consequences:
 
 ## main section
 
-Required. **Every key below except `env` is mandatory** — a missing one stops start-up.
+Required. Mandatory keys are marked individually. `env`, `body_store`, `timeouts` and other settings without a required badge may be omitted.
 
 ### workers <Badge type="info" text="number"/> <Badge type="danger" text="required"/>
 
@@ -88,6 +88,10 @@ In `auto` mode a body smaller than the threshold is kept in memory, and a body e
 The `memory` and `file` modes do not use `file_threshold`.
 
 Applies to HTTP/1.1, HTTP/2, HTTP/3 and both WebSocket protocols, including decompressed messages. `client_max_body_size` applies in all modes.
+
+### timeouts <Badge type="info" text="object"/>
+
+Optional HTTP and WebSocket timeout policy. Fields and defaults are listed in [Timeouts and slow requests → Fields](/en/timeouts#fields), along with inheritance, route overrides and monitoring.
 
 ### tmp <Badge type="info" text="string"/> <Badge type="danger" text="required"/>
 
@@ -194,13 +198,13 @@ journalctl -t cwfr SYSLOG_FACILITY=23 -o cat   # requests, one line each
 journalctl -t cwfr SYSLOG_FACILITY=1           # server events
 ```
 
-The format is fixed — Apache's `vhost_combined` with the processing time appended:
+The format is fixed — Apache's `vhost_combined` with the total request duration appended:
 
 ```
 example.com 203.0.113.7 - - [08/Sep/2026:22:41:07 +0700] "GET /page?a=1 HTTP/2" 200 1234 "https://ref/" "Mozilla/5.0" 0.002
 ```
 
-The fields, in order: the vhost (the `Host` value), the client address, two dashes where identd and the HTTP user would be, the time, the request line, the status code, the body size, `Referer`, `User-Agent`, and the duration in seconds. For GoAccess:
+The fields, in order: the virtual host (the `Host` value), the client address, two dashes where identd and the HTTP user would be, the time, the request line, the status code, the body size, `Referer`, `User-Agent`, and the duration in seconds. It starts with the first request bytes and includes header/body reception, queueing, handler execution and sending. HTTP/3 ends at handing the response to QUIC, without waiting for delivery acknowledgements. The line format is unchanged; reception is now included in the duration. See [timeout logging](/en/timeouts#logs) for separate stage measurements. For GoAccess:
 
 ```
 log-format %v:%^ %h %^[%d:%t %^] "%r" %s %b "%R" "%u" %T
@@ -208,7 +212,7 @@ date-format %d/%b/%Y
 time-format %H:%M:%S
 ```
 
-Records are identical across HTTP/1.1, HTTP/2 and HTTP/3, and cover everything the vhost serves — static files, handler responses, `304`, the `429` of a rate limit, redirects. The body size is the bytes that actually went on the wire: compressed for a compressed response, the part size for a `Range`, zero for a `304`. The request line is the one the client sent: a redirect is recorded under the path that was asked for, not under its destination.
+Records are identical across HTTP/1.1, HTTP/2 and HTTP/3, and cover everything the virtual host serves — static files, handler responses, `304`, the `429` of a rate limit, redirects. The body size is the bytes that actually went on the wire: compressed for a compressed response, the part size for a `Range`, zero for a `304`. The request line is the one the client sent: a redirect is recorded under the path that was asked for, not under its destination.
 
 What does **not** reach a record:
 
@@ -545,11 +549,11 @@ See [Task manager](/en/task-manager).
 
 Required and non-empty. Each server (virtual host) is a named entry; the name (`s1`, `s2`, …) is arbitrary and used nowhere except error messages.
 
-**Required vhost fields:** `domains`, `ip`, `port`, `root`. The rest — `index`, `ratelimits`, `http`, `websockets`, `tls`, `http3` — are optional.
+**Required virtual host fields:** `domains`, `ip`, `port`, `root`. The rest — `index`, `ratelimits`, `http`, `websockets`, `tls`, `http3` — are optional.
 
 ### domains <Badge type="info" text="array of strings"/> <Badge type="danger" text="required"/>
 
-The names this vhost answers to. Matching is against the `Host` header (or the SNI name on TLS), **case-insensitively** and **after the port is stripped**.
+The names this virtual host answers to. Matching is against the `Host` header (or the SNI name on TLS), **case-insensitively** and **after the port is stripped**.
 
 The template is converted to punycode, then into a regular expression by a few rules:
 
@@ -569,7 +573,7 @@ A template with no metacharacters is compared directly, bypassing PCRE2 — noti
 The port is stripped from `Host` before matching, so an entry like `"www.example.com:8080"` will **never** match. The port is set by the [`port`](#port) field.
 :::
 
-A vhost is identified by the triple **(address, domain, port)**, and two entries sharing that triple are a configuration error.
+A virtual host is identified by the triple **(address, domain, port)**, and two entries sharing that triple are a configuration error.
 
 ### ip <Badge type="info" text="string"/> <Badge type="danger" text="required"/>
 
@@ -584,7 +588,7 @@ An IPv6 socket is created **v6-only**: it does not accept IPv4 traffic, because 
 }
 ```
 
-Vhost uniqueness is checked on "address + domain + port", so such a pair is not a collision.
+Virtual host uniqueness is checked on "address + domain + port", so such a pair is not a collision.
 
 An invalid address (a typo like `127.0.0.300` or `::1x`) **stops start-up** with a message naming the value — the server does not try to guess it.
 
@@ -601,6 +605,10 @@ Everything file-related is resolved from this directory: both the static files s
 ### index <Badge type="info" text="string"/>
 
 The index file name served for a directory. Defaults to `index.html`. One name, not a list.
+
+### timeouts <Badge type="info" text="object"/>
+
+The optional `servers.<name>.timeouts` object overrides individual [`main.timeouts`](#timeouts) fields. Its policy applies to this virtual host's HTTP/1.x, HTTP/2, HTTP/3 and WebSocket paths. See the [inheritance example](/en/timeouts#inheritance-and-routes) and the shared TCP listener restrictions.
 
 ### ratelimits <Badge type="info" text="object"/>
 
@@ -630,11 +638,11 @@ HTTP routes, middleware, response headers and redirects. All five nested keys ar
 
 #### ratelimit <Badge type="info" text="string"/>
 
-The default rate-limiting profile for all HTTP routes of the vhost without a `ratelimit` of their own, and statics from [`root`](#root) served to a request that matched no route.
+The default rate-limiting profile for all HTTP routes of the virtual host without a `ratelimit` of their own, and statics from [`root`](#root) served to a request that matched no route.
 
 For file routes served from `root` and requests that match no route, the limit is checked before looking up the file. Missing files also spend tokens; an exhausted limit returns `429` with `Retry-After: 1`.
 
-Routes without their own profile and static requests outside routes share one bucket per client IPv4 address or IPv6 `/64` prefix within the vhost limiter in each worker process. The route's profile takes precedence, including `rate: 0`, which disables limiting for that route. Without an assigned profile, requests are not limited. Redirects from `http.redirects` do not check this limiter.
+Routes without their own profile and static requests outside routes share one bucket per client IPv4 address or IPv6 `/64` prefix within the virtual host limiter in each worker process. The route's profile takes precedence, including `rate: 0`, which disables limiting for that route. Without an assigned profile, requests are not limited. Redirects from `http.redirects` do not check this limiter.
 
 #### middlewares <Badge type="info" text="array of strings"/>
 
@@ -708,7 +716,7 @@ The request's query string is carried onto the target when the target has no `?`
 
 #### headers <Badge type="info" text="object"/>
 
-Response headers this vhost puts on **every** answer it gives. The key is the header name, the value a string; an empty value is a configuration error.
+Response headers this virtual host puts on **every** answer it gives. The key is the header name, the value a string; an empty value is a configuration error.
 
 ```json
 "headers": {
@@ -742,7 +750,7 @@ WebSocket configuration. All nested keys — `default`, `ratelimit`, `middleware
 * `routes` — routes; the method key here is also `GET`
 
 ::: tip The section also governs HTTP/2
-A vhost **without** a `websockets` section answers Extended CONNECT (WebSocket over HTTP/2, RFC 8441) with `501 Not Implemented`. The capability is advertised per connection while serving is per vhost, so an empty `"websockets": {}` is a meaningful "WebSocket is allowed here".
+A virtual host **without** a `websockets` section answers Extended CONNECT (WebSocket over HTTP/2, RFC 8441) with `501 Not Implemented`. The capability is advertised per connection while serving is per virtual host, so an empty `"websockets": {}` is a meaningful "WebSocket is allowed here".
 :::
 
 See [WebSocket requests](/en/wsrequests) and [Broadcasting](/en/wsbroadcast).
@@ -763,13 +771,13 @@ TLS/SSL settings. **All three fields are mandatory** when the section is present
 * `private` — PEM private key
 * `ciphers` — cipher list: TLS 1.3 suites separated by spaces first, then the TLS 1.2 list separated by colons
 
-The vhost is selected by SNI on TLS, and the certificate comes from the matching vhost. HTTP/2 requires an AEAD cipher with ephemeral key exchange (RFC 9113 §9.2.2) — a connection on a weak cipher gets `GOAWAY(INADEQUATE_SECURITY)`, while HTTP/1.1 on the same cipher keeps working.
+The virtual host is selected by SNI on TLS, and the certificate comes from the matching virtual host. HTTP/2 requires an AEAD cipher with ephemeral key exchange (RFC 9113 §9.2.2) — a connection on a weak cipher gets `GOAWAY(INADEQUATE_SECURITY)`, while HTTP/1.1 on the same cipher keeps working.
 
 See [SSL certificates](/en/ssl-certs).
 
 ### http3 <Badge type="info" text="object"/>
 
-Enables HTTP/3 (over QUIC) for the vhost. Requires the `-DINCLUDE_HTTP3=yes` build flag (OpenSSL ≥ 3.5) and a `tls` section — QUIC has no cleartext mode; `http3.enabled` without `tls` stops start-up, as does `enabled` in a build without HTTP/3 support. TCP keeps serving HTTP/1.1 and HTTP/2 alongside.
+Enables HTTP/3 (over QUIC) for the virtual host. Requires the `-DINCLUDE_HTTP3=yes` build flag (OpenSSL ≥ 3.5) and a `tls` section — QUIC has no cleartext mode; `http3.enabled` without `tls` stops start-up, as does `enabled` in a build without HTTP/3 support. TCP keeps serving HTTP/1.1 and HTTP/2 alongside.
 
 ```json
 "http3": {
@@ -783,13 +791,13 @@ Enables HTTP/3 (over QUIC) for the vhost. Requires the `-DINCLUDE_HTTP3=yes` bui
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | bool | `false` | Turns HTTP/3 on. Required for h3 to work |
-| `port` | number | the vhost's TCP port | UDP port for QUIC (1–65535) |
+| `port` | number | the virtual host's TCP port | UDP port for QUIC (1–65535) |
 | `alt_svc` | bool | `true` | Advertise h3 in the `Alt-Svc` header over HTTP/1.1 and HTTP/2 |
 | `alt_svc_max_age` | number | `86400` | `Alt-Svc` cache lifetime (seconds, ≥ 0) |
 
-Only the port goes into `Alt-Svc` (`h3=":443"; ma=86400`), never a host name: an empty host per RFC 7838 means "the same one", which keeps the header correct for every vhost sharing the listener.
+Only the port goes into `Alt-Svc` (`h3=":443"; ma=86400`), never a host name: an empty host per RFC 7838 means "the same one", which keeps the header correct for every virtual host sharing the listener.
 
-QUIC's own behaviour is tuned by the `http3_*` keys in [`main.env`](#runtime-keys) — those are per process, not per vhost. See [HTTP/3](/en/http3).
+QUIC's own behaviour is tuned by the `http3_*` keys in [`main.env`](#runtime-keys) — those are per process, not per virtual host. See [HTTP/3](/en/http3).
 
 ## databases section
 

@@ -233,7 +233,7 @@ The same for a filesystem storage and for S3:
 }
 ```
 
-Middlewares come from the vhost's shared `http.middlewares` list — a route has no list of its own. If other routes of the vhost do not need the same check, the middleware decides for itself, by the request path.
+Middlewares come from the virtual host's shared `http.middlewares` list — a route has no list of its own. If other routes of the virtual host do not need the same check, the middleware decides for itself, by the request path.
 
 #### A filesystem storage
 
@@ -484,7 +484,7 @@ Markup in a directory on disk, video in S3, downloads behind authorization and a
 }
 ```
 
-`middleware_auth` runs here for both `/assets/` and `/videos/`: the middleware list is shared by the vhost. A middleware that should guard only the videos checks the request path itself.
+`middleware_auth` runs here for both `/assets/` and `/videos/`: the middleware list is shared by the virtual host. A middleware that should guard only the videos checks the request path itself.
 
 ### Mixed site (pages + API)
 

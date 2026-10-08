@@ -5,6 +5,8 @@ description: Hot reload of C Web Framework without stopping the server. Soft and
 
 # Hot reload
 
+The [`main.timeouts` and virtual host policies](/en/timeouts#inheritance-and-routes) are also reread. Candidates are validated before the serving generation is stopped: invalid ranges or combinations leave the previous server active. New connections use the new generation; active requests and WebSocket sessions retain their earlier policy until completion. This does not override soft/hard reload rules: hard reload may close an old connection before its timeout expires.
+
 Hot reload lets you update the configuration without stopping the server or
 interrupting in-flight requests. On the `SIGUSR1` signal, the server re-reads
 `config.json` and reinitializes its components: routes, domains and redirects,
