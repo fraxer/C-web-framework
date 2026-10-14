@@ -1071,7 +1071,7 @@ void page_get(httpctx_t* ctx) {
     const char* name = form_cleaned_data(form, 0)->data.text;
 
     /* Имя — аргумент, а не часть формата: путь уже проверен полем. */
-    char* html = render(NULL, "views", "pages/%s.tpl", name);
+    char* html = render(NULL, VIEW_ESCAPE, "views", "pages/%s.tpl", name);
     form_free(form);
 
     if (html == NULL) {

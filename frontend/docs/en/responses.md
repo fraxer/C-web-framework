@@ -159,7 +159,7 @@ Model definitions and CRUD wrappers: [Models](/en/model).
 
 ## Views
 
-`send_view` renders a template (view) from a named storage. The first argument is a `json_doc_t*` with data for the template (can be `NULL`), followed by the storage name and a path with `printf`-style formatting:
+`send_view` renders a template (view) from a named storage. The first argument is a `json_doc_t*` with data for the template (can be `NULL`), followed by the escape mode (`VIEW_ESCAPE` for HTML — <code v-pre>{{ }}</code> values are escaped, `VIEW_RAW` for non-HTML formats), the storage name and a path with `printf`-style formatting:
 
 ```c
 void index(httpctx_t* ctx) {
@@ -167,7 +167,7 @@ void index(httpctx_t* ctx) {
     json_token_t* root = json_create_object(document);
     json_object_set(root, "title", json_create_string(document, "Home"));
 
-    ctx->response->send_view(ctx->response, document, "views", "/index.tpl");
+    ctx->response->send_view(ctx->response, document, VIEW_ESCAPE, "views", "/index.tpl");
 
     json_free(document);
 }

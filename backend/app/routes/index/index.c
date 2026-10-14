@@ -399,7 +399,7 @@ void template_engine(httpctx_t* ctx) {
         return;
     }
 
-    ctx->response->send_view(ctx->response, document, "views", "/index.tpl");
+    ctx->response->send_view(ctx->response, document, VIEW_ESCAPE, "views", "/index.tpl");
 
     json_free(document);
 }

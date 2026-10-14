@@ -159,7 +159,7 @@ void list_users(httpctx_t* ctx) {
 
 ## Шаблоны
 
-`send_view` рендерит шаблон (view) из именованного хранилища. Первый аргумент — `json_doc_t*` с данными для шаблона (можно `NULL`), затем имя хранилища и путь с поддержкой `printf`-форматирования:
+`send_view` рендерит шаблон (view) из именованного хранилища. Первый аргумент — `json_doc_t*` с данными для шаблона (можно `NULL`), затем режим экранирования (`VIEW_ESCAPE` для HTML — значения <code v-pre>{{ }}</code> экранируются, `VIEW_RAW` для не-HTML форматов), имя хранилища и путь с поддержкой `printf`-форматирования:
 
 ```c
 void index(httpctx_t* ctx) {
@@ -167,7 +167,7 @@ void index(httpctx_t* ctx) {
     json_token_t* root = json_create_object(document);
     json_object_set(root, "title", json_create_string(document, "Главная"));
 
-    ctx->response->send_view(ctx->response, document, "views", "/index.tpl");
+    ctx->response->send_view(ctx->response, document, VIEW_ESCAPE, "views", "/index.tpl");
 
     json_free(document);
 }

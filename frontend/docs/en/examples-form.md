@@ -1055,7 +1055,7 @@ void page_get(httpctx_t* ctx) {
     const char* name = form_cleaned_data(form, 0)->data.text;
 
     /* The name is an argument, not part of the format: the path is validated. */
-    char* html = render(NULL, "views", "pages/%s.tpl", name);
+    char* html = render(NULL, VIEW_ESCAPE, "views", "pages/%s.tpl", name);
     form_free(form);
 
     if (html == NULL) {
